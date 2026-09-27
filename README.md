@@ -2,36 +2,55 @@
 
 A modular, Eden/Zeus-configurable integrated air-defense framework for Arma 3.
 
-AEGIS-M is not a faction or vehicle pack. It is a framework: mission
-designers place and sync a small set of modules onto existing vehicles and
-units to assemble radar, SAM, CIWS, and CRAM sites into intelligent,
-human-feeling air-defense networks -- with engagement behavior driven by a
-configurable crew skill/temperament system rather than a fixed reaction
-timer.
+AEGIS-M is not a faction or vehicle pack. It is a framework: take any
+existing radar, SAM, SHORAD, or CIWS/CRAM vehicle -- no setup, no
+Attributes to check -- and sync it to one AEGIS-M: Site module to assemble
+intelligent, human-feeling air-defense networks, with engagement behavior
+driven by a configurable crew skill/temperament system rather than a fixed
+reaction timer.
 
 ## Status
 
-Early development. See `.claude/plans` (or the project's plan document) for
-the full architecture writeup.
+Early development.
 
 ## Dependencies
 
 - [CBA_A3](https://github.com/CBATeam/CBA_A3) (hard dependency)
 
-## Modules
+## How it works
 
-- **AEGISM_Module_System** -- placed on a single vehicle; declares which
-  capability role(s) it performs (Radar / Launcher / CIWS). Self-contained
-  vehicles (e.g. a Tigris- or ZSU-style all-in-one system) check all three
-  roles on one instance with no other modules required.
-- **AEGISM_Module_EngagementSettings** -- doctrine: engagement envelope,
-  target-priority rule, salvo policy, target-class allowlist.
-- **AEGISM_Module_Crew** -- personality: skill tier x temperament, modulates
-  the linked doctrine's timing and reliability rather than owning its own
-  numbers.
-- **AEGISM_Module_Network** -- groups a battery: pools radar contacts across
-  synced Systems and acts as a fallback sync target for Engagement Settings
-  and Crew.
+**A vehicle's role is discovered, never declared.** AEGIS-M reads a
+vehicle's own native config and current loadout: if it has a real radar
+sensor, it has a radar; if it has guided missiles, it's a launcher; if it
+also has a high-rate-of-fire gun (a SHORAD or Tigris-style all-in-one
+vehicle), it's also a CIWS/CRAM. There is no role checkbox, no detection
+range/arc, no missile count, no guidance speed, no ammo classname to set
+anywhere -- all of that is either read live from the vehicle's real
+sensors/magazines, or is simply the game's own weapon simulation once
+AEGIS-M tells it to fire. A qualifying vehicle works standalone with sane
+default Doctrine/Personality; no module has to be placed on it at all.
+
+**Detection uses the vehicle's own native sensors** (getSensorTargets) --
+the same radar/IR/visual/datalink simulation already running against its
+real CfgVehicles config -- rather than AEGIS-M re-implementing its own
+line-of-sight/range estimate. **Firing commands the vehicle's own real
+weapon** (fireAtTarget) with its actual loaded ammo, so ballistics,
+guidance, and damage are entirely the game's simulation, not a scripted
+projectile AEGIS-M spawns and steers itself.
+
+**AEGISM_Module_Site** is the one placeable/syncable AEGIS-M module. Sync
+it to every vehicle that makes up a site (its radar, its launchers, its
+CIWS) to link them into a battery: contacts are pooled and deconflicted
+across the group, and the Site's own Doctrine (engagement envelope,
+target-priority rule, salvo policy, target-class allowlist) and
+Personality (skill tier x temperament, which modulates the doctrine's
+timing/reliability rather than owning its own numbers) apply battery-wide.
+A vehicle synced to more than one Site, or never synced at all, still
+resolves sensibly per the object -> network -> default fallback order.
+
+Syncing or unsyncing a vehicle to a Site, or editing the Site's own
+Attributes, takes effect live -- nothing requires re-placing modules or
+restarting the mission.
 
 ## License
 

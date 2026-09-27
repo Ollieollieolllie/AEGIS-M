@@ -17,6 +17,10 @@ include = [
     "mod.cpp",
     "LICENSE",
     "README.md",
+    "logo.paa",
+    "logo_over.paa",
+    "logo_small.paa",
+    "picture.paa",
 ]
 
 [hemtt.release]

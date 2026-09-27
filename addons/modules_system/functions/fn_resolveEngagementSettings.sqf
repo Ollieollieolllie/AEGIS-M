@@ -2,20 +2,20 @@
 Function: aegism_system_fnc_resolveEngagementSettings
 
 Description:
-    Resolves which AEGISM_Module_EngagementSettings data applies to a given
-    System object, per the object -> network -> default fallback order
-    defined in the AEGIS-M architecture plan (section 1): a doctrine synced
-    directly to the System overrides one inherited from its Network, and if
-    neither is present a hardcoded default is used so the System still
-    functions standalone.
+    Resolves which Doctrine data applies to a given System vehicle, per the
+    object -> network -> default fallback order defined in the AEGIS-M
+    architecture plan (section 1): doctrine set directly on the vehicle
+    (possible via scripting; there's no separate per-vehicle Doctrine
+    module anymore) overrides one inherited from its synced AEGISM_Module_
+    Site, and if neither is present a hardcoded default is used so a
+    role-checked vehicle still functions standalone with no Site at all.
 
-    Reads/writes the object-namespaced variables set by aegism_system_fnc_
-    moduleInit and the (future) EngagementSettings/Network module init
-    functions: "AEGISM_engagement" (HashMap or nil) and "AEGISM_network"
-    (Object or objNull).
+    Reads the object-namespaced variables set by aegism_system_fnc_
+    moduleInit and AEGISM_Module_Site's own moduleInit: "AEGISM_engagement"
+    (HashMap or nil) and "AEGISM_network" (Object or objNull).
 
 Parameters:
-    _systemObject - the vehicle carrying an AEGISM_Module_System <OBJECT>
+    _systemObject - the vehicle to resolve Doctrine data for <OBJECT>
 
 Returns:
     The resolved engagement settings data <HASHMAP>

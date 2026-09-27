@@ -2,10 +2,10 @@
 Function: aegism_system_fnc_defaultEngagementSettings
 
 Description:
-    Hardcoded fallback doctrine used by a System with no directly-synced or
-    Network-inherited AEGISM_Module_EngagementSettings, so a standalone
-    System (e.g. a lone self-contained vehicle with no other modules placed)
-    remains fully functional without requiring extra module placement.
+    Hardcoded fallback doctrine used by a System with no directly-set or
+    Site-inherited Doctrine data (AEGISM_Module_Site's own Attributes), so
+    a standalone vehicle with just a role checked -- no Site module synced
+    at all -- remains fully functional.
 
 Parameters:
     None

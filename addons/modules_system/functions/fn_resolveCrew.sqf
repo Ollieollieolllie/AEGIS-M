@@ -2,17 +2,20 @@
 Function: aegism_system_fnc_resolveCrew
 
 Description:
-    Resolves which AEGISM_Module_Crew data applies to a given System object,
-    per the object -> network -> default fallback order defined in the
-    AEGIS-M architecture plan (section 1) -- identical resolution order to
-    aegism_system_fnc_resolveEngagementSettings, applied to crew personality
-    data instead of doctrine data.
+    Resolves which Personality data applies to a given System vehicle, per
+    the object -> network -> default fallback order defined in the AEGIS-M
+    architecture plan (section 1) -- identical resolution order to aegism_
+    system_fnc_resolveEngagementSettings, applied to crew personality data
+    instead of doctrine data. "Object" here means directly set on the
+    vehicle itself (possible via scripting; there's no separate per-vehicle
+    Personality module anymore), "network" means inherited from a synced
+    AEGISM_Module_Site's own Personality Attributes.
 
     Reads the object-namespaced variables "AEGISM_crew" (HashMap or nil) and
     "AEGISM_network" (Object or objNull).
 
 Parameters:
-    _systemObject - the vehicle carrying an AEGISM_Module_System <OBJECT>
+    _systemObject - the vehicle to resolve Personality data for <OBJECT>
 
 Returns:
     The resolved crew data <HASHMAP>

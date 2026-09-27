@@ -2,19 +2,31 @@
 Function: aegism_system_fnc_resolveContactSource
 
 Description:
-    Resolves where a Launcher/CIWS-role System draws tracked contacts from:
-    its own same-instance Radar role (self-contained case, e.g. a Tigris/
-    ZSU-style vehicle), its Network's pooled contact list (networked case),
-    both together, or neither -- logging a diag_log warning for the latter
-    since that System would otherwise silently never engage anything, per
-    the AEGIS-M architecture plan (section 1) link validation requirement.
+    Resolves where a Launcher/CIWS-capable System draws tracked contacts
+    from: its own native radar (self-contained case, e.g. a Tigris/ZSU-
+    style vehicle with both missiles and its own sensor), its Network's
+    pooled contact list (networked case), both together, or neither --
+    logging a diag_log warning for either dead end, since that System would
+    otherwise silently never engage anything, per the AEGIS-M architecture
+    plan (section 1) link validation requirement. A synced Network only
+    counts as a real contact source if at least one of its current members
+    (per the live "AEGISM_networkMembers" list, see aegism_network_fnc_
+    moduleInit) actually has radar capability -- a Network with no radar
+    anywhere in it can never populate its own pool, so a Launcher relying
+    solely on it would otherwise pass this check yet still never see a
+    single contact.
 
-    Role bitmask (matches aegism_system_fnc_moduleInit): Radar = 1,
-    Launcher = 2, CIWS = 4. Reads "AEGISM_system" (HashMap, key "roleMask")
-    and "AEGISM_network" (Object or objNull) from the system object.
+    Called periodically (not just once at init, see aegism_system_fnc_
+    moduleInit's re-resolution poll) so a Network gaining or losing its
+    only radar-equipped member is reflected without a mission restart; the
+    warning message is only re-logged when it actually changes, so a
+    persisting problem doesn't spam the RPT log every poll.
+
+    Reads "AEGISM_system" (HashMap, key "hasRadar") and "AEGISM_network"
+    (Object or objNull) from the system object.
 
 Parameters:
-    _systemObject - the vehicle carrying an AEGISM_Module_System <OBJECT>
+    _systemObject - the vehicle to resolve a contact source for <OBJECT>
 
 Returns:
     Contact source list, any combination of "ownRadar" / "network" (empty
@@ -32,19 +44,34 @@ params ["_systemObject"];
 private _sources = [];
 
 private _system = _systemObject getVariable ["AEGISM_system", createHashMap];
-private _roleMask = _system getOrDefault ["roleMask", 0];
-private _roleRadar = 1;
-if ((_roleMask mod (_roleRadar * 2)) >= _roleRadar) then {
+if (_system getOrDefault ["hasRadar", false]) then {
     _sources pushBack "ownRadar";
 };
 
 private _network = _systemObject getVariable ["AEGISM_network", objNull];
+private _warning = "";
+
 if (!isNull _network) then {
-    _sources pushBack "network";
+    private _members = _network getVariable ["AEGISM_networkMembers", []];
+    private _networkHasRadar = (_members findIf {
+        private _memberSystem = _x getVariable ["AEGISM_system", createHashMap];
+        _memberSystem getOrDefault ["hasRadar", false]
+    }) != -1;
+
+    if (_networkHasRadar) then {
+        _sources pushBack "network";
+    } else {
+        _warning = format ["System on %1 is synced to Network %2, but no current member of that Network has radar capability -- it will never receive any contacts from it.", _systemObject, _network];
+    };
 };
 
 if (_sources isEqualTo []) then {
-    diag_log text format ["[AEGIS-M] WARNING: System on %1 has no contact source (no own Radar role, no Network) -- it will never detect a target. Sync a Network or enable the Radar role.", _systemObject];
+    _warning = format ["System on %1 has no contact source (no radar of its own, no Network with a radar-capable member) -- it will never detect a target.", _systemObject];
+};
+
+if (_warning != "" && {_systemObject getVariable ["AEGISM_lastContactSourceWarning", ""] != _warning}) then {
+    diag_log text ("[AEGIS-M] WARNING: " + _warning);
+    _systemObject setVariable ["AEGISM_lastContactSourceWarning", _warning, false];
 };
 
 _sources
