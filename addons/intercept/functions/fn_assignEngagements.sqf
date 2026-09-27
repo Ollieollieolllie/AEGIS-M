@@ -135,7 +135,16 @@ private _members = _logic getVariable ["AEGISM_networkMembers", []];
 private _pool = _logic getVariable ["AEGISM_pooledContacts", createHashMap];
 private _claims = _logic getVariable ["AEGISM_claims", createHashMap];
 private _engagementSettings = _logic getVariable "AEGISM_engagement";
-if (isNil "_engagementSettings") exitWith {};
+if (isNil "_engagementSettings") exitWith {
+    // Change-only logging (mirrors aegism_system_fnc_resolveContactSource's
+    // own warning pattern) -- this exits every 0.5s tick if it's ever hit
+    // at all, so an unconditional diag_log here would spam the RPT solid
+    // for the rest of the mission instead of once, the moment it's useful.
+    if (_logic getVariable ["AEGISM_lastAssignWarning", ""] != "no-engagement-settings") then {
+        _logic setVariable ["AEGISM_lastAssignWarning", "no-engagement-settings", false];
+        diag_log text format ["[AEGIS-M] WARNING: Site %1 has no AEGISM_engagement set -- assignEngagements cannot run at all until this is fixed (should have been set at module init).", _logic];
+    };
+};
 
 private _withheldCiws = [];
 private _ciwsLastResort = _engagementSettings getOrDefault ["ciwsLastResort", false];
@@ -168,7 +177,20 @@ private _allWeapons = [];
     };
 } forEach _members;
 
-if (_allWeapons isEqualTo []) exitWith {};
+if (_allWeapons isEqualTo []) exitWith {
+    // Change-only, same reasoning as the AEGISM_engagement warning above --
+    // a Site with every launcher/CIWS temporarily out of ammo would
+    // otherwise log this every 0.5s for as long as that lasts.
+    if (_logic getVariable ["AEGISM_lastAssignWarning", ""] != "no-weapons") then {
+        _logic setVariable ["AEGISM_lastAssignWarning", "no-weapons", false];
+        diag_log text format ["[AEGIS-M] WARNING: Site %1 has %2 member(s) but zero live launcher/CIWS weapons found (dead Systems, or all out of ammo) -- no contact can be assigned until this changes.", _logic, count _members];
+    };
+};
+// Weapons ARE available past this point -- clear any stale warning flag so
+// a LATER recurrence of the same problem (ammo runs out again after a
+// rearm) logs again instead of staying silent because the flag was never
+// reset.
+_logic setVariable ["AEGISM_lastAssignWarning", "", false];
 
 // --- Score and (re)assign every pooled contact. ---
 {
@@ -194,9 +216,14 @@ if (_allWeapons isEqualTo []) exitWith {};
         _existing = _existing select {
             private _record = _x;
             private _system = _record get "system";
-            private _dist = (getPosASL _system) distance _targetPos;
+            private _dist = if (isNull _system) then { -1 } else { (getPosASL _system) distance _targetPos };
+            private _inEnvelope = (_dist >= _minRange) && {_dist <= _maxRange} && {_altitude >= _minAltitude} && {_altitude <= _maxAltitude};
             private _failed = (_record get "lastShotAt") >= 0 && {time > (_record get "lastShotAt") + AEGISM_ASSIGNMENT_FLIGHT_GRACE};
-            !isNull _system && {alive _system} && {_dist >= _minRange} && {_dist <= _maxRange} && {_altitude >= _minAltitude} && {_altitude <= _maxAltitude} && {!_failed}
+            private _keep = !isNull _system && {alive _system} && _inEnvelope && {!_failed};
+            if (!_keep) then {
+                diag_log text format ["[AEGIS-M] ASSIGN-CLEAR: %1 (role=%2) dropped from contact %3 -- deadSystem=%4 outOfEnvelope=%5 dist=%6m failedNoKill=%7", _system, _record get "role", _object, (isNull _system || {!alive _system}), !_inEnvelope, round _dist, _failed];
+            };
+            _keep
         };
 
         private _hasLauncher = (_existing findIf { (_x get "role") == "launcher" }) != -1;
@@ -276,6 +303,9 @@ if (_allWeapons isEqualTo []) exitWith {};
                             {([_otherEntry get "class"] call aegism_intercept_fnc_threatValue) > _thisValue}
                         };
                         _allowed = _outrankingContacts isEqualTo [];
+                        if (!_allowed) then {
+                            diag_log text format ["[AEGIS-M] RETRY-DECLINE: contact %1 (%2) has had %3 launcher attempts, declining further shots -- %4 outranking contact(s) unassigned.", _object, _class, _launcherAttempts, count _outrankingContacts];
+                        };
                     };
                 };
 
@@ -342,6 +372,8 @@ if (_allWeapons isEqualTo []) exitWith {};
                         ["roundsFired", 0]
                     ];
                     if (_role == "ciws") then { _hasCiws = true; } else { _hasLauncher = true; };
+
+                    diag_log text format ["[AEGIS-M] ASSIGN: %1 (%2, role=%3) -> contact %4 (%5, dist %6m, sizeDiff %7)", _bestSystem, typeOf _bestSystem, _bestRole, _object, _class, round (_dists#_bestIndex), _sizeDiffs#_bestIndex];
 
                     // Remove the winning weapon from _allWeapons itself (not
                     // just this contact's local flags) so a LATER contact in

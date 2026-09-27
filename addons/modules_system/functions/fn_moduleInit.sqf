@@ -78,7 +78,14 @@ _vehicle setVariable ["AEGISM_systemInitialized", true, false];
 
 private _capabilities = [_vehicle] call aegism_system_fnc_discoverCapabilities;
 private _hasAnyCapability = (_capabilities get "hasRadar") || {(_capabilities get "launcherWeapons") isNotEqualTo []} || {(_capabilities get "ciwsWeapons") isNotEqualTo []};
-if (!_hasAnyCapability) exitWith {};
+if (!_hasAnyCapability) exitWith {
+    // Deliberately verbose (every non-qualifying vehicle in the mission
+    // logs once) -- when "nothing is engaging" turns out to mean "nothing
+    // ever registered as a System at all", this is the line that proves it
+    // and shows WHY discoverCapabilities came back empty for this vehicle,
+    // rather than leaving that as a silent, hard-to-diagnose dead end.
+    diag_log text format ["[AEGIS-M] DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar sensor, no missile/rocket magazine, no high-ROF gun magazine found in its current loadout.", _vehicle, typeOf _vehicle];
+};
 
 _vehicle setVariable ["AEGISM_system", _capabilities, false];
 

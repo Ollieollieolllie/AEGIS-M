@@ -72,8 +72,14 @@ Author:
 params ["_system", "_target", "_weaponInfo", "_reliability"];
 _weaponInfo params ["_turretPath", "_weaponClass", "_magazineClass"];
 
-if (isNull _target || {!alive _target}) exitWith { false };
-if (random 1 > _reliability) exitWith { false }; // crew didn't get a clean shot off this cycle
+if (isNull _target || {!alive _target}) exitWith {
+    diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 -- target null or already dead.", _system];
+    false
+};
+if (random 1 > _reliability) exitWith {
+    diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 at %2 -- crew reliability roll failed (reliability=%3).", _system, _target, _reliability];
+    false
+};
 
 if (!isNil "ace_missileguidance_fnc_onFired") then {
     private _ammoClassName = getText (configFile >> "CfgMagazines" >> _magazineClass >> "ammo");
@@ -93,5 +99,7 @@ if (!isNil "ace_missileguidance_fnc_onFired") then {
         };
     };
 };
+
+diag_log text format ["[AEGIS-M] FIRE: %1 (%2) fires %3 (mag %4) at %5 (%6).", _system, typeOf _system, _weaponClass, _magazineClass, _target, typeOf _target];
 
 _system fireAtTarget [_target, _weaponClass]

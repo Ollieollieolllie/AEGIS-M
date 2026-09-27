@@ -148,7 +148,9 @@ if (!isNull _network) then {
 
     private _targetPos = getPosASL _target;
     private _losClear = (lineIntersectsSurfaces [_weaponPos, _targetPos, _system, _target, true, 1]) isEqualTo [];
-    if (!_losClear) exitWith {}; // masked right now -- stay assigned, re-check next tick
+    if (!_losClear) exitWith {
+        diag_log text format ["[AEGIS-M] LOS-BLOCKED: %1 (role=%2) cannot see assigned contact %3 -- staying assigned, retrying next tick.", _system, _role, _target];
+    }; // masked right now -- stay assigned, re-check next tick
 
     [_system, _target, _weaponInfo, (_crewMods get "reliability")] call aegism_intercept_fnc_fireWeapon;
 
