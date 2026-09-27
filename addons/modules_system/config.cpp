@@ -22,7 +22,7 @@ class CfgVehicles
     {
         scope = 2;
         displayName = "AEGIS-M: System";
-        icon = "\A3\ui_f\data\IGUI\Cfg\simpleTasks\types\radio_ca.paa";
+        icon = "a3\ui_f\data\IGUI\Cfg\Actions\repair_ca.paa";
         category = "AEGISM";
         function = "aegism_system_fnc_moduleInit";
         functionPriority = 1;
