@@ -8,6 +8,7 @@ class CfgFunctions
             class scaledRange {R;};
             class pollSyncedObjects {R;};
             class debugDraw {R;};
+            class debugCheckSite {R;};
         };
     };
 };
