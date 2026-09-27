@@ -1,0 +1,23 @@
+# Arma 3 build artifacts
+*.pbo
+*.bisign
+*.bikey
+*.biprivatekey
+*.hemttprivatekey
+addons/*/version.hpp
+
+# HEMTT
+.hemttout/
+releases/
+
+# Arma 3 Tools / Workbench
+*.wrp.bak
+Temp/
+
+# Editor
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

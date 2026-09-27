@@ -1,0 +1,13 @@
+# HEMTT Launch Profiles
+# Usage: hemtt launch <profile>
+
+[minimal]
+workshop = [
+    "450814997", # CBA_A3
+]
+
+[normal]
+extends = "minimal"
+workshop = [
+    "1779063631", # Zeus Enhanced
+]
