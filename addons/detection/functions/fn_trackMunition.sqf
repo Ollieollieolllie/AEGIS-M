@@ -11,20 +11,32 @@ Description:
     confidenceLoop's native-sensor platform pipeline; this dedicated
     pipeline exists specifically because of that gap.
 
-    Each tick, the tracker locates every AEGIS-M pool owner (System or
-    Network) and, for a System with real radar capability, gates detection
-    by that radar's own discovered range/arc (aegism_system_fnc_
-    discoverCapabilities's radarRange/radarArc -- read directly from the
-    SAME sensor config getSensorTargets itself uses, not a mission-
-    designer-set number, and deliberately NOT run through aegism_fnc_
-    scaledRange: it's the engine's real native detection reach, not an
+    Each tick, the tracker checks every radar-capable System pool owner
+    (Network pool owners are never checked directly here -- see below),
+    gating detection by that radar's own discovered range/arc (aegism_
+    system_fnc_discoverCapabilities's radarRange/radarArc -- read directly
+    from the SAME sensor config getSensorTargets itself uses, not a
+    mission-designer-set number, and deliberately NOT run through aegism_
+    fnc_scaledRange: it's the engine's real native detection reach, not an
     abstracted "real-world-sourced" value AEGIS-M's range-scale setting was
-    ever meant to apply to) plus a line-of-sight check (lineIntersectsSurfaces)
-    -- a radar detects an incoming missile the same way it detects an
-    aircraft: it has to actually be within reach and not behind terrain. A
-    Network pool owner has no sensor or facing of its own (it's a sharing
-    point member Systems populate, not a radar), so it stays gated by a
-    generous flat range instead.
+    ever meant to apply to) plus a line-of-sight check
+    (lineIntersectsSurfaces) -- a radar detects an incoming missile the
+    same way it detects an aircraft: it has to actually be within reach
+    and not behind terrain. This matters specifically for a low, terrain-
+    following threat: it should not read as "detected" just because it's
+    within range of some radar's position while a ridge sits between them.
+
+    A detecting System pushes the contact into its own pool AND its
+    Network's pool (if synced), mirroring aegism_detect_fnc_confidenceLoop's
+    platform-sharing behaviour exactly. A Network's shared pool therefore
+    only ever contains munitions at least one real member System's own
+    sensor genuinely has LOS to -- there is no separate flat-range fallback
+    for the Network pool owner itself, since a Network logic has no
+    position or facing of its own to meaningfully check LOS/arc against;
+    inventing one would let a terrain-masked missile appear "detected"
+    network-wide when no member can actually see it, and a sibling System
+    reading that shared pool would have no way to tell the difference from
+    a real detection.
 
     Pushes/refreshes the munition as a full-confidence contact via
     aegism_detect_fnc_addContact (rejected silently if not on that pool
@@ -52,8 +64,6 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-#define AEGISM_MUNITION_NETWORK_FALLBACK_RANGE 8000
-
 params ["_projectile", "_class"];
 
 private _addedTo = [];
@@ -73,34 +83,42 @@ private _addedTo = [];
     {
         private _poolOwner = _x;
         private _system = _poolOwner getVariable "AEGISM_system";
-        private _detected = false;
 
-        if (isNil "_system") then {
-            _detected = (_poolOwner distance2D _projectile) <= AEGISM_MUNITION_NETWORK_FALLBACK_RANGE;
-        } else {
-            if (_system get "hasRadar") then {
-                private _radarRange = _system get "radarRange";
-                if ((_poolOwner distance2D _projectile) <= _radarRange) then {
-                    private _ownerPos = AGLToASL (eyePos _poolOwner);
-                    private _losClear = (lineIntersectsSurfaces [_ownerPos, _pos, _poolOwner, _projectile, true, 1]) isEqualTo [];
-                    _detected = _losClear;
+        // Network pool owners are never checked directly -- they have no
+        // sensor/facing of their own; they only receive a contact via a
+        // detecting member System's own push below.
+        if (!isNil "_system" && {_system get "hasRadar"}) then {
+            private _detected = false;
+            private _radarRange = _system get "radarRange";
 
-                    if (_detected) then {
-                        private _radarArc = _system get "radarArc";
-                        if (_radarArc < 360) then {
-                            private _relBearing = _poolOwner getRelDir _projectile;
-                            if (_relBearing > 180) then { _relBearing = _relBearing - 360; };
-                            _detected = abs(_relBearing) <= (_radarArc / 2);
-                        };
+            if ((_poolOwner distance2D _projectile) <= _radarRange) then {
+                private _ownerPos = AGLToASL (eyePos _poolOwner);
+                private _losClear = (lineIntersectsSurfaces [_ownerPos, _pos, _poolOwner, _projectile, true, 1]) isEqualTo [];
+                _detected = _losClear;
+
+                if (_detected) then {
+                    private _radarArc = _system get "radarArc";
+                    if (_radarArc < 360) then {
+                        private _relBearing = _poolOwner getRelDir _projectile;
+                        if (_relBearing > 180) then { _relBearing = _relBearing - 360; };
+                        _detected = abs(_relBearing) <= (_radarArc / 2);
                     };
                 };
             };
-        };
 
-        if (_detected) then {
-            private _added = [_poolOwner, _projectile, _class, 1] call aegism_detect_fnc_addContact;
-            if (_added && {!(_poolOwner in _addedTo)}) then {
-                _addedTo pushBack _poolOwner;
+            if (_detected) then {
+                private _added = [_poolOwner, _projectile, _class, 1] call aegism_detect_fnc_addContact;
+                if (_added && {!(_poolOwner in _addedTo)}) then {
+                    _addedTo pushBack _poolOwner;
+                };
+
+                private _network = _poolOwner getVariable ["AEGISM_network", objNull];
+                if (!isNull _network) then {
+                    private _addedNetwork = [_network, _projectile, _class, 1] call aegism_detect_fnc_addContact;
+                    if (_addedNetwork && {!(_network in _addedTo)}) then {
+                        _addedTo pushBack _network;
+                    };
+                };
             };
         };
     } forEach (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);

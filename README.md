@@ -42,7 +42,12 @@ range/arc (read from its config, not a made-up number) plus a line-of-
 sight check. **Firing commands the vehicle's own real weapon**
 (fireAtTarget) with its actual loaded ammo, so ballistics, guidance, and
 damage are entirely the game's simulation, not a scripted projectile
-AEGIS-M spawns and steers itself.
+AEGIS-M spawns and steers itself. If [ACE3](https://github.com/acemod/ACE3)
+is loaded and the fired ammo declares real ACE missile guidance, AEGIS-M
+also hands the target to ACE's own guidance system (fireAtTarget alone
+never does this) so the shot actually homes rather than flying ballistic --
+note ACE's own "Missile Guidance" setting must allow AI-fired shots for
+this to take effect.
 
 **AEGISM_Module_Site** is the one placeable/syncable AEGIS-M module. Sync
 it to every vehicle that makes up a site (its radar, its launchers, its
@@ -57,6 +62,13 @@ resolves sensibly per the object -> network -> default fallback order.
 Syncing or unsyncing a vehicle to a Site, or editing the Site's own
 Attributes, takes effect live -- nothing requires re-placing modules or
 restarting the mission.
+
+**Debug 3D draw** (CBA setting "AEGIS-M > Debug > Enable Debug 3D Draw",
+off by default, client-side/no gameplay effect) draws pooled contacts,
+network claims, radar range, and each System's acquired target + live LOS
+check directly from the same variables the detection/intercept pipeline
+itself reads and writes -- similar in spirit to ACE missileguidance's own
+debug draw.
 
 ## License
 

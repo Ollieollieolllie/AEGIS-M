@@ -40,6 +40,18 @@ Description:
     target, so a sibling System's engagement loop sees the claim and skips
     that contact rather than also emptying its own magazine into it.
 
+    Line-of-sight is re-checked from THIS System's own weapon position
+    right before firing, independently of how the target reached the
+    candidate pool -- a contact read from a Network's shared pool was
+    detected by a sibling System's own sensor, which says nothing about
+    whether this System can currently see it too (a different vantage
+    point, or a low/terrain-following threat that ducked behind cover in
+    the interval since the detecting System's last tick). A blocked LOS
+    just skips firing this tick without touching acquisition/salvo state,
+    since a real fire-control radar doesn't drop a track over a brief
+    terrain-masking gap -- the System stays "acquired" and tries again
+    next tick as the geometry changes.
+
     CIWS/CRAM reacts distinctly from a Launcher/SAM: its reaction time is
     capped at AEGISM_CIWS_REACTION_CAP regardless of crew skill (an
     automated fire-control slew reacts far faster than a human SAM-launch
@@ -174,6 +186,17 @@ if (_crew getOrDefault ["costValueJudgment", false]) then {
     _declineForCostValue = _moreValuableCount >= _totalAmmo;
 };
 if (_declineForCostValue) exitWith {}; // save remaining stock for higher-value threats
+
+// Last gate, checked only once everything cheaper has already passed --
+// lineIntersectsSurfaces is a real raycast, not worth paying for on ticks
+// that were never going to fire anyway. Re-verifies LOS from THIS System's
+// own weapon position: a candidate from a Network's shared pool was only
+// ever LOS-checked from the DETECTING sibling's position (see aegism_
+// detect_fnc_confidenceLoop/trackMunition), which says nothing about
+// whether this System's own vantage point can see it too.
+private _targetPos = getPosASL _target;
+private _losClear = (lineIntersectsSurfaces [_weaponPos, _targetPos, _system, _target, true, 1]) isEqualTo [];
+if (!_losClear) exitWith {}; // masked right now (e.g. a terrain-following threat behind cover) -- stay acquired, re-check next tick
 
 [_system, _target, (_readyWeapons select 0), (_crewMods get "reliability")] call aegism_intercept_fnc_fireWeapon;
 

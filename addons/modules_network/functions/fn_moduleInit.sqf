@@ -67,6 +67,15 @@ Author:
 
 params ["_logic", "_units", "_activated"];
 
+// isGlobal = 1 (below) guarantees this runs on every machine, but a module
+// logic object can't cross the network as an object reference -- each
+// machine gets its netId string instead. Without this normalization every
+// getVariable/setVariable call on _logic below silently throws a type
+// error and the whole doctrine/personality block never applies, leaving
+// every synced vehicle running its own uncoordinated default settings.
+if (_logic isEqualType "") then { _logic = objectFromNetId _logic; };
+if (isNull _logic) exitWith {};
+
 private _allowlist = [];
 if (_logic getVariable ["allowMissile", true]) then { _allowlist pushBack "missile"; };
 if (_logic getVariable ["allowRocket", true]) then { _allowlist pushBack "rocket"; };

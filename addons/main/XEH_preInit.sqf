@@ -15,3 +15,15 @@
     [0.1, 3, 1, 2],
     1
 ] call CBA_fnc_addSetting;
+
+// Client-side (isForce=0) and NOT saved to the server's exported settings --
+// this is a per-player visualisation toggle, not a mission rule, so each
+// machine watching the battery picks it independently. See aegism_fnc_debugDraw.
+[
+    "aegism_main_debugDraw",
+    "CHECKBOX",
+    ["Enable Debug 3D Draw", "Draws pooled contacts, claims, engagement envelopes, and each System's acquired target/LOS check, similar to ACE's missile guidance debug draw. Client-side only, no effect on gameplay."],
+    ["AEGIS-M", "Debug"],
+    false,
+    0
+] call CBA_fnc_addSetting;

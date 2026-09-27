@@ -7,6 +7,7 @@ class CfgFunctions
             file = "\x\aegism\addons\main\functions";
             class scaledRange {R;};
             class pollSyncedObjects {R;};
+            class debugDraw {R;};
         };
     };
 };

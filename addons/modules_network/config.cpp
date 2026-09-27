@@ -194,7 +194,7 @@ class CfgVehicles
             class SkillTier
             {
                 displayName = "Personality: Skill Tier";
-                tooltip = "Drives reaction time and shot/intercept reliability.";
+                tooltip = "Baseline crew reaction time (hesitation before first shot at a newly-acquired target) and reliability (chance of a clean fire command each cycle). Green: 4.0s, 55% reliable. Regular: 2.5s, 70%. Veteran: 1.2s, 85%. Elite: 0.5s, 95%. Temperament scales both further.";
                 property = "skillTier";
                 control = "Combo";
                 expression = "_this setVariable ['skillTier', _value];";
@@ -204,22 +204,22 @@ class CfgVehicles
                 {
                     class Green
                     {
-                        name = "Green";
+                        name = "Green (slow, 55% reliable)";
                         value = "green";
                     };
                     class Regular
                     {
-                        name = "Regular";
+                        name = "Regular (baseline, 70% reliable)";
                         value = "regular";
                     };
                     class Veteran
                     {
-                        name = "Veteran";
+                        name = "Veteran (fast, 85% reliable)";
                         value = "veteran";
                     };
                     class Elite
                     {
-                        name = "Elite";
+                        name = "Elite (fastest, 95% reliable)";
                         value = "elite";
                     };
                 };
@@ -227,7 +227,7 @@ class CfgVehicles
             class Temperament
             {
                 displayName = "Personality: Temperament";
-                tooltip = "Drives willingness to hold fire vs. engage early.";
+                tooltip = "Multiplies Skill Tier's reaction time/reliability and the doctrine's minimum shot interval. Cautious: slower to shoot (x1.3 reaction) but steadier (x1.05 reliability) and waits longer between shots (x1.2 interval). Aggressive: faster (x0.7) and shoots more often (x0.8 interval) but slightly sloppier (x0.95 reliability). Nervous: fastest to shoot (x0.6) and quickest between shots (x0.75 interval) but least reliable (x0.85). Standard: neutral 1x baseline.";
                 property = "temperament";
                 control = "Combo";
                 expression = "_this setVariable ['temperament', _value];";
@@ -237,22 +237,22 @@ class CfgVehicles
                 {
                     class Cautious
                     {
-                        name = "Cautious";
+                        name = "Cautious (slower, steadier)";
                         value = "cautious";
                     };
                     class Standard
                     {
-                        name = "Standard";
+                        name = "Standard (neutral baseline)";
                         value = "standard";
                     };
                     class Aggressive
                     {
-                        name = "Aggressive";
+                        name = "Aggressive (faster, sloppier)";
                         value = "aggressive";
                     };
                     class Nervous
                     {
-                        name = "Nervous";
+                        name = "Nervous (fastest, least reliable)";
                         value = "nervous";
                     };
                 };
