@@ -5,15 +5,15 @@ Description:
     Entry point run when an AEGISM_Module_Site is placed and synced in Eden
     or Zeus. This is the one AEGIS-M module a mission designer places: sync
     it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a
-    site to link them into a battery. Each vehicle declares its own role
-    (Radar/Launcher/CIWS) and role-specific tuning directly on its own
-    Attributes panel (see AllVehicles in addons/main/config.cpp) rather than
-    via a separate module -- this module only carries the doctrine
-    (engagement envelope, target priority, salvo policy, target-class
-    allowlist) and personality (skill tier, temperament, cost/value
-    judgment) that apply battery-wide, per the object -> network -> default
-    resolution order in aegism_system_fnc_resolveEngagementSettings /
-    resolveCrew.
+    site to link them into a battery. There is nothing to set on the
+    vehicles themselves -- each one's Radar/Launcher/CIWS role is discovered
+    automatically from its own real sensors and loaded ammo (aegism_system_
+    fnc_discoverCapabilities), not declared via any Attribute -- this module
+    only carries the doctrine (engagement envelope, target priority, salvo
+    policy, target-class allowlist, CIWS-last-resort) and personality (skill
+    tier, temperament, cost/value judgment) that apply battery-wide, per the
+    object -> network -> default resolution order in aegism_system_fnc_
+    resolveEngagementSettings / resolveCrew.
 
     Writes "AEGISM_network" (pointing at this Site's logic object),
     "AEGISM_engagement", and "AEGISM_crew" onto every synced vehicle (and
@@ -39,7 +39,7 @@ Description:
     A vehicle's own Radar/Launcher/CIWS setup (aegism_system_fnc_moduleInit)
     is intentionally NOT triggered from here -- it's driven independently by
     aegism_fnc_scanForRoles's periodic discovery sweep (addons/main), so a
-    role-flagged vehicle works standalone (with default doctrine/personality
+    qualifying vehicle works standalone (with default doctrine/personality
     per aegism_system_fnc_defaultEngagementSettings/defaultCrew) whether or
     not it's ever synced to a Site at all. This module's only job is
     linking already-functional Systems into a battery under shared

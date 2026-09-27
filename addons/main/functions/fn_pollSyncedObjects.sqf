@@ -24,6 +24,18 @@ Description:
     privates are gone; only what's threaded through _data (or bound into
     _applyFn/_clearFn's own call arguments) survives to reach them.
 
+    The initial "last poll set" is seeded from synchronizedObjects _logic
+    AT REGISTRATION TIME (i.e. whatever's already synced when the caller's
+    own one-time init runs), not an empty array -- a caller (e.g. aegism_
+    network_fnc_moduleInit) that already applies its data to every
+    initially-synced unit directly, before ever calling this function, would
+    otherwise have _applyFn redundantly re-run against every one of them on
+    this poll's first tick. Harmless for an idempotent _applyFn (repeating a
+    setVariable/pushBackUnique changes nothing), but this is a generic
+    helper other callers may use with a non-idempotent _applyFn, so it's
+    seeded correctly rather than relying on every future caller happening to
+    write one.
+
     If _logic itself is deleted (e.g. a Zeus operator deletes a Network mid-
     mission), _onDeletedFn is called once and the handler removes itself.
 
@@ -75,4 +87,4 @@ private _logicNetId = str (netId _logic);
     { if !(_x in _currentUnits) then { [_x, _data] call _clearFn; } } forEach _prevUnits;
 
     _args set [6, _currentUnits];
-}, _interval, [_logic, _applyFn, _clearFn, _data, _onDeletedFn, _logicNetId, []]] call CBA_fnc_addPerFrameHandler;
+}, _interval, [_logic, _applyFn, _clearFn, _data, _onDeletedFn, _logicNetId, synchronizedObjects _logic]] call CBA_fnc_addPerFrameHandler;

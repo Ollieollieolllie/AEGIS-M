@@ -65,6 +65,13 @@ Description:
     directly by a standalone System's own engagementLoop path, scoring
     against its own un-coordinated pool).
 
+    Also writes AEGISM_withheldCiws: ARRAY of [contactKey, system] pairs,
+    one per contact where a CIWS-capable weapon was otherwise eligible but
+    withheld this tick by the "last resort" doctrine gate above. Purely
+    diagnostic -- no engagement logic reads it, only aegism_fnc_debugDraw,
+    so a withheld-by-doctrine CIWS is visually distinct from one that's
+    simply out of range/ammo/envelope.
+
 Parameters:
     _logic - the Site logic object to coordinate <OBJECT>
 
@@ -93,6 +100,7 @@ private _claims = _logic getVariable ["AEGISM_claims", createHashMap];
 private _engagementSettings = _logic getVariable "AEGISM_engagement";
 if (isNil "_engagementSettings") exitWith {};
 
+private _withheldCiws = [];
 private _ciwsLastResort = _engagementSettings getOrDefault ["ciwsLastResort", false];
 private _minRange = [_engagementSettings getOrDefault ["minRange", 500]] call aegism_fnc_scaledRange;
 private _maxRange = [_engagementSettings getOrDefault ["maxRange", 8000]] call aegism_fnc_scaledRange;
@@ -190,6 +198,16 @@ if (_allWeapons isEqualTo []) exitWith {};
                 if (_role == "ciws" && _ciwsLastResort && _hasLauncher) then {
                     private _nearestCiwsDist = selectMin (_roleCandidates apply { (getPosASL (_x select 0)) distance _targetPos });
                     _allowed = _nearestCiwsDist <= (_maxRange * AEGISM_CIWS_OVERRIDE_RANGE_FRACTION);
+                    if (!_allowed) then {
+                        // Recorded purely for aegism_fnc_debugDraw -- an
+                        // eligible-but-doctrine-withheld CIWS should look
+                        // different from one that's simply out of range or
+                        // out of ammo, otherwise the one doctrine behaviour
+                        // most worth visualizing (CIWS held back on purpose)
+                        // is indistinguishable from CIWS just being idle.
+                        // Not read by any engagement logic, only the draw.
+                        _withheldCiws pushBack [_contactKey, _roleCandidates#0 select 0];
+                    };
                 };
 
                 if (_allowed) then {
@@ -258,3 +276,4 @@ if (_allWeapons isEqualTo []) exitWith {};
 } forEach (keys _claims);
 
 _logic setVariable ["AEGISM_claims", _claims, false];
+_logic setVariable ["AEGISM_withheldCiws", _withheldCiws, false];

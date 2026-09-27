@@ -281,7 +281,7 @@ class CfgVehicles
 
         class ModuleDescription: ModuleDescription
         {
-            description = "The one AEGIS-M module: sync it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a site (each vehicle declares its own role via its own Attributes -- see any vehicle's Attributes panel) to link them into one battery under this doctrine and personality, and to pool/deconflict their contacts. A vehicle with a role checked still works standalone with sane defaults even if never synced to a Site.";
+            description = "The one AEGIS-M module: sync it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a site -- no Attributes to set on the vehicles themselves, their role is discovered automatically from their real sensors and loaded ammo -- to link them into one battery under this doctrine and personality, with a shared coordinator assigning each detected threat to the best-fit weapon. A qualifying vehicle still works standalone with sane defaults even if never synced to a Site.";
             sync[] = {"AnyVehicle"};
         };
     };

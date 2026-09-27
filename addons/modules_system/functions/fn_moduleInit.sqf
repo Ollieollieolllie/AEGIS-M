@@ -16,13 +16,18 @@ Description:
     is a harmless no-op.
 
     Stores the discovered capabilities on the vehicle ("AEGISM_system"),
-    then resolves and caches its contact source, Doctrine, and Personality
-    per the link validation rules in the AEGIS-M architecture plan (section
-    1), caching them as "AEGISM_resolvedContactSource" / "AEGISM_
-    resolvedEngagementSettings" / "AEGISM_resolvedCrew". If it has radar,
-    also initializes "AEGISM_pooledContacts" (HashMap, see aegism_detect_
-    fnc_addContact) so the detection loop has somewhere to store this
-    System's own sensor contacts.
+    then resolves and caches its Doctrine and Personality (link validation
+    rules in the AEGIS-M architecture plan, section 1), caching them as
+    "AEGISM_resolvedEngagementSettings" / "AEGISM_resolvedCrew" -- these two
+    are what aegism_intercept_fnc_engagementLoop actually reads every tick.
+    "AEGISM_resolvedContactSource" is also cached (aegism_system_fnc_
+    resolveContactSource), but it exists purely for that function's own
+    diag_log warning ("this System has no contact source and will never
+    detect anything") -- nothing currently reads the cached value itself, so
+    don't add a real dependency on it without checking that function's own
+    doc comment first. If it has radar, also initializes "AEGISM_
+    pooledContacts" (HashMap, see aegism_detect_fnc_addContact) so the
+    detection loop has somewhere to store this System's own sensor contacts.
 
     The capability discovery above only ever happens once, at this one-time
     init -- a vehicle's turrets/sensors are fixed for its lifetime (a

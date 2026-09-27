@@ -23,8 +23,8 @@ Description:
     aegism_main, which every other AEGIS-M addon depends on, not the other
     way around, so this file must stay a pure reader of the variable
     contract those addons already publish (AEGISM_allPoolOwners, AEGISM_
-    system, AEGISM_pooledContacts, AEGISM_claims, AEGISM_engagementState_
-    ROLE) rather than a dependent of them.
+    system, AEGISM_pooledContacts, AEGISM_claims, AEGISM_withheldCiws,
+    AEGISM_engagementState_ROLE) rather than a dependent of them.
 
     Per pool owner (System or Network, from AEGISM_allPoolOwners):
         - A System with hasRadar draws a thin circle at its detection range
@@ -39,7 +39,12 @@ Description:
           line from the assigned System's weapon-ish position (eyePos) to
           the contact, coloured yellow once it's fired at least one round
           (roundsFired > 0) or green if not yet, with a text label showing
-          the role and rounds fired.
+          the role and rounds fired. Every entry in the Site's own AEGISM_
+          withheldCiws (a CIWS eligible for this contact but held back by
+          the "CIWS Engages as Last Resort Only" doctrine gate) draws a
+          dashed-look (short-segment) orange line instead, labeled "CIWS
+          WITHHELD (last resort)" -- distinct from an active assignment so
+          a withheld-on-purpose CIWS doesn't read as simply idle/incapable.
         - For a STANDALONE System (no Network -- its own AEGISM_
           engagementState_ROLE, since it never appears as a claims
           assignee): the same line/label, drawn from its own local
@@ -166,6 +171,32 @@ private _fnDrawPoolOwner = {
                 } forEach (_claims get _contactKey);
             };
         } forEach (keys _claims);
+
+        // Doctrine-withheld CIWS: eligible but held back this tick by the
+        // "CIWS Engages as Last Resort Only" gate -- drawn distinctly from
+        // an active assignment so it doesn't read as simply idle/incapable.
+        {
+            _x params ["_contactKey", "_withheldSystem"];
+            private _target = objectFromNetId _contactKey;
+            if (!isNull _target && {!isNull _withheldSystem}) then {
+                private _weaponPos = AGLToASL (eyePos _withheldSystem);
+                private _targetPos = getPosASL _target;
+                private _segments = 6;
+                for "_i" from 0 to (_segments - 1) do {
+                    if (_i % 2 == 0) then {
+                        private _from = _weaponPos vectorAdd ((_targetPos vectorDiff _weaponPos) vectorMultiply (_i / _segments));
+                        private _to = _weaponPos vectorAdd ((_targetPos vectorDiff _weaponPos) vectorMultiply ((_i + 1) / _segments));
+                        drawLine3D [_from, _to, [1, 0.5, 0, 1]];
+                    };
+                };
+                drawIcon3D [
+                    "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
+                    [1, 0.5, 0, 1], _weaponPos, 1, 1, 0,
+                    "CIWS WITHHELD (last resort)",
+                    1, 0.035, "TahomaB"
+                ];
+            };
+        } forEach (_poolOwner getVariable ["AEGISM_withheldCiws", []]);
     };
 };
 
