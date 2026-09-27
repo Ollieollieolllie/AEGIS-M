@@ -48,9 +48,32 @@ Description:
     assignment is considered failed (the shot missed, or never got a clean
     shot off per aegism_intercept_fnc_fireWeapon's own reliability roll) --
     it's cleared from AEGISM_claims so the next tick's scoring pass can
-    either re-assign the SAME System (if it still has ammo and salvoSize
-    budget left) or hand the contact to a different/better-fit weapon
-    (including CIWS, once the "last resort" gate above allows it).
+    re-assign a launcher to it, scored completely fresh each time rather
+    than preferring whichever System tried before (a launcher that's now
+    further away or a worse size-fit than a sibling shouldn't keep the job
+    just because it went first).
+
+    Launcher fit is a two-key sort, size first then distance, but size
+    ties are treated as a BAND (AEGISM_SIZE_TIE_TOLERANCE, not exact float
+    equality) rather than an exact match -- interceptors are rarely
+    identically sized even when "close enough" for a given threat, so
+    without this band distance would almost never actually get to break a
+    tie in practice, and the nearest-available launcher (which can usually
+    engage soonest and most reliably) would lose out to a marginally
+    closer-sized but much further-away one for no real benefit.
+
+    Threat re-assessment on repeat attempts: once AEGISM_
+    RETRY_THREAT_ASSESSMENT_THRESHOLD total launcher shots have already
+    been fired at a contact (tracked cumulatively on its own pool entry,
+    "launcherAttempts", surviving across individual assignments being
+    created/cleared) and it's STILL alive, a further launcher shot is only
+    authorized if no other currently-pooled, currently-unassigned contact
+    outranks it by aegism_intercept_fnc_threatValue -- i.e. the battery
+    doesn't keep feeding a stubborn target past a threshold hit count while
+    something more dangerous sits unengaged for lack of a free launcher,
+    but a target with nothing better competing for the resource is still
+    retried without an arbitrary hard cap (there's no reason to give up on
+    the only threat present just because it's proven tough to kill).
 
     Writes AEGISM_claims (per pool owner Network, i.e. this Site): HashMap
     keyed by contact netId string, value = ARRAY of assignment records (at
@@ -72,6 +95,18 @@ Description:
     so a withheld-by-doctrine CIWS is visually distinct from one that's
     simply out of range/ammo/envelope.
 
+    Also sets "launcherAttempts" (NUMBER, incremented once per new launcher
+    assignment created) directly on each contact's own AEGISM_pooledContacts
+    entry -- technically a aegism_detect_fnc_addContact-owned data structure
+    (see that function's own doc comment for the rest of its shape), but
+    this field only ever exists to feed the threat re-assessment gate
+    above, so it's simplest kept alongside "class"/"object"/"firstSeen"
+    rather than a separate parallel HashMap solely for this one counter.
+    addContact's own re-add path (aegism_detect_fnc_confidenceLoop/
+    trackMunition refreshing an already-pooled contact) only ever touches
+    "class"/"confidence" in place, so this field survives untouched across
+    those refreshes for as long as the contact stays pooled.
+
 Parameters:
     _logic - the Site logic object to coordinate <OBJECT>
 
@@ -89,6 +124,8 @@ Author:
 
 #define AEGISM_ASSIGNMENT_FLIGHT_GRACE 8
 #define AEGISM_CIWS_OVERRIDE_RANGE_FRACTION 0.4
+#define AEGISM_SIZE_TIE_TOLERANCE 50
+#define AEGISM_RETRY_THREAT_ASSESSMENT_THRESHOLD 3
 
 params ["_logic"];
 
@@ -210,6 +247,38 @@ if (_allWeapons isEqualTo []) exitWith {};
                     };
                 };
 
+                // Threat re-assessment: once this contact has already
+                // eaten AEGISM_RETRY_THREAT_ASSESSMENT_THRESHOLD launcher
+                // shots and is still alive, a further launcher shot is only
+                // authorized if nothing else currently pooled and still
+                // unassigned outranks it -- checked here, before scoring a
+                // launcher candidate, so a stubborn target doesn't keep
+                // consuming launchers while a higher-value contact sits
+                // unengaged for lack of one. CIWS is unaffected (point-
+                // defense doesn't "decide" a target isn't worth another
+                // burst the way a limited missile stock does).
+                if (_allowed && {_role == "launcher"}) then {
+                    private _launcherAttempts = _entry getOrDefault ["launcherAttempts", 0];
+                    if (_launcherAttempts >= AEGISM_RETRY_THREAT_ASSESSMENT_THRESHOLD) then {
+                        private _thisValue = [_class] call aegism_intercept_fnc_threatValue;
+                        // select (not count) -- exitWith inside a count code
+                        // block aborts the WHOLE count early and returns
+                        // whatever exitWith gave it (a Boolean here), not a
+                        // per-element short-circuit like select/findIf; it
+                        // would throw comparing that Boolean against 0 below.
+                        private _outrankingContacts = (keys _pool) select {
+                            private _otherKey = _x;
+                            if (_otherKey == _contactKey) exitWith { false };
+                            private _otherEntry = _pool get _otherKey;
+                            private _otherObject = _otherEntry get "object";
+                            (!isNull _otherObject) && {alive _otherObject} && {(_otherEntry get "class") in _allowlist} &&
+                            {((_claims getOrDefault [_otherKey, []]) findIf { (_x get "role") == "launcher" }) == -1} &&
+                            {([_otherEntry get "class"] call aegism_intercept_fnc_threatValue) > _thisValue}
+                        };
+                        _allowed = _outrankingContacts isEqualTo [];
+                    };
+                };
+
                 if (_allowed) then {
                     // Best fit: for a launcher against a sized (munition)
                     // contact, closest warhead-size match wins first --
@@ -221,21 +290,48 @@ if (_allWeapons isEqualTo []) exitWith {};
                     // weapon. Against a non-munition contact (_contactSize
                     // 0, aircraft/heli/drone) or for CIWS (size always 0),
                     // every candidate ties on size (sizeDiff 0 for all) and
-                    // distance alone breaks the tie. Two-key comparison
-                    // done manually (sizeDiff, then distance) since SQF's
-                    // "<" only compares numbers, not arrays/tuples.
+                    // distance decides. Size ties are a TOLERANCE BAND
+                    // (AEGISM_SIZE_TIE_TOLERANCE), not exact float equality
+                    // -- interceptors are rarely identically sized even
+                    // when equally "close enough" for a given threat, so an
+                    // exact-match requirement would mean distance almost
+                    // never actually gets to break a tie, and the nearest
+                    // available launcher (usually the one that can engage
+                    // soonest and most reliably) would lose out to a
+                    // marginally closer-sized but much further-away one for
+                    // no real benefit. Two-key comparison done manually
+                    // (sizeDiff band, then distance) since SQF's "<" only
+                    // compares numbers, not arrays/tuples.
                     private _sizeDiffs = _roleCandidates apply {
                         _x params ["", "", "_candWeaponInfo"];
                         _candWeaponInfo params ["", "", "", "_candSize"];
                         abs (_candSize - _contactSize)
                     };
                     private _dists = _roleCandidates apply { (getPosASL (_x select 0)) distance _targetPos };
-                    private _bestIndex = 0;
-                    for "_i" from 1 to (count _roleCandidates - 1) do {
-                        private _better = (_sizeDiffs#_i < _sizeDiffs#_bestIndex) || {(_sizeDiffs#_i == _sizeDiffs#_bestIndex) && {_dists#_i < _dists#_bestIndex}};
-                        if (_better) then { _bestIndex = _i; };
+                    // "Tied" is measured against the TRUE minimum sizeDiff,
+                    // not by chaining pairwise comparisons against whichever
+                    // candidate currently holds _bestIndex -- a tolerance
+                    // BAND is not a transitive equivalence (A can tie B, and
+                    // B can tie C, without A tying C), so a chained "is this
+                    // one tied with the current best" walk can drift through
+                    // a series of overlapping bands and end up picking a
+                    // candidate whose size is nowhere near the true best fit,
+                    // just because it looked good next to an intermediate
+                    // "bridge" candidate. Finding the real minimum first and
+                    // comparing every candidate against THAT fixed value
+                    // avoids the drift entirely.
+                    private _minSizeDiff = selectMin _sizeDiffs;
+                    private _bestIndex = -1;
+                    for "_i" from 0 to (count _roleCandidates - 1) do {
+                        if (_sizeDiffs#_i <= (_minSizeDiff + AEGISM_SIZE_TIE_TOLERANCE)) then {
+                            if (_bestIndex == -1 || {_dists#_i < _dists#_bestIndex}) then { _bestIndex = _i; };
+                        };
                     };
                     (_roleCandidates#_bestIndex) params ["_bestSystem", "_bestRole", "_bestWeaponInfo"];
+
+                    if (_role == "launcher") then {
+                        _entry set ["launcherAttempts", (_entry getOrDefault ["launcherAttempts", 0]) + 1];
+                    };
 
                     _existing pushBack createHashMapFromArray [
                         ["system", _bestSystem],
