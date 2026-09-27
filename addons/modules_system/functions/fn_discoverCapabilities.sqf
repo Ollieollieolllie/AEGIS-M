@@ -54,10 +54,16 @@ Returns:
             component's own config, metres (0 if hasRadar is false) <NUMBER>
         radarArc - real detection arc in degrees, from angleRangeHorizontal
             (360/omnidirectional if the sensor doesn't define one) <NUMBER>
-        launcherWeapons - array of [turretPath, weaponClass, magazineClass]
-            for each currently-loaded guided-missile/rocket weapon <ARRAY>
-        ciwsWeapons - array of [turretPath, weaponClass, magazineClass] for
-            each currently-loaded high-rate-of-fire gun weapon <ARRAY>
+        launcherWeapons - array of [turretPath, weaponClass, magazineClass,
+            size] for each currently-loaded guided-missile/rocket weapon --
+            size is the loaded ammo's indirectHitRange in metres, from
+            aegism_intercept_fnc_munitionSize, used by aegism_intercept_fnc_
+            assignEngagements to match a launcher's payload against a
+            contact's own classified munition size <ARRAY>
+        ciwsWeapons - array of [turretPath, weaponClass, magazineClass, 0]
+            for each currently-loaded high-rate-of-fire gun weapon -- size
+            is always 0 (a gun's fit comes from rate of fire/geometry, not
+            warhead size), kept only so both arrays share one shape <ARRAY>
 
 Examples:
     [_vehicle] call aegism_system_fnc_discoverCapabilities;
@@ -165,11 +171,17 @@ private _ciwsWeapons = [];
 
     if (_weaponClass != "") then {
         if (_class in ["missile", "rocket"]) then {
-            _launcherWeapons pushBackUnique [_turretPath, _weaponClass, _magClass];
+            private _size = [_ammoClassName] call aegism_intercept_fnc_munitionSize;
+            _launcherWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, _size];
         } else {
             private _reloadTime = getNumber (configFile >> "CfgAmmo" >> _ammoClassName >> "reloadTime");
             if (_reloadTime > 0 && {_reloadTime < AEGISM_CIWS_ROF_THRESHOLD}) then {
-                _ciwsWeapons pushBackUnique [_turretPath, _weaponClass, _magClass];
+                // A CIWS gun's own "size" is 0 (see aegism_intercept_fnc_
+                // munitionSize) -- its fit for a contact comes from rate of
+                // fire/engagement geometry, not warhead size, kept as a 4th
+                // element anyway so launcherWeapons/ciwsWeapons share one
+                // [turretPath, weaponClass, magazineClass, size] shape.
+                _ciwsWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, 0];
             };
         };
     };

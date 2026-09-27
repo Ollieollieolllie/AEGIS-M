@@ -50,9 +50,11 @@ Parameters:
     _system - the firing System vehicle <OBJECT>
     _target - the selected target object, from aegism_intercept_fnc_
         selectTarget <OBJECT>
-    _weaponInfo - [_turretPath, _weaponClass, _magazineClass] for the
+    _weaponInfo - [_turretPath, _weaponClass, _magazineClass, size] for the
         specific weapon to fire, from aegism_system_fnc_
-        discoverCapabilities's launcherWeapons/ciwsWeapons <ARRAY>
+        discoverCapabilities's launcherWeapons/ciwsWeapons (the trailing
+        size element is unused here, kept only because it's the same array
+        this function is always handed) <ARRAY>
     _reliability - crew reliability, 0-1, from aegism_intercept_fnc_
         applyCrewModulation <NUMBER>
 

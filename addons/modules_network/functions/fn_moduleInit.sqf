@@ -16,17 +16,25 @@ Description:
     resolveCrew.
 
     Writes "AEGISM_network" (pointing at this Site's logic object),
-    "AEGISM_engagement", and "AEGISM_crew" onto every synced vehicle, and
-    initializes this Site's own pooled-contact list ("AEGISM_
-    pooledContacts", populated by radar-capable member Systems' own native
-    sensors, see aegism_detect_fnc_confidenceLoop), target-deconfliction ledger
-    ("AEGISM_claims", HashMap of contact netId -> [claiming System object,
-    claim timestamp], read/renewed by aegism_intercept_fnc_selectTarget /
-    engagementLoop so two Systems in the same battery don't both spend
-    interceptors on the same single contact), and member registry
-    ("AEGISM_networkMembers"). Registers itself on the global "AEGISM_
-    allPoolOwners" list (missionNamespace) so the detection loop's trackers
-    can find it without a per-tick module-logic scan.
+    "AEGISM_engagement", and "AEGISM_crew" onto every synced vehicle (and
+    onto the Site logic itself), and initializes this Site's own pooled-
+    contact list ("AEGISM_pooledContacts", populated by radar-capable member
+    Systems' own native sensors, see aegism_detect_fnc_confidenceLoop),
+    engagement-assignment ledger ("AEGISM_claims", HashMap of contact netId
+    -> array of per-role assignment records, written once per tick by
+    aegism_intercept_fnc_assignEngagements -- see that function's own doc
+    comment for the record shape and scoring -- and read/executed by every
+    member System's own aegism_intercept_fnc_engagementLoop so two Systems
+    in the same battery are coordinated rather than independently converging
+    on the same contact), and member registry ("AEGISM_networkMembers").
+    Registers itself on the global "AEGISM_allPoolOwners" list
+    (missionNamespace) so the detection loop's trackers can find it without
+    a per-tick module-logic scan.
+
+    Also registers a server-only per-tick call into aegism_intercept_fnc_
+    assignEngagements for this Site (below), at the same cadence as
+    engagementLoop so a member System's own tick always sees a fresh
+    assignment.
 
     A vehicle's own Radar/Launcher/CIWS setup (aegism_system_fnc_moduleInit)
     is intentionally NOT triggered from here -- it's driven independently by
@@ -93,7 +101,8 @@ private _engagementData = createHashMapFromArray [
     ["targetPriority", _logic getVariable ["targetPriority", "nearest"]],
     ["salvoSize", _logic getVariable ["salvoSize", 1]],
     ["minShotInterval", _logic getVariable ["minShotInterval", 4]],
-    ["targetClassAllowlist", _allowlist]
+    ["targetClassAllowlist", _allowlist],
+    ["ciwsLastResort", _logic getVariable ["ciwsLastResort", false]]
 ];
 
 private _crewData = createHashMapFromArray [
@@ -105,6 +114,12 @@ private _crewData = createHashMapFromArray [
 _logic setVariable ["AEGISM_pooledContacts", createHashMap, false];
 _logic setVariable ["AEGISM_claims", createHashMap, false];
 _logic setVariable ["AEGISM_networkMembers", _units, false];
+// Also kept directly on the Site logic itself (not just on member units,
+// below) -- aegism_intercept_fnc_assignEngagements coordinates from the
+// Site's own perspective and needs its doctrine/personality without
+// having to borrow a copy from whichever member happens to be first.
+_logic setVariable ["AEGISM_engagement", _engagementData, false];
+_logic setVariable ["AEGISM_crew", _crewData, false];
 
 private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
 _allOwners pushBackUnique _logic;
@@ -146,5 +161,23 @@ missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
         diag_log text format ["[AEGIS-M] WARNING: Site (netId %1) was deleted -- pruned from AEGISM_allPoolOwners. Any vehicle still referencing it will lose battery contacts/deconfliction.", _logicNetId];
     }
 ] call aegism_fnc_pollSyncedObjects;
+
+// Server-only, same reasoning as aegism_system_fnc_moduleInit's own
+// detection/engagement loops: this mutates AEGISM_claims (shared, Site-
+// wide state), so registering it on every client would have each one
+// independently compute and stomp on the same assignments. Runs at the
+// same 0.5s cadence as aegism_intercept_fnc_engagementLoop so a member
+// System's own tick always sees a fresh assignment rather than one already
+// a full interval stale.
+if (isServer) then {
+    [{
+        params ["_args", "_pfhHandle"];
+        _args params ["_logic"];
+        if (isNull _logic) exitWith {
+            [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+        };
+        [_logic] call aegism_intercept_fnc_assignEngagements;
+    }, 0.5, [_logic]] call CBA_fnc_addPerFrameHandler;
+};
 
 diag_log text format ["[AEGIS-M] Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];

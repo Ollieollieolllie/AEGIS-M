@@ -51,13 +51,29 @@ this to take effect.
 
 **AEGISM_Module_Site** is the one placeable/syncable AEGIS-M module. Sync
 it to every vehicle that makes up a site (its radar, its launchers, its
-CIWS) to link them into a battery: contacts are pooled and deconflicted
-across the group, and the Site's own Doctrine (engagement envelope,
-target-priority rule, salvo policy, target-class allowlist) and
-Personality (skill tier x temperament, which modulates the doctrine's
-timing/reliability rather than owning its own numbers) apply battery-wide.
-A vehicle synced to more than one Site, or never synced at all, still
-resolves sensibly per the object -> network -> default fallback order.
+CIWS) to link them into a battery: contacts are pooled, and a Site-wide
+coordinator matches each contact to the best-fit weapon across every member
+System before any of them fire, rather than each System independently
+guessing what to shoot at. The Site's own Doctrine (engagement envelope,
+target-priority rule, salvo policy, target-class allowlist, whether CIWS
+holds fire until a launcher shot has failed) and Personality (skill tier x
+temperament, which modulates the doctrine's timing/reliability rather than
+owning its own numbers) apply battery-wide. A vehicle synced to more than
+one Site, or never synced at all, still resolves sensibly per the object ->
+network -> default fallback order.
+
+**Engagement is coordinated, not just deconflicted.** A launcher's fit for
+a contact is scored by how closely its loaded interceptor's real warhead
+size (CfgAmmo indirectHitRange -- never a hand-set number) matches the
+threat's own size, so a small inbound rocket doesn't burn a heavy
+interceptor when a lighter one is available, and vice versa. CIWS can
+engage in parallel with a launcher already working the same contact by
+default (a fast/close threat shouldn't wait on an unproven missile shot),
+or only as a last resort if the Site's Doctrine says so. If an assigned
+shot doesn't result in a kill within a plausible flight-time window, the
+contact is freed up for reassignment -- to the same System again, a
+different/better-fit weapon, or CIWS -- rather than the System stubbornly
+re-engaging under stale state.
 
 Syncing or unsyncing a vehicle to a Site, or editing the Site's own
 Attributes, takes effect live -- nothing requires re-placing modules or
@@ -65,10 +81,11 @@ restarting the mission.
 
 **Debug 3D draw** (CBA setting "AEGIS-M > Debug > Enable Debug 3D Draw",
 off by default, client-side/no gameplay effect) draws pooled contacts,
-network claims, radar range, and each System's acquired target + live LOS
-check directly from the same variables the detection/intercept pipeline
-itself reads and writes -- similar in spirit to ACE missileguidance's own
-debug draw.
+radar range, and every active engagement -- Site-wide assignments or a
+standalone System's own acquired target, including live LOS state --
+directly from the same variables the detection/intercept pipeline itself
+reads and writes, similar in spirit to ACE missileguidance's own debug
+draw.
 
 ## License
 

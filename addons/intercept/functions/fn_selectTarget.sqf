@@ -4,22 +4,19 @@ Function: aegism_intercept_fnc_selectTarget
 Description:
     Pure target-selection function: given a System's weapon position and its
     resolved Engagement Settings, filters a list of candidate contacts down
-    to the engagement envelope (range/altitude/target-class allowlist -- the
-    allowlist is re-checked here rather than trusted from the pool, since a
-    networked System reads its Network's shared pool, which may contain
-    contacts allowlisted for other member Systems' own overriding doctrine
-    but not this one) and picks the single best target per the doctrine's
-    targetPriority rule.
+    to the engagement envelope (range/altitude/target-class allowlist) and
+    picks the single best target per the doctrine's targetPriority rule.
 
-    Network target deconfliction: a candidate already claimed by a
-    different, still-live System within AEGISM_CLAIM_TIMEOUT seconds is
-    excluded outright, so two Systems sharing a Network's pool don't both
-    converge on and empty their magazines into the same single contact
-    while everything else goes unengaged. A candidate this System already
-    claims itself remains selectable (so it keeps re-acquiring its own
-    in-progress target). Claims are read-only here; the engagement loop
-    that receives the returned target is what actually renews the claim
-    every tick it keeps pursuing it.
+    Only ever called by a STANDALONE System's own engagementLoop path (no
+    Network synced, per aegism_system_fnc_resolveContactSource) -- a
+    networked System instead reads its Site's own assignment decision
+    directly from AEGISM_claims, written by aegism_intercept_fnc_
+    assignEngagements, which coordinates ACROSS every member System so two
+    Systems sharing a Network's pool don't both converge on the same
+    contact; that cross-System deconfliction problem doesn't exist for a
+    standalone System (it's the only one that can ever see or engage its
+    own pool), so this function has no claims/deconfliction concept of its
+    own to worry about.
 
     Does not read or write any pool, ammo, or engagement-state variable --
     callers (the engagement loop) decide what to do with the returned
@@ -28,31 +25,24 @@ Description:
 Parameters:
     _weaponPos - ASL position to range/envelope-check candidates against
         <ARRAY (PositionASL)>
-    _candidates - contact entries from one or more pooled-contact HashMaps
-        (see aegism_detect_fnc_addContact), as an array of
+    _candidates - contact entries from this System's own pooled-contact
+        HashMap (see aegism_detect_fnc_addContact), as an array of
         [object, class, confidence] <ARRAY of ARRAY>
     _engagementSettings - resolved doctrine, from aegism_system_fnc_
         resolveEngagementSettings <HASHMAP>
-    _system - the System selecting a target, for comparing against a
-        candidate's claimant <OBJECT>
-    _claims - the Network's deconfliction ledger (contact netId -> [claiming
-        System, claim time]), or an empty HashMap if this System has no
-        Network to deconflict against <HASHMAP>
 
 Returns:
     The selected target object, or objNull if no candidate is in envelope
     <OBJECT>
 
 Examples:
-    [_weaponPos, _candidates, _engagementSettings, _system, _claims] call aegism_intercept_fnc_selectTarget;
+    [_weaponPos, _candidates, _engagementSettings] call aegism_intercept_fnc_selectTarget;
 
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-#define AEGISM_CLAIM_TIMEOUT 3
-
-params ["_weaponPos", "_candidates", "_engagementSettings", "_system", "_claims"];
+params ["_weaponPos", "_candidates", "_engagementSettings"];
 
 private _minRange = [_engagementSettings getOrDefault ["minRange", 500]] call aegism_fnc_scaledRange;
 private _maxRange = [_engagementSettings getOrDefault ["maxRange", 8000]] call aegism_fnc_scaledRange;
@@ -65,12 +55,6 @@ private _inEnvelope = _candidates select {
     _x params ["_object", "_class"];
 
     if (isNull _object || {!alive _object} || {!(_class in _allowlist)}) exitWith { false };
-
-    private _claim = _claims getOrDefault [str (netId _object), []];
-    if (count _claim > 0) then {
-        _claim params ["_claimant", "_claimedAt"];
-        if (_claimant != _system && {(time - _claimedAt) < AEGISM_CLAIM_TIMEOUT}) exitWith { false };
-    };
 
     private _targetPos = getPosASL _object;
     private _dist = _weaponPos distance _targetPos;

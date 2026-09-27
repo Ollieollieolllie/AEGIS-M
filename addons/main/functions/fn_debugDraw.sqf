@@ -32,15 +32,19 @@ Description:
           position.
         - Every pooled contact (AEGISM_pooledContacts) draws an icon3D + text
           label (class, age since firstSeen) at the contact's position,
-          coloured red if currently claimed by some System (per the owning
-          Network's AEGISM_claims, if any) or white if unclaimed.
-        - Every "launcher"/"ciws" engagement-state ("AEGISM_engagementState_
-          ROLE") with a live targetNetId draws a line from the System's
-          weapon-ish position (eyePos) to the target, coloured green while
-          still within the crew's reaction-hesitation window (acquired,
-          not yet fired), yellow once it's fired at least one round this
-          engagement (roundsFiredThisEngagement > 0), with a text label
-          showing the role, rounds fired, and salvo state.
+          coloured red if currently claimed/assigned to some System (per the
+          owning pool owner's own AEGISM_claims, if any) or white if not.
+        - For a Network/Site: every assignment record in its own AEGISM_
+          claims (aegism_intercept_fnc_assignEngagements' output) draws a
+          line from the assigned System's weapon-ish position (eyePos) to
+          the contact, coloured yellow once it's fired at least one round
+          (roundsFired > 0) or green if not yet, with a text label showing
+          the role and rounds fired.
+        - For a STANDALONE System (no Network -- its own AEGISM_
+          engagementState_ROLE, since it never appears as a claims
+          assignee): the same line/label, drawn from its own local
+          acquisition state instead, coloured grey if LOS is currently
+          blocked.
 
 Parameters:
     None (reads the CBA setting and global pool-owner list itself)
@@ -92,8 +96,8 @@ private _fnDrawPoolOwner = {
         private _entry = _x;
         private _object = _entry get "object";
         if (!isNull _object) then {
-            private _claim = _claims getOrDefault [str (netId _object), []];
-            private _claimed = count _claim > 0;
+            private _claimRecords = _claims getOrDefault [str (netId _object), []];
+            private _claimed = count _claimRecords > 0;
             private _color = if (_claimed) then { [1, 0.2, 0.2, 1] } else { [1, 1, 1, 0.9] };
 
             drawIcon3D [
@@ -105,8 +109,10 @@ private _fnDrawPoolOwner = {
         };
     } forEach (values _pool);
 
-    // --- This System's acquired target + LOS state, per role ---
+    // --- Active engagements, per role ---
     if (_isSystem) then {
+        // Standalone: this System's own local acquisition state (it can
+        // never appear as a claims assignee, having no Network).
         {
             private _role = _x;
             private _stateKey = format ["AEGISM_engagementState_%1", _role];
@@ -133,6 +139,33 @@ private _fnDrawPoolOwner = {
                 };
             };
         } forEach ["launcher", "ciws"];
+    } else {
+        // Networked (Site): every current assignment record across the
+        // whole battery, from aegism_intercept_fnc_assignEngagements.
+        {
+            private _contactKey = _x;
+            private _target = objectFromNetId _contactKey;
+            if (!isNull _target) then {
+                {
+                    private _record = _x;
+                    private _assignedSystem = _record get "system";
+                    if (!isNull _assignedSystem) then {
+                        private _weaponPos = AGLToASL (eyePos _assignedSystem);
+                        private _targetPos = getPosASL _target;
+                        private _roundsFired = _record get "roundsFired";
+                        private _color = if (_roundsFired > 0) then { [1, 0.8, 0, 1] } else { [0.2, 1, 0.2, 1] };
+
+                        drawLine3D [_weaponPos, _targetPos, _color];
+                        drawIcon3D [
+                            "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
+                            _color, _targetPos, 1, 1, 0,
+                            format ["%1: %2 shot(s)", _record get "role", _roundsFired],
+                            1, 0.035, "TahomaB"
+                        ];
+                    };
+                } forEach (_claims get _contactKey);
+            };
+        } forEach (keys _claims);
     };
 };
 

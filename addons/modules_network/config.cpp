@@ -6,7 +6,7 @@ class CfgPatches
         weapons[] = {};
         author = "Snow(Dryden)";
         requiredVersion = 2.10;
-        requiredAddons[] = {"aegism_main"};
+        requiredAddons[] = {"aegism_main", "aegism_intercept"};
         #include "version.hpp"
     };
 };
@@ -120,6 +120,16 @@ class CfgVehicles
                 expression = "_this setVariable ['minShotInterval', _value];";
                 typeName = "NUMBER";
                 defaultValue = "4";
+            };
+            class CiwsLastResort
+            {
+                displayName = "Doctrine: CIWS Engages as Last Resort Only";
+                tooltip = "Off (default): CIWS engages a contact immediately alongside any launcher already assigned to it -- appropriate for fast/close threats a missile shot shouldn't be waited on. On: CIWS is withheld from a contact until every launcher assignment against it has failed (out of envelope/ammo, or fired without a kill) or the contact has closed inside CIWS's own effective engagement range, whichever comes first.";
+                property = "ciwsLastResort";
+                control = "Checkbox";
+                expression = "_this setVariable ['ciwsLastResort', _value];";
+                typeName = "BOOL";
+                defaultValue = "false";
             };
             class AllowMissile
             {

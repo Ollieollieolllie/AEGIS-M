@@ -7,7 +7,9 @@ class CfgFunctions
             file = "\x\aegism\addons\intercept\functions";
             class applyCrewModulation {R;};
             class threatValue {R;};
+            class munitionSize {R;};
             class selectTarget {R;};
+            class assignEngagements {R;};
             class engagementLoop {R;};
             class fireWeapon {R;};
         };
