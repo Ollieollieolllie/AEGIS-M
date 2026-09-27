@@ -8,7 +8,9 @@ Description:
     synced AEGISM_Module_System vehicle, and initializes this Network's own
     pooled-contact list ("AEGISM_pooledContacts", populated later by the
     detection loop from member Systems' Radar-role sensors) and member
-    registry ("AEGISM_networkMembers").
+    registry ("AEGISM_networkMembers"). Registers itself on the global
+    "AEGISM_allPoolOwners" list (missionNamespace) so the detection loop's
+    trackers can find it without a per-tick module-logic scan.
 
     Must run before aegism_system_fnc_moduleInit / aegism_engagement_fnc_
     moduleInit / aegism_crew_fnc_moduleInit resolve their object -> network
@@ -35,8 +37,12 @@ Author:
 
 params ["_logic", "_units", "_activated"];
 
-_logic setVariable ["AEGISM_pooledContacts", [], false];
+_logic setVariable ["AEGISM_pooledContacts", createHashMap, false];
 _logic setVariable ["AEGISM_networkMembers", _units, false];
+
+private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
+_allOwners pushBackUnique _logic;
+missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
 
 {
     _x setVariable ["AEGISM_network", _logic, false];

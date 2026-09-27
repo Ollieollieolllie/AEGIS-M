@@ -6,7 +6,7 @@ class CfgPatches
         weapons[] = {};
         author = "Snow(Dryden)";
         requiredVersion = 2.10;
-        requiredAddons[] = {"aegism_main"};
+        requiredAddons[] = {"aegism_main", "aegism_detection"};
         #include "version.hpp"
     };
 };

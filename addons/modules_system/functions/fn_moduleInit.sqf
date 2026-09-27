@@ -9,8 +9,12 @@ Description:
     source, Engagement Settings, and Crew per the link validation rules in
     the AEGIS-M architecture plan (section 1), caching them as
     "AEGISM_resolvedContactSource" / "AEGISM_resolvedEngagementSettings" /
-    "AEGISM_resolvedCrew". Runs once at mission init; link resolution is not
-    re-run automatically if modules are synced/unsynced later at runtime.
+    "AEGISM_resolvedCrew". If the resolved contact source includes its own
+    Radar role, also initializes "AEGISM_pooledContacts" (HashMap, see
+    aegism_detect_fnc_addContact) so the detection loop has somewhere to
+    store this System's own sensor contacts. Runs once at mission init;
+    link resolution is not re-run automatically if modules are synced/
+    unsynced later at runtime.
 
     Role bitmask stored in AEGISM_system's "roleMask" key: Radar = 1,
     Launcher = 2, CIWS = 4 (any combination).
@@ -65,5 +69,21 @@ private _crew = [_vehicle] call aegism_system_fnc_resolveCrew;
 _vehicle setVariable ["AEGISM_resolvedContactSource", _contactSource, false];
 _vehicle setVariable ["AEGISM_resolvedEngagementSettings", _engagementSettings, false];
 _vehicle setVariable ["AEGISM_resolvedCrew", _crew, false];
+
+if ("ownRadar" in _contactSource) then {
+    _vehicle setVariable ["AEGISM_pooledContacts", createHashMap, false];
+    private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
+    _allOwners pushBackUnique _vehicle;
+    missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
+
+    [{
+        params ["_args", "_pfhHandle"];
+        _args params ["_vehicle"];
+        if (isNull _vehicle) exitWith {
+            [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+        };
+        [_vehicle] call aegism_detect_fnc_confidenceLoop;
+    }, 1, [_vehicle]] call CBA_fnc_addPerFrameHandler;
+};
 
 diag_log text format ["[AEGIS-M] System initialized on %1 -- roleMask=%2 contactSource=%3", _vehicle, _roleMask, _contactSource];
