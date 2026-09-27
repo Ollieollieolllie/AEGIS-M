@@ -15,12 +15,18 @@ Description:
     pooled that no longer appears in this tick's sensor targets (out of
     range, behind terrain, destroyed, radar switched off, ...) is removed.
 
-    This single pipeline covers both platforms (aircraft/helicopters/
-    drones) and munitions (missiles/rockets/shells in flight) uniformly --
-    a fired projectile is a real object the same native sensor simulation
-    detects, exactly how vanilla Arma's own CIWS-capable vehicles (e.g. the
-    Praetorian) already auto-engage incoming rockets under the hood. There
-    is no separate global "Fired" event handler pipeline anymore.
+    This is the platform half of AEGIS-M's hybrid detection model --
+    aircraft/helicopters/drones are real CfgVehicles objects with genuine
+    radarTargetSize/irTargetSize/visualTargetSize properties, so
+    getSensorTargets detects them correctly. It does NOT cover munitions:
+    a fired CfgAmmo projectile has none of those target-size properties
+    (confirmed against vanilla CfgAmmo and even ACE3's own guided-missile
+    CfgAmmo entries, neither define them), so it is never itself a valid
+    getSensorTargets result regardless of range/LOS/radar state. Munitions
+    are detected by a separate, dedicated pipeline instead (aegism_detect_
+    fnc_trackMunition, driven by a global "Fired" event handler) -- see
+    that function's doc comment for why this has to be a hybrid rather than
+    getSensorTargets covering both uniformly.
 
     A detected contact is added/removed on both the scanning System's own
     pool AND its Network's pool (if synced), so a Launcher/CIWS-only System

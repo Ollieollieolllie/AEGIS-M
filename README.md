@@ -30,13 +30,19 @@ sensors/magazines, or is simply the game's own weapon simulation once
 AEGIS-M tells it to fire. A qualifying vehicle works standalone with sane
 default Doctrine/Personality; no module has to be placed on it at all.
 
-**Detection uses the vehicle's own native sensors** (getSensorTargets) --
-the same radar/IR/visual/datalink simulation already running against its
-real CfgVehicles config -- rather than AEGIS-M re-implementing its own
-line-of-sight/range estimate. **Firing commands the vehicle's own real
-weapon** (fireAtTarget) with its actual loaded ammo, so ballistics,
-guidance, and damage are entirely the game's simulation, not a scripted
-projectile AEGIS-M spawns and steers itself.
+**Detection is hybrid, by necessity.** Aircraft/helicopters/drones are read
+straight off the vehicle's own native sensors (getSensorTargets) -- the
+same radar/IR/visual/datalink simulation already running against its real
+CfgVehicles config. Incoming missiles/rockets/shells can't use that path:
+a fired projectile has none of the target-size properties that make a
+CfgVehicles object sensor-visible, so it's never a valid getSensorTargets
+result no matter how good the radar is. Those are tracked by a dedicated
+Fired-event pipeline instead, gated by the same radar's own real detection
+range/arc (read from its config, not a made-up number) plus a line-of-
+sight check. **Firing commands the vehicle's own real weapon**
+(fireAtTarget) with its actual loaded ammo, so ballistics, guidance, and
+damage are entirely the game's simulation, not a scripted projectile
+AEGIS-M spawns and steers itself.
 
 **AEGISM_Module_Site** is the one placeable/syncable AEGIS-M module. Sync
 it to every vehicle that makes up a site (its radar, its launchers, its

@@ -10,6 +10,8 @@ class CfgFunctions
             class addContact {R;};
             class removeContact {R;};
             class confidenceLoop {R;};
+            class firedEventHandler {R;};
+            class trackMunition {R;};
         };
     };
 };
