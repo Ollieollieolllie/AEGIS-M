@@ -46,6 +46,27 @@ Description:
     Systems needs that setting at level 2 for guided interceptors to
     actually guide.
 
+    Proximity fuse: Arma's damage system has no real projectile-vs-
+    projectile hit concept, so a launcher's shot at a munition target could
+    guide perfectly and still never register a kill through real collision
+    alone. If the fired ammo has a real blast radius (indirectHitRange > 0,
+    i.e. it's a launcher's guided munition, not a CIWS gun round -- a CIWS
+    engagement relies on real collision/rate of fire and has no use for
+    this), a short-lived "Fired" event handler is registered on the exact
+    turret's gunner immediately before firing, to capture the REAL resulting
+    projectile object (fireAtTarget doesn't return one) and hand it to
+    aegism_intercept_fnc_interceptorPFH -- see that function's own doc
+    comment for the actual proximity-fuse/detonation logic. The capture EH
+    checks the fired ammo classname matches what was actually commanded and
+    removes itself on the first match, mitigating (not perfectly
+    guaranteeing -- no hard engine guarantee ties a specific Fired event to
+    a specific fireAtTarget call) catching an unrelated shot from the same
+    gunner in between. Self-expires after 10 seconds (CBA_fnc_waitAndExecute)
+    if the expected shot never actually happens (ammo jam, crew
+    reassignment, or any other reason fireAtTarget doesn't result in a real
+    fired round), so the handler doesn't sit registered on that gunner for
+    the rest of the mission waiting for a match that will never come.
+
 Parameters:
     _system - the firing System vehicle <OBJECT>
     _target - the selected target object, from aegism_intercept_fnc_
@@ -81,8 +102,9 @@ if (random 1 > _reliability) exitWith {
     false
 };
 
+private _ammoClassName = getText (configFile >> "CfgMagazines" >> _magazineClass >> "ammo");
+
 if (!isNil "ace_missileguidance_fnc_onFired") then {
-    private _ammoClassName = getText (configFile >> "CfgMagazines" >> _magazineClass >> "ammo");
     // ACE's own guidance config class is named after its component (PREFIX
     // ace + COMPONENT missileguidance -> "ace_missileguidance", ACE's ADDON
     // macro) via ADDON, e.g. "class ADDON: GVAR(type_Javelin) { enabled=1; };"
@@ -97,6 +119,52 @@ if (!isNil "ace_missileguidance_fnc_onFired") then {
         if (!isNull _gunner) then {
             _gunner setVariable ["ace_missileguidance_target", _target];
         };
+    };
+};
+
+// Proximity fuse setup: only meaningful for a real blast-radius munition
+// (a launcher's guided round) -- a CIWS gun round has indirectHitRange 0
+// and relies on real collision/rate of fire instead (see this function's
+// own doc comment).
+private _fuseRange = [_ammoClassName] call aegism_intercept_fnc_munitionSize;
+if (_fuseRange > 0) then {
+    private _gunner = _system turretUnit _turretPath;
+    if (!isNull _gunner) then {
+        // addEventHandler only returns the real handler id AFTER
+        // registration, but the handler body needs that id to remove
+        // itself. extraArgs elements are spread individually onto the end
+        // of _this (NOT nested as one array), so the id can't be baked into
+        // them directly at registration time either way -- passed instead
+        // as a single-element ARRAY (_ehIdBox), a reference type in SQF:
+        // mutating _ehIdBox#0 after addEventHandler returns is visible to
+        // the handler on its first actual invocation, which is exactly
+        // when it's needed (the handler can't remove itself before it's
+        // ever run). Native "Fired" EH base params are unit/weapon/muzzle/
+        // mode/ammo/magazine/projectile (indices 0-6, 7 total) -- extraArgs
+        // start at index 7.
+        private _ehIdBox = [-1];
+        _ehIdBox set [0, _gunner addEventHandler ["Fired", {
+            params ["_unit", "", "", "", "_ammo", "", "_projectile", "_expectedAmmo", "_target", "_ehIdBox"];
+            if (_ammo == _expectedAmmo) then {
+                _unit removeEventHandler ["Fired", _ehIdBox#0];
+                _ehIdBox set [0, -1]; // signals the timeout below that this already fired
+                [_projectile, _target] call aegism_intercept_fnc_interceptorPFH;
+            };
+        }, [_ammoClassName, _target, _ehIdBox]]];
+
+        // Self-expiry: if fireAtTarget never actually results in a shot
+        // (ammo depletes/jams, crew reassigned, or any other reason the
+        // engine doesn't fire this specific round), the handler above would
+        // otherwise sit registered on this gunner for the rest of the
+        // mission, waiting for an ammo match that's never coming -- harmless
+        // (an idle EH), but unbounded. 10s is well beyond any plausible
+        // fire-command latency.
+        [{
+            params ["_gunner", "_ehIdBox"];
+            if (!isNull _gunner && {(_ehIdBox#0) != -1}) then {
+                _gunner removeEventHandler ["Fired", _ehIdBox#0];
+            };
+        }, [_gunner, _ehIdBox], 10] call CBA_fnc_waitAndExecute;
     };
 };
 

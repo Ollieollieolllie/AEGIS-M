@@ -49,6 +49,18 @@ never does this) so the shot actually homes rather than flying ballistic --
 note ACE's own "Missile Guidance" setting must allow AI-fired shots for
 this to take effect.
 
+**Intercepting a munition needs a proximity fuse, because Arma has no
+projectile-vs-projectile hit detection at all.** A fired interceptor is
+tracked frame-by-frame (closest-point-of-approach to its target, the same
+technique ACE's own missile-defense system uses) and detonated for real
+(triggerAmmo, genuine splash effects) once it closes within its own real
+blast radius or starts moving away again having already passed its closest
+point. A munition target has no hitpoints/damage pipeline for that splash
+to actually kill it through, so it's separately detonated too; a real
+platform target (helicopter/drone) is left to its own genuine hitpoints and
+the interceptor's real splash damage, since it can legitimately survive a
+near miss.
+
 **AEGISM_Module_Site** is the one placeable/syncable AEGIS-M module. Sync
 it to every vehicle that makes up a site (its radar, its launchers, its
 CIWS) to link them into a battery: contacts are pooled, and a Site-wide

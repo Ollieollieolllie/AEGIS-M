@@ -12,6 +12,7 @@ class CfgFunctions
             class assignEngagements {R;};
             class engagementLoop {R;};
             class fireWeapon {R;};
+            class interceptorPFH {R;};
         };
     };
 };
