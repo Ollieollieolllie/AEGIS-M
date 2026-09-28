@@ -2,66 +2,55 @@
 Function: aegism_intercept_fnc_interceptorPFH
 
 Description:
-    Proximity-fuse tracker for one of AEGIS-M's own fired interceptors,
-    started by aegism_intercept_fnc_fireWeapon the instant it captures the
-    real projectile object resulting from its own fire command.
-    Necessary, not optional: Arma's damage system has no real notion of a
-    projectile-vs-projectile hit at all -- a missile intercepting another
-    missile has no meaningful hitbox/HandleDamage pipeline the way a unit or
-    vehicle does, so relying on the game's own collision to ever register a
-    kill against a munition target would simply never happen, no matter how
-    accurate the interceptor's own guidance is.
+    Per-frame proximity/direct-hit tracker for one AEGIS-M interceptor round
+    (started by aegism_intercept_fnc_onSystemFired). Necessary because the
+    engine has no projectile-vs-projectile collision at all: a missile or
+    shell passing straight through an incoming munition does nothing unless
+    something scripted detonates both.
 
-    Every frame, computes the minimum distance between the interceptor's
-    flight segment since the last tick and the target's current position
-    (point-to-line-segment distance, not just point-to-point, so a fast
-    interceptor passing very close between two ticks isn't missed just
-    because neither individual sampled position happened to be within fuse
-    range). Once that minimum distance is within the interceptor's own real
-    fuse radius (its loaded ammo's indirectHitRange, via aegism_intercept_
-    fnc_munitionSize -- never an invented number) OR the interceptor starts
-    moving away from the target again (distance increasing tick-over-tick,
-    meaning it already passed its closest approach and won't get any
-    closer), the intercept is resolved:
-        - The interceptor itself is always detonated in place (triggerAmmo)
-          at the point of closest approach -- this is what actually produces
-          real splash damage/explosion effects, exactly as if it had struck
-          something, whether or not the target itself is destroyed by that
-          splash.
-        - If the target is ALSO classified as a munition (aegism_detect_fnc_
-          classifyTarget in ["missile","rocket","bomb","artilleryShell"]),
-          it is separately, explicitly detonated too (triggerAmmo) -- a
-          munition target has no meaningful HandleDamage/hitpoints pipeline
-          to be killed by the interceptor's splash the way a real vehicle
-          would, so without this the interceptor could detonate right next
-          to the incoming missile and it would fly on completely unharmed.
-          A platform target (helicopter/plane/drone) is NOT force-detonated
-          -- it's a real CfgVehicles object with real hitpoints, and the
-          interceptor's own genuine splash damage against it (from
-          triggerAmmo above) is the actual, honest outcome; a real
-          armored/lucky aircraft surviving a near-miss is exactly correct
-          behaviour, not a bug to route around.
-        - A "hit" only counts as a proximity-fuse success (rather than a
-          missed/overshot interceptor that just fizzles) if the closest
-          approach was actually within fuse range -- an interceptor that
-          never got close before running past its target is a genuine miss,
-          same as it would be in real life, and is NOT force-detonated
-          early just because it's diverging; it's simply left to the
-          engine's own flight/fuel/self-destruct behaviour from there.
+    Hit radius:
+        the round's own blast radius (CfgAmmo indirectHitRange, via
+        aegism_intercept_fnc_munitionSize), widened for a MUNITION target to
+        that target's own physical half-size (aegism_intercept_fnc_
+        targetHitRadius) -- so a kinetic CIWS round (blast radius ~0) that
+        passes through an incoming missile's body counts as a direct hit.
+        Against a platform target a round with no blast radius isn't
+        tracked at all: the engine's own collision already handles it.
 
-    Removes itself once the interceptor no longer exists, the target no
-    longer exists, or a resolution (hit or overshoot) has been reached.
+    Arming: no detonation until the round has flown its own CfgAmmo
+    fuseDistance from where it was fired (the engine's own arming distance
+    -- e.g. 100m for the MIM-145 SAM), so it can't fuze on a target right
+    at the launcher.
+
+    Closest approach is computed on RELATIVE motion between frames (both
+    the round and the target move), not against the target's current
+    position only -- at a 1500 m/s closing speed that difference is ~25m
+    per frame.
+
+    Guided rounds (simulation shotMissile) are tracked for their whole
+    flight: a missile routinely opens distance during boost or a turn and
+    closes again, and the old "distance increased once -> give up" rule
+    stopped tracking before most missiles ever got close. Unguided rounds
+    stop being tracked once they've closed and then started opening, since
+    they can't come back.
+
+    On a hit: the round is detonated in place (triggerAmmo, real splash);
+    a munition target is detonated too (it has no hitpoints for the splash
+    to act on). A platform target is left to real splash damage.
+
+    The engine's own proximity fuse (CfgAmmo proximityExplosionDistance, set
+    on most vanilla SAMs) may detonate the missile first; this handler then
+    simply sees the projectile gone and removes itself.
 
 Parameters:
-    _projectile - the fired interceptor's own projectile object <OBJECT>
+    _projectile - the interceptor round <OBJECT>
     _target - the target it was fired at <OBJECT>
 
 Returns:
-    Nothing (intended to be wrapped in a CBA_fnc_addPerFrameHandler by the
-    caller)
+    Nothing
 
 Examples:
-    [_interceptorProjectile, _incomingMissile] call aegism_intercept_fnc_interceptorPFH;
+    [_missile, _incomingRocket] call aegism_intercept_fnc_interceptorPFH;
 
 Author:
     Snow(Dryden)
@@ -71,67 +60,56 @@ params ["_projectile", "_target"];
 
 if (isNull _projectile || {isNull _target}) exitWith {};
 
-private _fuseRange = [typeOf _projectile] call aegism_intercept_fnc_munitionSize;
-// A fuse radius of 0 (plain kinetic ammo, e.g. a CIWS gun round fired at a
-// munition target by mistake -- shouldn't normally happen since CIWS
-// engagements rely on real collision/rate of fire, not this pipeline, but
-// guarded here regardless) has nothing meaningful to proximity-fuse against;
-// let it rely on real collision alone rather than force-detonating on
-// point-blank contact only.
-if (_fuseRange <= 0) exitWith {};
+private _ammoCfg = configOf _projectile;
+private _blastRadius = [typeOf _projectile] call aegism_intercept_fnc_munitionSize;
+private _isMunitionTarget = ([_target] call aegism_detect_fnc_classifyTarget) in ["missile", "rocket", "bomb", "artilleryShell"];
+private _hitRadius = if (_isMunitionTarget) then { _blastRadius max ([_target] call aegism_intercept_fnc_targetHitRadius) } else { _blastRadius };
+if (_hitRadius <= 0) exitWith {};
 
-private _lastPosition = getPosASLVisual _projectile;
-private _lastDistance = _lastPosition distance (getPosASLVisual _target);
+private _armDistance = getNumber (_ammoCfg >> "fuseDistance");
+private _isGuided = (toLower getText (_ammoCfg >> "simulation")) == "shotmissile";
+private _launchPos = getPosASLVisual _projectile;
 
 [{
     params ["_args", "_pfhHandle"];
-    _args params ["_projectile", "_target", "_fuseRange", "_lastPosition", "_lastDistance"];
+    _args params ["_projectile", "_target", "_hitRadius", "_armDistance", "_isGuided", "_launchPos", "_isMunitionTarget", "_lastProjPos", "_lastTargetPos", "_lastSeparation", "_hasClosed"];
 
-    if (isNull _projectile || {isNull _target}) exitWith {
+    if (isNull _projectile || {!alive _projectile} || {isNull _target} || {!alive _target}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
     };
 
-    private _currentPosition = getPosASLVisual _projectile;
-    private _targetPosition = getPosASLVisual _target;
+    private _projPos = getPosASLVisual _projectile;
+    private _targetPos = getPosASLVisual _target;
 
-    // Closest point on the interceptor's flight segment (last tick's
-    // position to this tick's) to the target's current position -- not
-    // just comparing the two sampled points directly, since a fast
-    // interceptor can pass well within fuse range BETWEEN two ticks
-    // without either individual sample ever being that close.
-    private _segment = _currentPosition vectorDiff _lastPosition;
-    private _segmentLengthSqr = _segment vectorDotProduct _segment;
-    private _minDistance = if (_segmentLengthSqr <= 0.001) then {
-        _currentPosition distance _targetPosition
+    // Closest approach of the relative-position segment to the origin.
+    private _rel0 = _lastProjPos vectorDiff _lastTargetPos;
+    private _rel1 = _projPos vectorDiff _targetPos;
+    private _seg = _rel1 vectorDiff _rel0;
+    private _segLenSqr = _seg vectorDotProduct _seg;
+    private _minDistance = if (_segLenSqr <= 0.0001) then {
+        vectorMagnitude _rel1
     } else {
-        private _t = 0 max (1 min (((_targetPosition vectorDiff _lastPosition) vectorDotProduct _segment) / _segmentLengthSqr));
-        (_lastPosition vectorAdd (_segment vectorMultiply _t)) distance _targetPosition
+        private _t = 0 max (1 min (-(_rel0 vectorDotProduct _seg) / _segLenSqr));
+        vectorMagnitude (_rel0 vectorAdd (_seg vectorMultiply _t))
     };
 
-    private _overshot = _minDistance > _lastDistance;
+    private _separation = vectorMagnitude _rel1;
+    private _armed = (_launchPos distance _projPos) >= _armDistance;
 
-    if (_minDistance <= _fuseRange || _overshot) then {
+    if (_armed && {_minDistance <= _hitRadius}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-
-        if (_minDistance <= _fuseRange) then {
-            triggerAmmo _projectile;
-
-            // A munition target has no real HandleDamage/hitpoints pipeline
-            // for the interceptor's own splash (above) to actually kill it
-            // through -- explicitly detonate it too. A platform target is
-            // deliberately left alone here: its own real hitpoints and the
-            // interceptor's genuine splash damage decide its fate honestly,
-            // rather than this pipeline guaranteeing a kill it didn't earn.
-            private _targetClass = [_target] call aegism_detect_fnc_classifyTarget;
-            if (_targetClass in ["missile", "rocket", "bomb", "artilleryShell"]) then {
-                triggerAmmo _target;
-            };
-        };
-        // else: genuinely overshot without ever closing to fuse range --
-        // a real miss, left to the interceptor's own remaining flight/self-
-        // destruct behaviour rather than forced to detonate on a miss.
-    } else {
-        _args set [3, _currentPosition];
-        _args set [4, _minDistance];
+        triggerAmmo _projectile;
+        if (_isMunitionTarget) then { triggerAmmo _target; };
+        diag_log text format ["[AEGIS-M] INTERCEPT: %1 hit %2 (closest %3m, hit radius %4m).", typeOf _projectile, _target, _minDistance, _hitRadius];
     };
-}, 0, [_projectile, _target, _fuseRange, _lastPosition, _lastDistance]] call CBA_fnc_addPerFrameHandler;
+
+    if (_separation < _lastSeparation) then { _hasClosed = true; };
+    if (!_isGuided && {_hasClosed} && {_separation > _lastSeparation}) exitWith {
+        [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+    };
+
+    _args set [7, _projPos];
+    _args set [8, _targetPos];
+    _args set [9, _separation];
+    _args set [10, _hasClosed];
+}, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosASLVisual _target, _launchPos distance (getPosASLVisual _target), false]] call CBA_fnc_addPerFrameHandler;

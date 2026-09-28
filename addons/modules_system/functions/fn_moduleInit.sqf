@@ -88,24 +88,82 @@ params ["_vehicle"];
 
 if (isNull _vehicle) exitWith {};
 if (_vehicle getVariable ["AEGISM_systemInitialized", false]) exitWith {};
-_vehicle setVariable ["AEGISM_systemInitialized", true, false];
 
-private _capabilities = [_vehicle] call aegism_system_fnc_discoverCapabilities;
-private _hasAnyCapability = (_capabilities get "hasRadar") || {(_capabilities get "launcherWeapons") isNotEqualTo []} || {(_capabilities get "ciwsWeapons") isNotEqualTo []};
-if (!_hasAnyCapability) exitWith {
-    // Deliberately verbose (every non-qualifying vehicle in the mission
-    // logs once) -- when "nothing is engaging" turns out to mean "nothing
-    // ever registered as a System at all", this is the line that proves it
-    // and shows WHY discoverCapabilities came back empty for this vehicle,
-    // rather than leaving that as a silent, hard-to-diagnose dead end.
-    diag_log text format ["[AEGIS-M] DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar sensor, no missile/rocket magazine, no high-ROF gun magazine found in its current loadout.", _vehicle, typeOf _vehicle];
+// Aircraft and infantry are never AEGIS-M Systems -- they are what air
+// defence shoots AT. Without this, an attack helicopter's radar + AA
+// missiles + minigun made it a "System" and AEGIS-M suppressed its gunner.
+if (_vehicle isKindOf "Air" || {_vehicle isKindOf "CAManBase"} || {!(_vehicle isKindOf "AllVehicles")}) exitWith {
+    _vehicle setVariable ["AEGISM_systemInitialized", true, false];
 };
 
+private _capabilities = [_vehicle] call aegism_system_fnc_discoverCapabilities;
+private _hasWeapons = (_capabilities get "launcherWeapons") isNotEqualTo [] || {(_capabilities get "ciwsWeapons") isNotEqualTo []};
+private _hasAnyCapability = (_capabilities get "hasRadar") || _hasWeapons;
+if (!_hasAnyCapability) exitWith {
+    _vehicle setVariable ["AEGISM_systemInitialized", true, false];
+    diag_log text format ["[AEGIS-M] DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
+};
+
+// Adoption policy: a vehicle synced to a Site is always adopted (the
+// mission designer chose it). An UNSYNCED vehicle is only adopted as a
+// standalone System if standalone air defence is enabled AND it is a
+// self-contained AA platform -- its own radar plus its own AA weapons
+// (a Cheetah/Tigris-style SPAAG). Anything else is deferred, not rejected:
+// aegism_network_fnc_moduleInit re-runs this function when the vehicle is
+// later synced to a Site.
+private _synced = !isNull (_vehicle getVariable ["AEGISM_network", objNull]);
+private _standaloneEligible = ("aegism_main_standaloneAdoption" call CBA_settings_fnc_get) && {_capabilities get "hasRadar"} && _hasWeapons;
+if (!_synced && !_standaloneEligible) exitWith {
+    if !(_vehicle getVariable ["AEGISM_systemDeferred", false]) then {
+        _vehicle setVariable ["AEGISM_systemDeferred", true, false];
+        diag_log text format ["[AEGIS-M] DISCOVERY: %1 (%2) has AEGIS-M capability (radar=%3 launchers=%4 ciws=%5) but is not synced to a Site and is not a self-contained AA platform (or standalone adoption is disabled) -- deferred until synced.", _vehicle, typeOf _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons")];
+    };
+};
+
+_vehicle setVariable ["AEGISM_systemInitialized", true, false];
+_vehicle setVariable ["AEGISM_systemDeferred", false, false];
 _vehicle setVariable ["AEGISM_system", _capabilities, false];
 
+// Every recognized System, radar or not -- distinct from AEGISM_allPoolOwners
+// below, which only ever gains a vehicle with real "ownRadar" capability
+// (that list exists purely so the detection loop knows which vehicles have
+// a pool worth scanning). A pure launcher/CIWS System with no radar of its
+// own never has anything to pool locally, so it correctly never joined that
+// list -- but aegism_fnc_debugDraw's own per-System state label (see its
+// doc comment) needs to reach EVERY System to show "why isn't this launcher
+// engaging" diagnostics, launchers included, so it walks this list instead.
+// Local-only (setVariable false), matching AEGISM_system/
+// AEGISM_systemInitialized above -- this whole function runs on every
+// machine (not isServer-gated, see this function's own doc comment), so
+// each machine builds its own list rather than depending on isServer/
+// isDedicated to have a global one meaningfully shared.
+private _allSystems = missionNamespace getVariable ["AEGISM_allSystems", []];
+_allSystems pushBackUnique _vehicle;
+missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
+
+// Cleanup PFH, NOT isServer-gated (unlike AEGISM_allPoolOwners' own cleanup
+// below) -- AEGISM_allSystems is a per-machine local list read by aegism_
+// fnc_debugDraw, which is itself a client-side-only concern (drawIcon3D has
+// no meaning on a dedicated server), so every machine needs its own list
+// kept correctly pruned independently rather than relying on the server's
+// copy.
+[{
+    params ["_args", "_pfhHandle"];
+    _args params ["_vehicle"];
+    if (isNull _vehicle || {!alive _vehicle}) exitWith {
+        private _allSystems = missionNamespace getVariable ["AEGISM_allSystems", []];
+        missionNamespace setVariable ["AEGISM_allSystems", _allSystems - [_vehicle], false];
+        [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+    };
+}, 5, [_vehicle]] call CBA_fnc_addPerFrameHandler;
+
 private _contactSource = [_vehicle] call aegism_system_fnc_resolveContactSource;
-private _engagementSettings = [_vehicle] call aegism_system_fnc_resolveEngagementSettings;
-private _crew = [_vehicle] call aegism_system_fnc_resolveCrew;
+private _overrides = [];
+private _engagementSettings = [_vehicle, _overrides] call aegism_system_fnc_resolveEngagementSettings;
+private _crew = [_vehicle, _overrides] call aegism_system_fnc_resolveCrew;
+if (_overrides isNotEqualTo []) then {
+    diag_log text format ["[AEGIS-M] OVERRIDES: %1 uses its own vehicle settings instead of its Site's: %2", _vehicle, _overrides joinString ", "];
+};
 
 _vehicle setVariable ["AEGISM_resolvedContactSource", _contactSource, false];
 _vehicle setVariable ["AEGISM_resolvedEngagementSettings", _engagementSettings, false];
@@ -160,6 +218,10 @@ if (_weaponTurretPaths isNotEqualTo []) then {
     [_vehicle, _weaponTurretPaths, true] call aegism_fnc_setWeaponAiSuppressed;
 };
 
+// CIWS ticks 5x faster than launchers: a gun has to keep re-aiming at a
+// moving lead point, and a 0.5s cadence let fast crossing targets move
+// several degrees between aim updates, so the 2-degree CIWS gate rarely
+// passed. Launchers don't need it (guided rounds, 20-degree gate).
 if (isServer) then {
     {
         private _role = _x;
@@ -170,7 +232,7 @@ if (isServer) then {
                 [_pfhHandle] call CBA_fnc_removePerFrameHandler;
             };
             [_vehicle, _role] call aegism_intercept_fnc_engagementLoop;
-        }, 0.5, [_vehicle, _role]] call CBA_fnc_addPerFrameHandler;
+        }, [0.5, 0.1] select (_role == "ciws"), [_vehicle, _role]] call CBA_fnc_addPerFrameHandler;
     } forEach _activeWeaponRoles;
 };
 

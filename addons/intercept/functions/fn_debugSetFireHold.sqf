@@ -9,7 +9,7 @@ Description:
 
     This is a genuine circuit breaker, not a Doctrine/salvo setting: it's
     checked in aegism_intercept_fnc_fireWeapon itself, the single narrowest
-    choke point every real fireAtTarget call in the whole codebase passes
+    choke point every real fire command in the whole codebase passes
     through, so it guarantees no shot from that turret regardless of what
     upstream logic (assignEngagements/engagementLoop, working correctly or
     not) tries to trigger -- useful specifically while tracking down a

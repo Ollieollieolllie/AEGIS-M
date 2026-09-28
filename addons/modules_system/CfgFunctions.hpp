@@ -10,6 +10,7 @@ class CfgFunctions
             class resolveContactSource {R;};
             class resolveEngagementSettings {R;};
             class resolveCrew {R;};
+            class applyOverrides {R;};
             class defaultEngagementSettings {R;};
             class defaultCrew {R;};
             class scanForRoles {R;};

@@ -2,260 +2,120 @@
 Function: aegism_intercept_fnc_fireWeapon
 
 Description:
-    Commands a System's own real weapon to fire a single round at a target
-    -- AEGIS-M never spawns its own projectile or steers it in flight: the
-    vehicle's actual loaded ammo and its real ballistics/guidance (CfgAmmo's
-    own Guidance config) are entirely the game's own simulation, exactly as
-    if the vehicle's crew had fired it themselves.
+    Fires a System's own real weapon: one missile for a launcher, or opens
+    one sustained burst for a CIWS gun (aegism_intercept_fnc_ciwsBurst, at
+    the gun's own rate of fire). AEGIS-M never spawns projectiles:
+    ballistics, guidance and damage are the game's own.
 
-    Aiming and firing are deliberately split from the crew's own AI
-    engagement judgement, using a lookAt + angle/elevation-gated +
-    BIS_fnc_fire pattern rather than fireAtTarget -- switched after
-    fireAtTarget was suspected (and never fully ruled out) of delegating to
-    the AI's own internal engagement/fire-control state machine rather than
-    firing literally one round per call; BIKI documentation and community
-    reports both indicate fireAtTarget's shot count isn't a hard per-call
-    guarantee, only a fire ORDER handed to AI judgement. lookAt is called every
-    invocation (idempotent -- just refreshes the turret's aim goal) so the
-    turret keeps slewing toward the target across ticks even on calls that
-    end up not firing; the actual shot only fires once the turret's real,
-    live weaponDirection is within AEGISM_LOOKAT_ACCEPTABLE_ANGLE/ELEVATION
-    of the true target direction, checked fresh every call rather than
-    trusted from a previous tick. A call that arrives before the turret has
-    finished slewing returns false (still aiming, not a failure) so the
-    caller's cooldown/salvo bookkeeping isn't touched -- the engagement loop
-    simply calls again next tick as the turret continues traversing.
+    The caller (aegism_intercept_fnc_engagementLoop) has already aimed the
+    turret and confirmed alignment via aegism_intercept_fnc_aimWeapon; this
+    function only rolls crew reliability and fires, via BIS_fnc_fire (a
+    real single fire command -- fireAtTarget hands the decision to AI
+    judgement and was observed firing several missiles per call).
 
-    Crew reliability is rolled once alignment is confirmed, gating whether
-    the crew gets a clean shot off THIS cycle at all -- if the roll fails,
-    no BIS_fnc_fire command is issued and the engagement loop will simply
-    try again next tick (subject to its own minShotInterval cooldown). This
-    is different from AEGIS-M's earlier custom-guidance design, where
-    reliability instead decided whether a self-guided round was steered to
-    a deliberate near-miss: now that firing uses the vehicle's own real
-    weapon, there is no scripted flight path left to deliberately spoil, so
-    reliability governs the crew's shot discipline (do they loose a clean
-    shot this cycle) and leaves the actual hit-or-miss outcome entirely to
-    the game's own AI skill/ammo accuracy/guidance simulation.
+    Crew reliability is rolled here, once per missile or per CIWS burst. A
+    failed roll returns 0, which the engagement loop treats as a lost fire
+    cycle (it waits one shot interval / burst pause before trying again).
 
-    Third-party missile-guidance-mod handoff: neither fireAtTarget nor
-    BIS_fnc_fire has any interaction whatsoever with that mod's own
-    scripted missile guidance -- its own Fired handler resolves its
-    guidance target from a variable it reads off the SHOOTER unit at the
-    instant of firing, not from any argument to the fire command itself.
-    Left alone, a magazine with a real scripted-guidance config would fire
-    genuinely unguided/ballistic -- no error, it just flies straight and
-    misses anything that moves, which would look like a reliability/
-    accuracy problem rather than what it actually is. So: if the loaded
-    ammo declares an explicit (non-inherited) scripted-guidance config
-    class with enabled=1, the target is written to that mod's own expected
-    variable on the specific turret's crewman (turretUnit, not the
-    vehicle) immediately before firing. This is a no-op read/write on any
-    vehicle without that mod loaded (isNil guards it) or on plain vanilla-
-    guided/unguided ammo (no such config class to find).
+    Before firing it writes a capture context for this weapon ("AEGISM_
+    capture_<weapon>") and makes sure the vehicle has AEGIS-M's persistent
+    Fired handler; aegism_intercept_fnc_onSystemFired then hands a launched
+    missile its target (setMissileTarget), records it as an in-flight
+    interceptor, and starts its proximity fuse.
 
-    This does NOT, by itself, guarantee the round actually homes: that
-    mod's own Fired handler also requires its own missile guidance system
-    setting to allow AI-fired shots (its default level is player-only and
-    silently drops every AI/scripted shot back to ballistic) -- that's a
-    mission/server-side setting AEGIS-M doesn't own or override, so a
-    mission using this framework with AI-crewed Systems needs that setting
-    raised to allow AI for guided interceptors to actually guide.
-
-    Proximity fuse: Arma's damage system has no real projectile-vs-
-    projectile hit concept, so a launcher's shot at a munition target could
-    guide perfectly and still never register a kill through real collision
-    alone. If the fired ammo has a real blast radius (indirectHitRange > 0,
-    i.e. it's a launcher's guided munition, not a CIWS gun round -- a CIWS
-    engagement relies on real collision/rate of fire and has no use for
-    this), a short-lived "Fired" event handler is registered on the exact
-    turret's gunner immediately before firing, to capture the REAL resulting
-    projectile object (neither fireAtTarget nor BIS_fnc_fire returns one)
-    and hand it to aegism_intercept_fnc_interceptorPFH -- see that
-    function's own doc comment for the actual proximity-fuse/detonation
-    logic. The capture EH checks the fired ammo classname matches what was
-    actually commanded and removes itself on the first match, mitigating
-    (not perfectly guaranteeing -- no hard engine guarantee ties a specific
-    Fired event to a specific fire call) catching an unrelated shot from
-    the same gunner in between. Self-expires after 10 seconds
-    (CBA_fnc_waitAndExecute) if the expected shot never actually happens
-    (ammo jam, crew reassignment, or any other reason the fire command
-    doesn't result in a real fired round), so the handler doesn't sit
-    registered on that gunner for the rest of the mission waiting for a
-    match that will never come.
+    Third-party scripted missile guidance: if that mod is loaded and the
+    ammo declares its guidance class explicitly with enabled=1, the target
+    is written to the variable its own Fired handler reads, on both the
+    turret's gunner and the vehicle. That mod's own AI-guidance setting must
+    still allow AI shots for it to take effect.
 
 Parameters:
     _system - the firing System vehicle <OBJECT>
-    _target - the selected target object, from aegism_intercept_fnc_
-        selectTarget <OBJECT>
-    _weaponInfo - [_turretPath, _weaponClass, _magazineClass, size] for the
-        specific weapon to fire, from aegism_system_fnc_
-        discoverCapabilities's launcherWeapons/ciwsWeapons (the trailing
-        size element is unused here, kept only because it's the same array
-        this function is always handed) <ARRAY>
-    _reliability - crew reliability, 0-1, from aegism_intercept_fnc_
+    _target - the target object <OBJECT>
+    _weaponInfo - weaponInfo, see aegism_system_fnc_discoverCapabilities <ARRAY>
+    _reliability - crew reliability 0-1, from aegism_intercept_fnc_
         applyCrewModulation <NUMBER>
+    _role - "launcher" or "ciws" <STRING>
+    _interceptors - the assignment's in-flight interceptor list; a fired
+        missile is appended to it (by reference) <ARRAY>
+    _burstDuration - CIWS only: sustained burst length, seconds <NUMBER>
 
 Returns:
-    True if a BIS_fnc_fire command was issued, false if the turret is still
-    aiming, the crew's reliability roll failed, or the target was invalid
-    <BOOLEAN>
+    1 fired, 0 crew hesitated (reliability roll failed), -1 could not fire
+    (hold, dead target, no ammo) <NUMBER>
 
 Examples:
-    [_tigris, _incomingMissile, _weaponInfo, 0.85] call aegism_intercept_fnc_fireWeapon;
+    [_samSite, _heli, _weaponInfo, 0.85, "launcher", _interceptors] call aegism_intercept_fnc_fireWeapon;
+    [_cheetah, _rocket, _weaponInfo, 0.85, "ciws", _interceptors, 4] call aegism_intercept_fnc_fireWeapon;
 
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-// How close the turret's real current aim has to be to the true target
-// direction before a shot is considered aimed rather than still slewing.
-// Deliberately NOT invented/guessed values: an earlier draft of this file
-// used -45 for elevation, which would have let a shot fire while pitched
-// 45 degrees BELOW horizontal -- physically implausible for real SAM/CIWS
-// turret geometry, corrected to a sane real-world-plausible default.
-#define AEGISM_LOOKAT_ACCEPTABLE_ANGLE 20
-#define AEGISM_LOOKAT_ACCEPTABLE_ELEVATION 5
-
-params ["_system", "_target", "_weaponInfo", "_reliability"];
+params ["_system", "_target", "_weaponInfo", "_reliability", "_role", ["_interceptors", []], ["_burstDuration", 0]];
 _weaponInfo params ["_turretPath", "_weaponClass", "_magazineClass"];
 
-// Hard circuit breaker, deliberately independent of engagementLoop's own
-// salvoSize/minShotInterval bookkeeping (which is what SHOULD already
-// prevent more than one shot per assignment) -- this is the single,
-// narrowest choke point every real fire command in the whole codebase
-// passes through, so gating HERE guarantees no second shot from this
-// turret regardless of what upstream logic (buggy or not) tries to
-// trigger it. Keyed per turret (system + turretPath), not per System, so a
-// multi-weapon System's other turrets are unaffected.
-private _holdKey = format ["AEGISM_fireHold_%1", _turretPath];
-if (_system getVariable [_holdKey, false]) exitWith {
-    diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 turret %2 is on hold (aegism_intercept_fnc_debugSetFireHold) -- not firing.", _system, _turretPath];
-    false
-};
+private _isCiws = _role == "ciws";
 
-if (isNull _target || {!alive _target}) exitWith {
-    diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 -- target null or already dead.", _system];
-    false
-};
+// Debug circuit breaker (aegism_intercept_fnc_debugSetFireHold): the single
+// choke point every AEGIS-M fire command passes through.
+if (_system getVariable [format ["AEGISM_fireHold_%1", _turretPath], false]) exitWith { -1 };
+if (isNull _target || {!alive _target}) exitWith { -1 };
 
-// Keep the turret slewing onto the target every call, whether or not this
-// specific call ends up firing -- lookAt just sets an aim goal, it doesn't
-// teleport the turret there, so this has to be re-issued every tick a
-// target is being pursued for the turret to actually catch up over time.
-_system lookAt (getPosVisual _target);
-
-// Real, live angle/elevation check against the turret's own current aim --
-// not trusted from a previous tick, since lookAt's traverse takes real
-// time to complete: decompose the turret's real weaponDirection into a
-// local (turret-relative) vector to get elevation, and compare the angle
-// between that direction and the true target direction.
-private _directionToTarget = (getPosASLVisual _system) vectorFromTo (getPosASLVisual _target);
-private _turretDirection = _system weaponDirection _weaponClass;
-private _localDirection = _system vectorWorldToModelVisual _turretDirection;
-private _elevation = 90 - ((_localDirection#1) atan2 (_localDirection#2));
-private _angle = acos (_turretDirection vectorCos _directionToTarget);
-
-if (_angle > AEGISM_LOOKAT_ACCEPTABLE_ANGLE || {_elevation < AEGISM_LOOKAT_ACCEPTABLE_ELEVATION}) exitWith {
-    false // still slewing onto the target -- caller retries next tick, no cooldown/salvo state touched
-};
+private _ammoBefore = _system magazineTurretAmmo [_magazineClass, _turretPath];
+if (_ammoBefore <= 0) exitWith { -1 };
 
 if (random 1 > _reliability) exitWith {
-    diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 at %2 -- crew reliability roll failed (reliability=%3).", _system, _target, _reliability];
-    false
+    diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 (%2) at %3 -- crew reliability roll failed (reliability=%4), losing this fire cycle.", _system, _role, _target, _reliability];
+    0
 };
 
 private _ammoClassName = getText (configFile >> "CfgMagazines" >> _magazineClass >> "ammo");
+private _gunner = _system turretUnit _turretPath;
 
 if (!isNil "ace_missileguidance_fnc_onFired") then {
-    // That mod's own guidance config class is named after its own internal
-    // component naming convention, e.g. "class ADDON: GVAR(type_Javelin)
-    // { enabled=1; };" nested directly in the ammo's CfgAmmo entry -- the
-    // real rapified class name is "ace_missileguidance", not a
-    // differently-cased variant.
     private _guidanceCfg = configFile >> "CfgAmmo" >> _ammoClassName >> "ace_missileguidance";
-    // isClass alone would also match an INHERITED guidance block -- that
-    // mod's own Fired handler requires the ammo to declare it explicitly
-    // (configName check), so mirror that here rather than setting a target
-    // variable that would never actually be read for this ammo.
+    // configName check: an INHERITED guidance block doesn't count -- that
+    // mod's own Fired handler requires it declared on the ammo itself.
     if (isClass _guidanceCfg && {(configName _guidanceCfg) == "ace_missileguidance"} && {(getNumber (_guidanceCfg >> "enabled")) == 1}) then {
-        private _gunner = _system turretUnit _turretPath;
-        if (!isNull _gunner) then {
-            _gunner setVariable ["ace_missileguidance_target", _target];
-        };
+        if (!isNull _gunner) then { _gunner setVariable ["ace_missileguidance_target", _target]; };
+        _system setVariable ["ace_missileguidance_target", _target];
     };
 };
 
-// Proximity fuse setup: only meaningful for a real blast-radius munition
-// (a launcher's guided round) -- a CIWS gun round has indirectHitRange 0
-// and relies on real collision/rate of fire instead (see this function's
-// own doc comment).
-private _fuseRange = [_ammoClassName] call aegism_intercept_fnc_munitionSize;
-if (_fuseRange > 0) then {
-    private _gunner = _system turretUnit _turretPath;
-    if (!isNull _gunner) then {
-        // addEventHandler only returns the real handler id AFTER
-        // registration, but the handler body needs that id to remove
-        // itself. extraArgs elements are spread individually onto the end
-        // of _this (NOT nested as one array), so the id can't be baked into
-        // them directly at registration time either way -- passed instead
-        // as a single-element ARRAY (_ehIdBox), a reference type in SQF:
-        // mutating _ehIdBox#0 after addEventHandler returns is visible to
-        // the handler on its first actual invocation, which is exactly
-        // when it's needed (the handler can't remove itself before it's
-        // ever run). Native "Fired" EH base params are unit/weapon/muzzle/
-        // mode/ammo/magazine/projectile (indices 0-6, 7 total) -- extraArgs
-        // start at index 7.
-        private _ehIdBox = [-1];
-        _ehIdBox set [0, _gunner addEventHandler ["Fired", {
-            params ["_unit", "", "", "", "_ammo", "", "_projectile", "_expectedAmmo", "_target", "_ehIdBox"];
-            if (_ammo == _expectedAmmo) then {
-                _unit removeEventHandler ["Fired", _ehIdBox#0];
-                _ehIdBox set [0, -1]; // signals the timeout below that this already fired
-                [_projectile, _target] call aegism_intercept_fnc_interceptorPFH;
-            };
-        }, [_ammoClassName, _target, _ehIdBox]]];
-
-        // Self-expiry: if the fire command never actually results in a
-        // shot (ammo jam, crew reassignment, or any other reason the
-        // engine doesn't fire this specific round), the handler above
-        // would otherwise sit registered on this gunner for the rest of
-        // the mission, waiting for an ammo match that's never coming --
-        // harmless (an idle EH), but unbounded. 10s is well beyond any
-        // plausible fire-command latency.
-        [{
-            params ["_gunner", "_ehIdBox"];
-            if (!isNull _gunner && {(_ehIdBox#0) != -1}) then {
-                _gunner removeEventHandler ["Fired", _ehIdBox#0];
-            };
-        }, [_gunner, _ehIdBox], 10] call CBA_fnc_waitAndExecute;
-    };
+if !(_system getVariable ["AEGISM_firedEhAdded", false]) then {
+    _system setVariable ["AEGISM_firedEhAdded", true, false];
+    _system addEventHandler ["Fired", {
+        params ["_vehicle", "_weapon", "", "", "", "", "_projectile"];
+        [_vehicle, _weapon, _projectile] call aegism_intercept_fnc_onSystemFired;
+    }];
 };
 
-private _ammoBefore = _system magazineTurretAmmo [_magazineClass, _turretPath];
-diag_log text format ["[AEGIS-M] FIRE: %1 (%2) fires %3 (mag %4, %5 rounds before shot) at %6 (%7) -- angle=%8 elevation=%9.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _angle, _elevation];
+// Context lifetime: a launcher's round leaves within a moment of the fire
+// command; a CIWS burst lasts its own duration.
+private _targetIsMunition = ([_target] call aegism_detect_fnc_classifyTarget) in ["missile", "rocket", "bomb", "artilleryShell"];
+private _contextLifetime = [2, _burstDuration + 0.5] select _isCiws;
+_system setVariable [format ["AEGISM_capture_%1", _weaponClass], [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition], false];
 
-[_system, _weaponClass, _turretPath] call BIS_fnc_fire;
+if (_isCiws) then {
+    diag_log text format ["[AEGIS-M] FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
+    [_system, _target, _weaponInfo, _burstDuration] call aegism_intercept_fnc_ciwsBurst;
+} else {
+    diag_log text format ["[AEGIS-M] FIRE: %1 (%2) fires %3 (%4, %5 rounds left) at %6 (%7) -- %8.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _role];
+    [_system, _weaponClass, _turretPath] call BIS_fnc_fire;
+};
 
-// Checked 1s later (not synchronously/next-frame -- the actual physical
-// launch can take a moment after the fire command, so checking too early
-// would report a false anomaly before the real shot has even left the
-// tube yet) -- if more than exactly 1 round is missing, that's direct
-// proof the engine itself launched more than one physical round from a
-// single BIS_fnc_fire call, rather than this function (or its caller)
-// somehow being invoked multiple times -- the fire command is only ever
-// issued from this one place in the whole codebase, always logged
-// immediately above, so a genuine multi-round mystery narrows to exactly
-// this.
-[{
-    params ["_system", "_magazineClass", "_turretPath", "_ammoBefore"];
-    if (!isNull _system) then {
-        private _ammoAfter = _system magazineTurretAmmo [_magazineClass, _turretPath];
-        private _consumed = _ammoBefore - _ammoAfter;
+// A launcher fire command should consume exactly one missile; more means
+// the engine fired a ripple. (A CIWS burst reports its own count, BURST-END.)
+if (!_isCiws) then {
+    [{
+        params ["_system", "_magazineClass", "_turretPath", "_ammoBefore"];
+        if (isNull _system) exitWith {};
+        private _consumed = _ammoBefore - (_system magazineTurretAmmo [_magazineClass, _turretPath]);
         if (_consumed != 1) then {
-            diag_log text format ["[AEGIS-M] FIRE-ANOMALY: %1 -- expected 1 round consumed by that shot, engine actually consumed %2 (before=%3, after=%4).", _system, _consumed, _ammoBefore, _ammoAfter];
+            diag_log text format ["[AEGIS-M] FIRE-ANOMALY: %1 -- expected 1 missile consumed, engine consumed %2.", _system, _consumed];
         };
-    };
-}, [_system, _magazineClass, _turretPath, _ammoBefore], 1] call CBA_fnc_waitAndExecute;
+    }, [_system, _magazineClass, _turretPath, _ammoBefore], 1] call CBA_fnc_waitAndExecute;
+};
 
-true
+1

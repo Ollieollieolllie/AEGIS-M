@@ -101,6 +101,13 @@ params ["_logic", "_units", "_activated"];
 if (_logic isEqualType "") then { _logic = objectFromNetId _logic; };
 if (isNull _logic) exitWith {};
 
+// A sync line drawn to a crewed vehicle can land on a crew member rather
+// than the vehicle itself -- normalize every synced object to its vehicle,
+// drop infantry/logics, and de-duplicate (a vehicle with several synced
+// crew would otherwise appear once per crewman).
+_units = (_units apply { vehicle _x }) select { _x isKindOf "AllVehicles" && {!(_x isKindOf "CAManBase")} };
+_units = _units arrayIntersect _units;
+
 private _allowlist = [];
 if (_logic getVariable ["allowMissile", true]) then { _allowlist pushBack "missile"; };
 if (_logic getVariable ["allowRocket", true]) then { _allowlist pushBack "rocket"; };
@@ -111,13 +118,20 @@ if (_logic getVariable ["allowHelicopter", true]) then { _allowlist pushBack "he
 if (_logic getVariable ["allowDrone", true]) then { _allowlist pushBack "drone"; };
 
 private _engagementData = createHashMapFromArray [
-    ["minRange", _logic getVariable ["minRange", 500]],
-    ["maxRange", _logic getVariable ["maxRange", 8000]],
+    ["minRange", _logic getVariable ["minRange", 0]],
+    ["maxRange", _logic getVariable ["maxRange", 0]],
+    ["ciwsMaxRange", _logic getVariable ["ciwsMaxRange", 0]],
     ["minAltitude", _logic getVariable ["minAltitude", 0]],
-    ["maxAltitude", _logic getVariable ["maxAltitude", 6000]],
+    ["maxAltitude", _logic getVariable ["maxAltitude", 0]],
     ["targetPriority", _logic getVariable ["targetPriority", "nearest"]],
     ["salvoSize", _logic getVariable ["salvoSize", 1]],
     ["minShotInterval", _logic getVariable ["minShotInterval", 4]],
+    ["ciwsBurstMin", _logic getVariable ["ciwsBurstMin", 3]],
+    ["ciwsBurstMax", _logic getVariable ["ciwsBurstMax", 5]],
+    ["ciwsBurstPause", _logic getVariable ["ciwsBurstPause", 1]],
+    ["ciwsMinElevation", _logic getVariable ["ciwsMinElevation", 5]],
+    ["engageFriendlyThreats", _logic getVariable ["engageFriendlyThreats", true]],
+    ["friendlyThreatRadius", _logic getVariable ["friendlyThreatRadius", 0]],
     ["targetClassAllowlist", _allowlist],
     ["ciwsLastResort", _logic getVariable ["ciwsLastResort", false]]
 ];
@@ -164,29 +178,42 @@ missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
     [_x, allTurrets _x, true] call aegism_fnc_setWeaponAiSuppressed;
 } forEach _units;
 
+// Re-run discovery now that AEGISM_network is set: a synced vehicle that
+// isn't a standalone-eligible AA platform (e.g. a radar-less SAM launcher)
+// was deferred by its first scan pass, and would otherwise never become a
+// System. No-op if already initialized. Radar vehicles first, so a
+// launcher's contact-source check already sees its radar siblings.
+private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_system_fnc_discoverCapabilities) get "hasRadar") }, "ASCEND"] call BIS_fnc_sortBy;
+{ [_x] call aegism_system_fnc_moduleInit; } forEach _radarFirst;
+
 [
     _logic,
     {
         params ["_object", "_data"];
+        _object = vehicle _object;
+        if (!(_object isKindOf "AllVehicles") || {_object isKindOf "CAManBase"}) exitWith {};
         private _siteLogic = _data get "logic";
         _object setVariable ["AEGISM_network", _siteLogic, false];
         _object setVariable ["AEGISM_engagement", _data get "engagementData", false];
         _object setVariable ["AEGISM_crew", _data get "crewData", false];
-        // remoteExecCall, not a plain call -- unlike the initial-sync
-        // suppression above (which runs via the module's own isGlobal=1
-        // activation, already executing on every machine), this callback
-        // runs from aegism_fnc_pollSyncedObjects, which is deliberately
-        // server-only (to avoid duplicate PFH registration/AEGISM_claims
-        // mutation). disableAI is local AI-simulation state, so a plain
-        // call here would only ever suppress the SERVER's own simulation
-        // of this crewman, leaving a client's own local AI un-suppressed.
-        [_object, allTurrets _object, true] remoteExecCall ["aegism_fnc_setWeaponAiSuppressed", -2];
+        // remoteExecCall to EVERY machine (target 0) -- this callback runs
+        // server-only (aegism_fnc_pollSyncedObjects), and disableAI is
+        // local AI state, so it must reach wherever the crew is simulated.
+        // Target 0, not -2: -2 ("all except server") executes NOWHERE in
+        // singleplayer/Preview, so a Zeus-synced vehicle's AI was never
+        // actually suppressed there.
+        [_object, allTurrets _object, true] remoteExecCall ["aegism_fnc_setWeaponAiSuppressed", 0];
         private _members = _siteLogic getVariable ["AEGISM_networkMembers", []];
         _members pushBackUnique _object;
         _siteLogic setVariable ["AEGISM_networkMembers", _members, false];
+        // Adopt it now if its first scan deferred it (see aegism_system_fnc_
+        // moduleInit's adoption policy).
+        [_object] call aegism_system_fnc_moduleInit;
     },
     {
         params ["_object", "_data"];
+        _object = vehicle _object;
+        if (!(_object isKindOf "AllVehicles") || {_object isKindOf "CAManBase"}) exitWith {};
         private _siteLogic = _data get "logic";
         _object setVariable ["AEGISM_network", nil, false];
         _object setVariable ["AEGISM_engagement", nil, false];
@@ -216,7 +243,7 @@ missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
             // remoteExecCall for the same reason as the apply callback
             // above -- this restore must reach every machine's own local
             // AI simulation, not just the server's.
-            [_object, allTurrets _object, false] remoteExecCall ["aegism_fnc_setWeaponAiSuppressed", -2];
+            [_object, allTurrets _object, false] remoteExecCall ["aegism_fnc_setWeaponAiSuppressed", 0];
         };
         private _members = _siteLogic getVariable ["AEGISM_networkMembers", []];
         _siteLogic setVariable ["AEGISM_networkMembers", _members - [_object], false];

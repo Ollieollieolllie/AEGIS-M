@@ -31,9 +31,12 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+// Deferred vehicles (capable but not synced, see aegism_system_fnc_
+// moduleInit) are skipped here -- discovery is config-heavy, and they're
+// re-evaluated directly by aegism_network_fnc_moduleInit when synced.
 private _newlyScanned = 0;
 {
-    if (!(_x getVariable ["AEGISM_systemInitialized", false])) then {
+    if (!(_x getVariable ["AEGISM_systemInitialized", false]) && {!(_x getVariable ["AEGISM_systemDeferred", false])}) then {
         _newlyScanned = _newlyScanned + 1;
         [_x] call aegism_system_fnc_moduleInit;
     };

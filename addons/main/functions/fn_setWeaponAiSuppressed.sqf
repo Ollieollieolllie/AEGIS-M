@@ -5,7 +5,7 @@ Description:
     Enables or disables a specific turret's own crewman's independent AI
     targeting/engagement (disableAI "TARGET"/"AUTOTARGET"), so that turret's
     weapon only ever fires when AEGIS-M's own aegism_intercept_fnc_fireWeapon
-    commands it via fireAtTarget -- a real fire-control gate, not just AEGIS-M
+    commands it via BIS_fnc_fire -- a real fire-control gate, not just AEGIS-M
     picking targets in parallel with a crew that can ALSO independently
     decide to shoot on its own. Without this, a launcher/CIWS turret's crew
     can engage a target the moment they spot it themselves, completely
@@ -18,9 +18,9 @@ Description:
     ENGAGEMENT/reaction to an already-known target (the AI won't fire or
     maneuver to fire even at something it's aware of). Both are disabled
     together since the goal is to prevent ANY self-initiated fire, not just
-    self-initiated target discovery -- fireAtTarget (AEGIS-M's own fire
-    command) is a separate scripted command path and is documented/expected
-    to keep working normally on a unit with these AI subsystems disabled.
+    self-initiated target discovery -- BIS_fnc_fire and lockCameraTo (AEGIS-M's
+    own aim/fire commands) are separate scripted command paths that keep
+    working on a unit with these AI subsystems disabled.
 
     Scoped to ONE turret's crewman (via turretUnit), not the whole vehicle
     -- a Tigris/ZSU-style vehicle's coax MG or a multi-turret vehicle's other

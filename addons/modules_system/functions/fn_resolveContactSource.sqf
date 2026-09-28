@@ -69,9 +69,14 @@ if (_sources isEqualTo []) then {
     _warning = format ["System on %1 has no contact source (no radar of its own, no Network with a radar-capable member) -- it will never detect a target.", _systemObject];
 };
 
-if (_warning != "" && {_systemObject getVariable ["AEGISM_lastContactSourceWarning", ""] != _warning}) then {
-    diag_log text ("[AEGIS-M] WARNING: " + _warning);
+private _lastWarning = _systemObject getVariable ["AEGISM_lastContactSourceWarning", ""];
+if (_warning != _lastWarning) then {
     _systemObject setVariable ["AEGISM_lastContactSourceWarning", _warning, false];
+    if (_warning != "") then {
+        diag_log text ("[AEGIS-M] WARNING: " + _warning);
+    } else {
+        diag_log text format ["[AEGIS-M] System on %1 now has a contact source: %2 (earlier warning resolved).", _systemObject, _sources];
+    };
 };
 
 _sources

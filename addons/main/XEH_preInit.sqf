@@ -16,6 +16,18 @@
     1
 ] call CBA_fnc_addSetting;
 
+// Global (isGlobal=1): every machine must agree on which vehicles are
+// Systems, since discovery runs on every machine. See aegism_system_fnc_
+// moduleInit's adoption policy.
+[
+    "aegism_main_standaloneAdoption",
+    "CHECKBOX",
+    ["Standalone Air Defence", "Adopt UNSYNCED self-contained AA vehicles (own radar + own AA weapons, e.g. Cheetah/Tigris) as standalone AEGIS-M Systems. Vehicles synced to an AEGIS-M Site are always adopted regardless. Aircraft and infantry are never adopted."],
+    ["AEGIS-M", "General"],
+    true,
+    1
+] call CBA_fnc_addSetting;
+
 // Client-side (isForce=0) and NOT saved to the server's exported settings --
 // this is a per-player visualisation toggle, not a mission rule, so each
 // machine watching the battery picks it independently. See aegism_fnc_debugDraw.

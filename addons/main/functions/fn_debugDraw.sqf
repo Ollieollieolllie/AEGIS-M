@@ -22,10 +22,36 @@ Description:
     aegism_main, which every other AEGIS-M addon depends on, not the other
     way around, so this file must stay a pure reader of the variable
     contract those addons already publish (AEGISM_allPoolOwners, AEGISM_
-    system, AEGISM_pooledContacts, AEGISM_claims, AEGISM_withheldCiws,
-    AEGISM_engagementState_ROLE) rather than a dependent of them.
+    allSystems, AEGISM_system, AEGISM_pooledContacts, AEGISM_claims,
+    AEGISM_withheldCiws, AEGISM_engagementState_ROLE) rather than a
+    dependent of them.
 
-    Per pool owner (System or Network, from AEGISM_allPoolOwners):
+    Two separate top-level loops, over two separate lists, NOT one: every
+    recognized System (AEGISM_allSystems, aegism_system_fnc_moduleInit) gets
+    its own persistent live state label (see below), but only a System with
+    real radar capability, or a Network/Site logic, ever appears in
+    AEGISM_allPoolOwners (that list is scoped to "has a pool worth
+    scanning") -- so a pure launcher/CIWS System with no radar of its own
+    would otherwise never be visited by this function at all, and never
+    show a label, despite being exactly the kind of System "why doesn't
+    this launcher ever engage" debugging most needs to see.
+
+    Per System (AEGISM_allSystems): a persistent live state label at its own
+    position -- ACE missileguidance-style continuous status, always visible
+    while debug draw is on, rather than a one-shot command you have to think
+    to run: whether it's networked or standalone, its resolvedContactSource
+    (the single most useful field for diagnosing "why doesn't this launcher
+    ever engage" -- see aegism_system_fnc_resolveContactSource's own doc
+    comment), and per-role live ammo/assignment status (launcherWeapons/
+    ciwsWeapons count with live rounds, and whether AEGISM_claims currently
+    has an assignment for this System in that role). Colour follows the
+    same readiness signal: red if this System has zero live ammo across
+    every discovered weapon (nothing it could do even if assigned), orange
+    if networked but resolvedContactSource doesn't include "network" (synced
+    to a Site with no radar-capable member -- exactly the failure this was
+    built to surface), white otherwise.
+
+    Per pool owner (System with radar, or Network, from AEGISM_allPoolOwners):
         - A System with hasRadar draws a thin circle at its detection range
           (radarRange, unscaled -- the real native sensor reach) around its
           position.
@@ -75,10 +101,92 @@ private _fnDrawRangeCircle = {
         private _angle = (_i % AEGISM_DEBUG_CIRCLE_SEGMENTS) * (360 / AEGISM_DEBUG_CIRCLE_SEGMENTS);
         private _pos = _center vectorAdd [(_radius * sin _angle), (_radius * cos _angle), 0];
         if (_i > 0) then {
-            drawLine3D [_prevPos, _pos, _color];
+            drawLine3D [ASLToAGL _prevPos, ASLToAGL _pos, _color];
         };
         _prevPos = _pos;
     };
+};
+
+// Persistent live state label for one System -- see this function's own
+// doc comment for what each field means and why. Reads only plain
+// getVariable state, same as everything else in this file. Called for
+// EVERY recognized System (AEGISM_allSystems, below), not just pool owners
+// -- a pure launcher/CIWS System with no radar of its own never joins
+// AEGISM_allPoolOwners (that list is scoped to "has a pool worth scanning",
+// see aegism_system_fnc_moduleInit's own doc comment on AEGISM_allSystems),
+// but this diagnostic needs to reach it too, since "why isn't this launcher
+// engaging" is exactly the question this label exists to answer.
+private _fnDrawSystemLabel = {
+    params ["_vehicle", "_system"];
+
+    private _network = _vehicle getVariable ["AEGISM_network", objNull];
+    private _contactSource = _vehicle getVariable ["AEGISM_resolvedContactSource", []];
+    private _launcherWeapons = _system get "launcherWeapons";
+    private _ciwsWeapons = _system get "ciwsWeapons";
+
+    private _fnRoleStatus = {
+        params ["_vehicle", "_network", "_weapons", "_role"];
+        if (_weapons isEqualTo []) exitWith { "" };
+        private _liveRounds = 0;
+        { _x params ["_turretPath", "", "_magClass"]; _liveRounds = _liveRounds + (_vehicle magazineTurretAmmo [_magClass, _turretPath]); } forEach _weapons;
+
+        private _assigned = false;
+        if (isNull _network) then {
+            private _state = _vehicle getVariable format ["AEGISM_engagementState_%1", _role];
+            if (!isNil "_state") then { _assigned = (_state getOrDefault ["targetNetId", ""]) != ""; };
+        } else {
+            private _claims = _network getVariable ["AEGISM_claims", createHashMap];
+            _assigned = ((values _claims) findIf {
+                (_x findIf { ((_x get "system") == _vehicle) && {(_x get "role") == _role} }) != -1
+            }) != -1;
+        };
+
+        // Live barrel alignment from aegism_intercept_fnc_aimWeapon, shown
+        // only while fresh (the loop is actually aiming this role).
+        private _aimText = "";
+        private _aim = _vehicle getVariable format ["AEGISM_aim_%1", _role];
+        if (!isNil "_aim" && {_assigned} && {time - (_aim select 2) < 1}) then {
+            _aimText = format [",aim %1/%2", round ((_aim select 0) * 10) / 10, _aim select 1];
+        };
+
+        format [" %1x%2(%3rnd%4%5)", count _weapons, _role, _liveRounds, ["", ",ASSIGNED"] select _assigned, _aimText]
+    };
+
+    private _statusLine = format [
+        "%1 contactSrc=%2%3%4",
+        ["STANDALONE", "NETWORKED"] select !isNull _network,
+        _contactSource,
+        [_vehicle, _network, _launcherWeapons, "launcher"] call _fnRoleStatus,
+        [_vehicle, _network, _ciwsWeapons, "ciws"] call _fnRoleStatus
+    ];
+
+    private _totalLiveAmmo = 0;
+    { _x params ["_turretPath", "", "_magClass"]; _totalLiveAmmo = _totalLiveAmmo + (_vehicle magazineTurretAmmo [_magClass, _turretPath]); } forEach (_launcherWeapons + _ciwsWeapons);
+
+    // Orange: networked but the resolved contact source doesn't include
+    // "network" -- synced to a Site with no radar-capable member, the
+    // exact silent-dead-end this overlay exists to surface (see
+    // aegism_system_fnc_resolveContactSource's own doc comment). Red:
+    // zero live ammo anywhere -- nothing this System could do even if
+    // assigned. White otherwise.
+    private _statusColor = if (_totalLiveAmmo <= 0) then {
+        [1, 0.2, 0.2, 1]
+    } else {
+        if (!isNull _network && {!("network" in _contactSource)}) then { [1, 0.6, 0, 1] } else { [1, 1, 1, 1] }
+    };
+
+    // Reuses attack_ca.paa (already proven to load without warning
+    // elsewhere in this same file, below) rather than a plausible-looking
+    // but non-existent path -- an earlier version of this used
+    // ".../simpleTasks/types/dot_ca.paa", which doesn't actually exist at
+    // that path and flooded the RPT with "Cannot load texture" warnings
+    // every single frame for every System.
+    drawIcon3D [
+        "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
+        _statusColor, (ASLToAGL getPosASLVisual _vehicle) vectorAdd [0, 0, 2], 0.4, 0.4, 0,
+        _statusLine,
+        1, 0.03, "TahomaB"
+    ];
 };
 
 private _fnDrawPoolOwner = {
@@ -100,13 +208,13 @@ private _fnDrawPoolOwner = {
         private _entry = _x;
         private _object = _entry get "object";
         if (!isNull _object) then {
-            private _claimRecords = _claims getOrDefault [str (netId _object), []];
+            private _claimRecords = _claims getOrDefault [netId _object, []];
             private _claimed = count _claimRecords > 0;
             private _color = if (_claimed) then { [1, 0.2, 0.2, 1] } else { [1, 1, 1, 0.9] };
 
             drawIcon3D [
                 "\a3\ui_f\data\igui\cfg\simpleTasks\types\destroy_ca.paa",
-                _color, getPosASLVisual _object, 1, 1, 0,
+                _color, ASLToAGL getPosASLVisual _object, 1, 1, 0,
                 format ["%1 (%2s)%3", _entry get "class", round (time - (_entry get "firstSeen")), ["", " [CLAIMED]"] select _claimed],
                 1, 0.035, "TahomaB"
             ];
@@ -122,20 +230,19 @@ private _fnDrawPoolOwner = {
             private _stateKey = format ["AEGISM_engagementState_%1", _role];
             private _state = _poolOwner getVariable _stateKey;
             if (!isNil "_state") then {
-                private _targetNetId = _state get "targetNetId";
-                if (_targetNetId != "") then {
-                    private _target = objectFromNetId _targetNetId;
+                if ((_state getOrDefault ["targetNetId", ""]) != "") then {
+                    private _target = _state getOrDefault ["target", objNull];
                     if (!isNull _target) then {
-                        private _weaponPos = AGLToASL (eyePos _poolOwner);
+                        private _weaponPos = eyePos _poolOwner; // already ASL
                         private _targetPos = getPosASL _target;
-                        private _roundsFired = _state getOrDefault ["roundsFiredThisEngagement", 0];
+                        private _roundsFired = _state getOrDefault ["roundsFired", 0];
                         private _losClear = (lineIntersectsSurfaces [_weaponPos, _targetPos, _poolOwner, _target, true, 1]) isEqualTo [];
                         private _color = if (!_losClear) then { [0.5, 0.5, 0.5, 1] } else { if (_roundsFired > 0) then { [1, 0.8, 0, 1] } else { [0.2, 1, 0.2, 1] } };
 
-                        drawLine3D [_weaponPos, _targetPos, _color];
+                        drawLine3D [ASLToAGL _weaponPos, ASLToAGL _targetPos, _color];
                         drawIcon3D [
                             "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
-                            _color, _targetPos, 1, 1, 0,
+                            _color, ASLToAGL _targetPos, 1, 1, 0,
                             format ["%1: %2 shot(s)%3", _role, _roundsFired, ["", " [NO LOS]"] select !_losClear],
                             1, 0.035, "TahomaB"
                         ];
@@ -148,27 +255,25 @@ private _fnDrawPoolOwner = {
         // whole battery, from aegism_intercept_fnc_assignEngagements.
         {
             private _contactKey = _x;
-            private _target = objectFromNetId _contactKey;
-            if (!isNull _target) then {
-                {
-                    private _record = _x;
-                    private _assignedSystem = _record get "system";
-                    if (!isNull _assignedSystem) then {
-                        private _weaponPos = AGLToASL (eyePos _assignedSystem);
+            {
+                private _record = _x;
+                private _target = _record getOrDefault ["target", objNull];
+                private _assignedSystem = _record get "system";
+                if (!isNull _target && {!isNull _assignedSystem}) then {
+                        private _weaponPos = eyePos _assignedSystem; // already ASL
                         private _targetPos = getPosASL _target;
                         private _roundsFired = _record get "roundsFired";
                         private _color = if (_roundsFired > 0) then { [1, 0.8, 0, 1] } else { [0.2, 1, 0.2, 1] };
 
-                        drawLine3D [_weaponPos, _targetPos, _color];
+                        drawLine3D [ASLToAGL _weaponPos, ASLToAGL _targetPos, _color];
                         drawIcon3D [
                             "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
-                            _color, _targetPos, 1, 1, 0,
+                            _color, ASLToAGL _targetPos, 1, 1, 0,
                             format ["%1: %2 shot(s)", _record get "role", _roundsFired],
                             1, 0.035, "TahomaB"
                         ];
-                    };
-                } forEach (_claims get _contactKey);
-            };
+                };
+            } forEach (_claims get _contactKey);
         } forEach (keys _claims);
 
         // Doctrine-withheld CIWS: eligible but held back this tick by the
@@ -176,21 +281,21 @@ private _fnDrawPoolOwner = {
         // an active assignment so it doesn't read as simply idle/incapable.
         {
             _x params ["_contactKey", "_withheldSystem"];
-            private _target = objectFromNetId _contactKey;
+            private _target = (_pool getOrDefault [_contactKey, createHashMap]) getOrDefault ["object", objNull];
             if (!isNull _target && {!isNull _withheldSystem}) then {
-                private _weaponPos = AGLToASL (eyePos _withheldSystem);
+                private _weaponPos = eyePos _withheldSystem; // already ASL
                 private _targetPos = getPosASL _target;
                 private _segments = 6;
                 for "_i" from 0 to (_segments - 1) do {
                     if (_i % 2 == 0) then {
                         private _from = _weaponPos vectorAdd ((_targetPos vectorDiff _weaponPos) vectorMultiply (_i / _segments));
                         private _to = _weaponPos vectorAdd ((_targetPos vectorDiff _weaponPos) vectorMultiply ((_i + 1) / _segments));
-                        drawLine3D [_from, _to, [1, 0.5, 0, 1]];
+                        drawLine3D [ASLToAGL _from, ASLToAGL _to, [1, 0.5, 0, 1]];
                     };
                 };
                 drawIcon3D [
                     "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
-                    [1, 0.5, 0, 1], _weaponPos, 1, 1, 0,
+                    [1, 0.5, 0, 1], ASLToAGL _weaponPos, 1, 1, 0,
                     "CIWS WITHHELD (last resort)",
                     1, 0.035, "TahomaB"
                 ];
@@ -200,3 +305,16 @@ private _fnDrawPoolOwner = {
 };
 
 { [_x] call _fnDrawPoolOwner; } forEach (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
+
+// Separate list, separate loop -- see _fnDrawSystemLabel's own comment for
+// why this can't just reuse AEGISM_allPoolOwners above (that list excludes
+// any System with no radar of its own, launchers included).
+{
+    private _vehicle = _x;
+    if (!isNull _vehicle) then {
+        private _system = _vehicle getVariable "AEGISM_system";
+        if (!isNil "_system") then {
+            [_vehicle, _system] call _fnDrawSystemLabel;
+        };
+    };
+} forEach (missionNamespace getVariable ["AEGISM_allSystems", []]);

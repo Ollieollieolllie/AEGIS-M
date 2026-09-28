@@ -9,7 +9,7 @@ Description:
     of-fire gun (because it's a SHORAD or Tigris-style all-in-one vehicle),
     it's also a CIWS/CRAM. AEGIS-M never spawns or tracks its own ammo --
     everything here points back at the vehicle's real turrets/weapons/
-    magazines, used later via fireAtTarget and magazineTurretAmmo.
+    magazines, used later via BIS_fnc_fire and magazineTurretAmmo.
 
     Radar: true if the vehicle's CfgVehicles config (its own top-level
     sensor config, or any Turret's) contains an ActiveRadarSensorComponent
@@ -42,22 +42,36 @@ Description:
     bare "Sensors" path is kept as a fallback for any mod vehicle that might
     still use it) rather than assuming either is universal.
 
-    Launcher/CIWS: walks every currently-loaded magazine (magazinesAllTurrets,
-    so a resupplied/rearmed vehicle is reflected correctly) and, for each
-    one, classifies its ammo via aegism_detect_fnc_classifyAmmoClass and
-    resolves which weapon on that turret actually fires it (cross-
-    referencing CfgWeapons' own "magazines" list, since magazinesAllTurrets
-    gives magazine/turret pairs, not the firing weapon's classname that
-    aegism_intercept_fnc_fireWeapon's fireAtTarget call needs). A magazine
-    classifying as "missile" or "rocket" makes it a launcher weapon. Plain
-    (non-guided) gun ammo with a very short CfgAmmo reloadTime (below
-    AEGISM_CIWS_ROF_THRESHOLD, i.e. a genuinely high-rate-of-fire autocannon
-    rather than e.g. a tank's main gun) makes it a CIWS weapon -- an
-    inherent heuristic, since there's no clean "this is an anti-air gun"
-    config flag to read.
+    Launcher/CIWS: walks every currently-loaded magazine (magazinesAllTurrets)
+    and resolves which weapon on that turret fires it (CfgWeapons magazines[]
+    plus any CfgMagazineWells listed in magazineWell[]).
+
+    Only AIR-CAPABLE weapons qualify: the loaded ammo's own CfgAmmo airLock
+    must be >= 1 (the engine's own "can engage air targets" flag). Without
+    this, an IFV's ATGM or a tank's coax would count as air defence.
+
+    Launcher: ammo classifying as "missile" (guided). Unguided rockets can't
+    intercept anything and are not launcher weapons.
+
+    CIWS: non-missile ammo whose FIRING WEAPON has a fire mode faster than
+    AEGISM_CIWS_ROF_THRESHOLD. Rate of fire is a CfgWeapons per-mode
+    reloadTime, NOT CfgAmmo reloadTime (an unrelated submunition field that
+    real CIWS rounds like B_35mm_AA don't define at all).
+
+    Every weapon also carries its own REAL engagement envelope, read from
+    config and never scaled by the AEGIS-M range-scale setting:
+        missile - CfgAmmo missileLockMinDistance/missileLockMaxDistance
+            (falling back to maxControlRange, then the weapon's modes)
+        gun - min/max of CfgWeapons mode minRange/maxRange (the engine's own
+            AI engagement bands, e.g. 0-2500m for autocannon_35mm)
+    and CIWS weapons carry their burst duration (mode reloadTime x burst,
+    longest AI mode) so the engagement loop fires one burst per burst-time
+    rather than on missile salvo rules.
 
 Parameters:
     _vehicle - the vehicle to inspect <OBJECT>
+    _quiet - suppress the per-weapon DISCOVERY log lines (for callers
+        that only need the result, e.g. sorting) <BOOLEAN, default false>
 
 Returns:
     HashMap. Keys:
@@ -66,16 +80,14 @@ Returns:
             component's own config, metres (0 if hasRadar is false) <NUMBER>
         radarArc - real detection arc in degrees, from angleRangeHorizontal
             (360/omnidirectional if the sensor doesn't define one) <NUMBER>
-        launcherWeapons - array of [turretPath, weaponClass, magazineClass,
-            size] for each currently-loaded guided-missile/rocket weapon --
-            size is the loaded ammo's indirectHitRange in metres, from
-            aegism_intercept_fnc_munitionSize, used by aegism_intercept_fnc_
-            assignEngagements to match a launcher's payload against a
-            contact's own classified munition size <ARRAY>
-        ciwsWeapons - array of [turretPath, weaponClass, magazineClass, 0]
-            for each currently-loaded high-rate-of-fire gun weapon -- size
-            is always 0 (a gun's fit comes from rate of fire/geometry, not
-            warhead size), kept only so both arrays share one shape <ARRAY>
+        launcherWeapons / ciwsWeapons - arrays of weaponInfo:
+            [turretPath, weaponClass, magazineClass, size, minRange,
+             maxRange, burstTime]
+            size - loaded ammo's indirectHitRange (aegism_intercept_fnc_
+                munitionSize), used for launcher/threat size matching; 0 for
+                CIWS
+            minRange/maxRange - the weapon's own real envelope, metres
+            burstTime - seconds one CIWS burst takes (0 for launchers)
 
 Examples:
     [_vehicle] call aegism_system_fnc_discoverCapabilities;
@@ -86,7 +98,7 @@ Author:
 
 #define AEGISM_CIWS_ROF_THRESHOLD 0.3
 
-params ["_vehicle"];
+params ["_vehicle", ["_quiet", false]];
 
 private _vehicleConfig = configOf _vehicle;
 
@@ -186,45 +198,92 @@ if (!_hasRadar && {isClass (_vehicleConfig >> "Turrets")}) then {
 private _launcherWeapons = [];
 private _ciwsWeapons = [];
 
+// Every magazine a weapon accepts: its own magazines[] plus every magazine
+// listed in each CfgMagazineWells class named in its magazineWell[].
+private _fnWeaponMagazines = {
+    private _weaponCfg = _this;
+    private _mags = getArray (_weaponCfg >> "magazines");
+    {
+        private _wellCfg = configFile >> "CfgMagazineWells" >> _x;
+        { _mags append (getArray _x); } forEach (configProperties [_wellCfg, "isArray _x", true]);
+    } forEach (getArray (_weaponCfg >> "magazineWell"));
+    _mags apply { toLower _x }
+};
+
+// [minRange, maxRange, fastestReloadTime, longestBurstTime] across a
+// weapon's own fire modes (modes[] sub-classes, or the weapon class itself
+// if it has no modes).
+private _fnModeStats = {
+    private _weaponCfg = _this;
+    private _modeCfgs = (getArray (_weaponCfg >> "modes")) apply { if (_x == "this") then { _weaponCfg } else { _weaponCfg >> _x } };
+    _modeCfgs = _modeCfgs select { isClass _x };
+    if (_modeCfgs isEqualTo []) then { _modeCfgs = [_weaponCfg]; };
+
+    private _minRange = -1;
+    private _maxRange = 0;
+    private _fastest = -1;
+    private _burstTime = 0;
+    {
+        private _reload = getNumber (_x >> "reloadTime");
+        private _burst = getNumber (_x >> "burst") max 1;
+        if (_reload > 0) then {
+            if (_fastest < 0 || {_reload < _fastest}) then { _fastest = _reload; };
+            _burstTime = _burstTime max (_reload * _burst);
+        };
+        if (isNumber (_x >> "minRange")) then {
+            private _modeMin = getNumber (_x >> "minRange");
+            if (_minRange < 0 || {_modeMin < _minRange}) then { _minRange = _modeMin; };
+        };
+        _maxRange = _maxRange max (getNumber (_x >> "maxRange"));
+    } forEach _modeCfgs;
+
+    [_minRange max 0, _maxRange, _fastest, _burstTime]
+};
+
 {
     // magazinesAllTurrets returns [className, turretPath, ammoCount, id,
     // creator] per entry -- turretPath is index 1, not 2.
-    _x params ["_magClass", "_turretPath", "_ammoCount"];
+    _x params ["_magClass", "_turretPath"];
 
     private _ammoClassName = getText (configFile >> "CfgMagazines" >> _magClass >> "ammo");
+    private _ammoCfg = configFile >> "CfgAmmo" >> _ammoClassName;
     private _class = [_ammoClassName] call aegism_detect_fnc_classifyAmmoClass;
+    private _magLower = toLower _magClass;
 
-    // magazinesAllTurrets gives the magazine/turret pair, not the weapon
-    // that fires it -- cross-reference each weapon mounted on this turret
-    // against its own CfgWeapons "magazines" list to find the match.
     private _weaponClass = "";
     {
-        if (_magClass in (getArray (configFile >> "CfgWeapons" >> _x >> "magazines"))) exitWith {
+        if (_magLower in ((configFile >> "CfgWeapons" >> _x) call _fnWeaponMagazines)) exitWith {
             _weaponClass = _x;
         };
     } forEach (_vehicle weaponsTurret _turretPath);
 
-    if (_weaponClass != "") then {
-        if (_class in ["missile", "rocket"]) then {
+    if (_weaponClass != "" && {isClass _ammoCfg}) then {
+        private _weaponCfg = configFile >> "CfgWeapons" >> _weaponClass;
+        (_weaponCfg call _fnModeStats) params ["_modeMin", "_modeMax", "_fastestReload", "_burstTime"];
+        private _airCapable = (getNumber (_ammoCfg >> "airLock")) >= 1;
+
+        if (!_airCapable) exitWith {
+            if (_quiet) exitWith {};
+            diag_log text format ["[AEGIS-M] DISCOVERY: %1's %2 (ammo %3) ignored -- ammo airLock < 1, cannot engage air targets.", _vehicle, _weaponClass, _ammoClassName];
+        };
+
+        if (_class == "missile") exitWith {
+            private _minRange = getNumber (_ammoCfg >> "missileLockMinDistance");
+            if (_minRange <= 0) then { _minRange = _modeMin; };
+            private _maxRange = getNumber (_ammoCfg >> "missileLockMaxDistance");
+            if (_maxRange <= 0) then { _maxRange = getNumber (_ammoCfg >> "maxControlRange"); };
+            if (_maxRange <= 0) then { _maxRange = _modeMax; };
             private _size = [_ammoClassName] call aegism_intercept_fnc_munitionSize;
-            _launcherWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, _size];
+            _launcherWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, _size, _minRange, _maxRange, 0];
+        };
+
+        if (_class in ["rocket", "bomb"]) exitWith {};
+
+        if (_fastestReload > 0 && {_fastestReload < AEGISM_CIWS_ROF_THRESHOLD}) then {
+            _ciwsWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, 0, _modeMin, _modeMax, _burstTime];
         } else {
-            private _reloadTime = getNumber (configFile >> "CfgAmmo" >> _ammoClassName >> "reloadTime");
-            if (_reloadTime > 0 && {_reloadTime < AEGISM_CIWS_ROF_THRESHOLD}) then {
-                // A CIWS gun's own "size" is 0 (see aegism_intercept_fnc_
-                // munitionSize) -- its fit for a contact comes from rate of
-                // fire/engagement geometry, not warhead size, kept as a 4th
-                // element anyway so launcherWeapons/ciwsWeapons share one
-                // [turretPath, weaponClass, magazineClass, size] shape.
-                _ciwsWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, 0];
-            } else {
-                // Deliberately verbose -- a real autocannon that "should"
-                // read as CIWS-capable but doesn't is otherwise a silent,
-                // hard-to-diagnose dead end (the vehicle still qualifies as
-                // a System via its other weapons, so nothing else would
-                // ever surface that this specific gun was excluded, or why).
-                diag_log text format ["[AEGIS-M] DISCOVERY: %1's %2 (ammo %3, reloadTime=%4) did not qualify as CIWS -- threshold is reloadTime > 0 and < %5.", _vehicle, _weaponClass, _ammoClassName, _reloadTime, AEGISM_CIWS_ROF_THRESHOLD];
-            };
+            if (_quiet) exitWith {};
+            diag_log text format ["[AEGIS-M] DISCOVERY: %1's %2 (fastest mode reloadTime=%3) did not qualify as CIWS -- threshold is reloadTime > 0 and < %4.", _vehicle, _weaponClass, _fastestReload, AEGISM_CIWS_ROF_THRESHOLD];
         };
     };
 } forEach (magazinesAllTurrets _vehicle);

@@ -6,6 +6,7 @@ class CfgFunctions
         class functions {
             file = "\x\aegism\addons\modules_network\functions";
             class moduleInit {R;};
+            class scanForUninitSites {R;};
         };
     };
 };

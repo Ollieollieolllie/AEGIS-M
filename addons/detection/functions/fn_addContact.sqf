@@ -24,6 +24,15 @@ Description:
     place rather than replacing the whole entry, so "firstSeen" stays
     accurate across refreshes.
 
+    Every add/refresh stamps "lastSeen" (time). Pools are pruned by EXPIRY
+    (aegism_detect_fnc_pruneStaleContacts), not by any single sensor
+    deciding it can no longer see something -- a Site pool is fed by
+    several radars plus the munition tracker, and one radar losing sight of
+    a contact another radar still holds must not delete it (that used to
+    delete the contact's engagement assignment every second, restarting the
+    crew reaction timer so the launcher never fired). "isMunition" marks
+    Fired-pipeline contacts, which a radar's getSensorTargets never reports.
+
 Parameters:
     _poolOwner - the System vehicle or Network logic holding the pool <OBJECT>
     _contactObject - the munition or platform to add <OBJECT>
@@ -47,23 +56,36 @@ params ["_poolOwner", "_contactObject", "_contactClass", "_confidence"];
 
 if (isNull _contactObject || {_contactClass == ""}) exitWith { false };
 
-private _engagementSettings = [_poolOwner] call aegism_system_fnc_resolveEngagementSettings;
-private _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", []];
+// A Site pool holds its own allowlist plus any class a member's per-vehicle
+// override adds ("AEGISM_contactAllowlist", kept current by aegism_
+// intercept_fnc_assignEngagements); a System's own pool uses its own resolved
+// settings (Site + its overrides).
+private _allowlist = _poolOwner getVariable "AEGISM_contactAllowlist";
+if (isNil "_allowlist") then {
+    private _engagementSettings = _poolOwner getVariable "AEGISM_resolvedEngagementSettings";
+    if (isNil "_engagementSettings") then { _engagementSettings = [_poolOwner] call aegism_system_fnc_resolveEngagementSettings; };
+    _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", []];
+};
 if !(_contactClass in _allowlist) exitWith { false };
 
 private _pool = _poolOwner getVariable ["AEGISM_pooledContacts", createHashMap];
-private _key = str (netId _contactObject);
+// netId is already a string -- wrapping it in str would add literal quote
+// characters, and objectFromNetId on such a key returns objNull.
+private _key = netId _contactObject;
 
 if (_key in _pool) then {
     private _existing = _pool get _key;
     _existing set ["class", _contactClass];
     _existing set ["confidence", _confidence];
+    _existing set ["lastSeen", time];
 } else {
     _pool set [_key, createHashMapFromArray [
         ["object", _contactObject],
         ["class", _contactClass],
         ["confidence", _confidence],
-        ["firstSeen", time]
+        ["firstSeen", time],
+        ["lastSeen", time],
+        ["isMunition", _contactClass in ["missile", "rocket", "bomb", "artilleryShell"]]
     ]];
 };
 

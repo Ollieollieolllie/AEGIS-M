@@ -36,12 +36,40 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["", "", "", "", "", "", "_projectile"];
+#define AEGISM_MUNITION_LOG_INTERVAL 10
+
+params ["_unit", "", "", "", "_ammo", "", "_projectile"];
 
 if (!isServer) exitWith {};
 if (isNull _projectile) exitWith {};
 
-private _class = [_projectile] call aegism_detect_fnc_classifyTarget;
+// An AEGIS-M System's own interceptors are never friendly threats (the
+// friendly-munition check would otherwise evaluate every outgoing SAM). They
+// stay trackable by a HOSTILE side's radars (e.g. an opposing AEGIS-M
+// battery), so they're only tagged, not skipped.
+if (_unit in (missionNamespace getVariable ["AEGISM_allSystems", []])) then {
+    _projectile setVariable ["AEGISM_fromSystem", true];
+};
+
+// Side captured now, while the shooter certainly exists: the tracker uses it
+// for IFF -- a hostile side's munitions are tracked outright, a friendly or
+// neutral one's only while predicted to hit the Site (doctrine
+// engageFriendlyThreats). aegism_detect_fnc_watchProjectile also follows
+// submunition handoffs (e.g. an MLRS rocket's carrier releasing the rocket).
+private _shooterSide = side _unit;
+private _class = [_projectile, _shooterSide] call aegism_detect_fnc_watchProjectile;
 if (_class == "") exitWith {};
 
-[_projectile, _class] call aegism_detect_fnc_trackMunition;
+// One line per shooter per AEGISM_MUNITION_LOG_INTERVAL (a barrage would
+// otherwise log every round), stating the IFF outcome. Not for AEGIS-M's own
+// interceptors -- their FIRE lines already cover them.
+if (!(_projectile getVariable ["AEGISM_fromSystem", false]) && {time > (_unit getVariable ["AEGISM_munitionLogAt", -1e9]) + AEGISM_MUNITION_LOG_INTERVAL}) then {
+    _unit setVariable ["AEGISM_munitionLogAt", time];
+    private _hostileRadars = {
+        private _system = _x getVariable "AEGISM_system";
+        !isNil "_system" && {_system getOrDefault ["hasRadar", false]} && {[side _x, _shooterSide] call aegism_detect_fnc_isHostile}
+    } count (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
+    diag_log text format ["[AEGIS-M] MUNITION: %1 (%2) fired %3 (%4) -- %5", _unit, _shooterSide, _ammo, _class,
+        [format ["%1 AEGIS-M radar(s) hostile to %2 will track it when in range and line of sight.", _hostileRadars, _shooterSide],
+         format ["no AEGIS-M radar is hostile to %1 (IFF: friendly) -- tracked and engaged only if predicted to hit a Site whose doctrine engages friendly threats (see FRIENDLY-THREAT).", _shooterSide]] select (_hostileRadars == 0)];
+};

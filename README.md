@@ -27,8 +27,27 @@ vehicle), it's also a CIWS/CRAM. There is no role checkbox, no detection
 range/arc, no missile count, no guidance speed, no ammo classname to set
 anywhere -- all of that is either read live from the vehicle's real
 sensors/magazines, or is simply the game's own weapon simulation once
-AEGIS-M tells it to fire. A qualifying vehicle works standalone with sane
-default Doctrine/Personality; no module has to be placed on it at all.
+AEGIS-M tells it to fire. Only air-capable weapons count (ammo `airLock` >= 1),
+and every weapon engages within its own real envelope read from config
+(missile lock min/max distance, gun fire-mode ranges).
+
+**Which vehicles AEGIS-M controls.** Any vehicle synced to an AEGIS-M Site.
+Unsynced vehicles are only adopted if they are a self-contained AA platform
+-- their own radar plus their own AA weapons (Cheetah, Tigris) -- and the
+"Standalone Air Defence" CBA setting is on (default). Aircraft and infantry
+are never adopted, so an attack helicopter or an IFV with ATGMs keeps its
+normal AI.
+
+**IFF.** Hostile contacts (mission side relations) are engaged, including
+munitions. A friendly or neutral munition is engaged only when it is
+predicted to hit the Site (doctrine "Engage Friendly Munitions Threatening
+the Site", on by default): a guided missile whose own target is a Site
+member, or an unguided round whose predicted impact falls within its own
+config danger radius (`dangerRadiusHit`, e.g. 750 m for 155 mm artillery)
+of a Site member. A battery never engages its own interceptors. Only real
+artillery/mortar rounds (`artilleryLock`) count as artillery threats; tank
+main-gun rounds don't, and multi-stage rounds (e.g. MLRS rockets) stay
+tracked through their submunition handoff.
 
 **Detection is hybrid, by necessity.** Aircraft/helicopters/drones are read
 straight off the vehicle's own native sensors (getSensorTargets) -- the
@@ -42,11 +61,19 @@ range/arc (read from its config, not a made-up number) plus a line-of-
 sight check. **Firing commands the vehicle's own real weapon** with its
 actual loaded ammo, so ballistics, guidance, and damage are entirely the
 game's simulation, not a scripted projectile AEGIS-M spawns and steers
-itself. Aiming and firing themselves are scripted directly (lookAt to slew
-the turret, a real angle/elevation check against its live weaponDirection,
-then a single BIS_fnc_fire call once aligned) rather than handed to
-fireAtTarget's own AI judgement, adopted after fireAtTarget's shot count
-per call proved not to be a hard guarantee. If a third-party scripted
+itself. Aiming and firing themselves are scripted directly (lockCameraTo on
+the weapon's own turret path -- the command ACE's Hunter-Killer uses to slew
+a gunner's turret -- from the moment a target is assigned, a real angle
+check against
+its live weaponDirection, then a single BIS_fnc_fire call once aligned)
+rather than handed to fireAtTarget's own AI judgement. A launched missile is
+handed its target (`setMissileTarget`) so vanilla guidance actually homes.
+CIWS guns aim at a lead point computed from the round's real muzzle
+velocity and drag, and fire sustained bursts at the gun's own rate of fire
+(doctrine: burst length 3-5 s by default, 1 s pause between bursts),
+holding fire whenever the turret drifts off the lead point or the barrel
+drops below the CIWS minimum elevation (doctrine, 5 degrees by default; a
+target below it is never assigned to a CIWS). If a third-party scripted
 missile guidance mod is loaded and the fired ammo declares real scripted
 missile guidance, AEGIS-M also hands the target to that mod's own guidance
 system so the shot actually homes rather than flying ballistic -- note
@@ -55,11 +82,12 @@ to take effect.
 
 **Intercepting a munition needs a proximity fuse, because Arma has no
 projectile-vs-projectile hit detection at all.** A fired interceptor is
-tracked frame-by-frame (closest-point-of-approach to its target) and
-detonated for real
-(triggerAmmo, genuine splash effects) once it closes within its own real
-blast radius or starts moving away again having already passed its closest
-point. A munition target has no hitpoints/damage pipeline for that splash
+tracked frame-by-frame (closest approach on relative motion) and, once past
+its own real arming distance (`fuseDistance`), detonated for real
+(triggerAmmo, genuine splash effects) when it passes within its own blast
+radius -- or, against a munition, within that munition's own physical size,
+so a kinetic CIWS round that passes through an incoming missile counts as a
+hit. A munition target has no hitpoints/damage pipeline for that splash
 to actually kill it through, so it's separately detonated too; a real
 platform target (helicopter/drone) is left to its own genuine hitpoints and
 the interceptor's real splash damage, since it can legitimately survive a
@@ -70,13 +98,8 @@ it to every vehicle that makes up a site (its radar, its launchers, its
 CIWS) to link them into a battery: contacts are pooled, and a Site-wide
 coordinator matches each contact to the best-fit weapon across every member
 System before any of them fire, rather than each System independently
-guessing what to shoot at. The Site's own Doctrine (engagement envelope,
-target-priority rule, salvo policy, target-class allowlist, whether CIWS
-holds fire until a launcher shot has failed) and Personality (skill tier x
-temperament, which modulates the doctrine's timing/reliability rather than
-owning its own numbers) apply battery-wide. A vehicle synced to more than
-one Site, or never synced at all, still resolves sensibly per the object ->
-network -> default fallback order.
+guessing what to shoot at. The Site's settings apply battery-wide (see
+**Settings** below); a vehicle never synced to a Site uses the defaults.
 
 **Engagement is coordinated, not just deconflicted.** A launcher's fit for
 a contact is scored by how closely its loaded interceptor's real warhead
@@ -85,11 +108,11 @@ threat's own size, so a small inbound rocket doesn't burn a heavy
 interceptor when a lighter one is available, and vice versa. CIWS can
 engage in parallel with a launcher already working the same contact by
 default (a fast/close threat shouldn't wait on an unproven missile shot),
-or only as a last resort if the Site's Doctrine says so. If an assigned
-shot doesn't result in a kill within a plausible flight-time window, the
-contact is freed up for reassignment -- to the same System again, a
-different/better-fit weapon, or CIWS -- rather than the System stubbornly
-re-engaging under stale state.
+or only as a last resort if the Site's Doctrine says so. A launcher shot is
+judged a miss only once its missiles are actually gone and the target still
+lives; the contact is then freed for reassignment -- to the same System
+again, a different/better-fit weapon, or CIWS. Two weapons sharing a turret
+are never assigned to different targets.
 
 Syncing or unsyncing a vehicle to a Site, or editing the Site's own
 Attributes, takes effect live -- nothing requires re-placing modules or
@@ -111,7 +134,71 @@ off by default, client-side/no gameplay effect) draws pooled contacts,
 radar range, and every active engagement -- Site-wide assignments or a
 standalone System's own acquired target, including live LOS state --
 directly from the same variables the detection/intercept pipeline itself
-reads and writes.
+reads and writes. Every System also shows a live status label (networked/
+standalone, contact source, per-role ammo, ASSIGNED, and live barrel
+alignment while aiming). An assigned weapon that isn't firing always logs
+why: `REACTING`, `SLEWING`, `LOS-BLOCKED`, `FIRE-SKIP`, or `ASSIGN-CLEAR`
+with a reason.
+
+## Settings
+
+The Site module's attributes are in four sections. Every default is chosen
+so a Site works out of the box: each weapon uses its own real config
+envelope, and all threat classes are engaged.
+
+**Site Settings**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Target Priority | Nearest | Which contacts get weapons first when threats outnumber free weapons: Nearest (to any Site vehicle), Fastest Closing, or Highest Value (missile > bomb > aircraft > drone/rocket > artillery). |
+| Crew Skill | Regular | Reaction time and reliability: Green 4.0 s / 55 %, Regular 2.5 s / 70 %, Veteran 1.2 s / 85 %, Elite 0.5 s / 95 %. Reliability is rolled once per missile or CIWS burst; CIWS reaction is capped at 1 s. |
+| Crew Temperament | Standard | Scales reaction, reliability and the pause between shots (Cautious / Standard / Aggressive / Nervous). |
+| Save Ammo for Bigger Threats | Off | Hold fire if firing would leave fewer rounds than tracked higher-value contacts. |
+
+**Interception Targets**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Engage Missiles / Rockets / Bombs / Artillery, Mortar and MLRS Rounds / Fixed-Wing / Helicopters / Drones | all on | Which threat classes the Site engages. |
+| Target Min / Max Height (m above ground) | 0 / 0 | Ignore contacts outside this height band. Max 0 = no limit. |
+| Engage Friendly Munitions Threatening the Site | On | Also engage a friendly/neutral round predicted to hit the Site. |
+| Friendly Threat Radius (m) | 0 | 0 = the round's own config danger radius (`dangerRadiusHit`). |
+
+**Launchers (Missiles)**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Min Range (m) | 0 | Extra minimum on top of the missile's own (MIM-145: 1000 m). |
+| Max Range (m) | 0 | 0 = the missile's own reach (MIM-145: 16000 m). |
+| Missiles per Target | 1 | Missiles fired before waiting for the result; re-engages if all miss. |
+| Seconds Between Missiles | 4 | Minimum gap between missiles from one launcher. |
+
+**CIWS (Guns)**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Max Range (m) | 0 | 0 = the gun's own reach (Cheetah 35 mm: 2500 m). |
+| Min Elevation (deg) | 5 | Never engages below it; holds fire while the barrel is below it. |
+| Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
+| Pause Between Bursts (s) | 1 | Gap after each burst. |
+| Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |
+
+Range settings are real-world metres, scaled by the CBA setting AEGIS-M
+Range Scale. Launcher ranges never apply to guns, and vice versa.
+
+**Per-vehicle overrides.** Every vehicle has an **AEGIS-M: Vehicle
+Overrides** category in its own Eden attributes, with the same four
+sections. Tick **Override Site Settings**, then change only what should
+differ for that vehicle; everything left on "Site setting" (or blank) keeps
+following the Site. Examples: set a long-range SAM's "Artillery, Mortar and
+MLRS Rounds" to Ignore so it never spends missiles on shells, or give one
+CIWS a shorter Max Range as an inner layer. Overrides on a radar affect its
+Interception Targets (what it reports, and which friendly munitions it
+treats as threats). A vehicle's active overrides are logged at start
+(`OVERRIDES:` in the RPT). Script equivalent, e.g. for a Zeus-placed
+vehicle: `_veh setVariable ["AEGISM_ovr_enabled", true]` plus
+`_veh setVariable ["AEGISM_ovr_<setting>", value]`
+(see `aegism_system_fnc_applyOverrides`).
 
 ## License
 

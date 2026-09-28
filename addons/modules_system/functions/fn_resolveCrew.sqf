@@ -2,20 +2,16 @@
 Function: aegism_system_fnc_resolveCrew
 
 Description:
-    Resolves which Personality data applies to a given System vehicle, per
-    the object -> network -> default fallback order defined in the AEGIS-M
-    architecture plan (section 1) -- identical resolution order to aegism_
-    system_fnc_resolveEngagementSettings, applied to crew personality data
-    instead of doctrine data. "Object" here means directly set on the
-    vehicle itself (possible via scripting; there's no separate per-vehicle
-    Personality module anymore), "network" means inherited from a synced
-    AEGISM_Module_Site's own Personality Attributes.
-
-    Reads the object-namespaced variables "AEGISM_crew" (HashMap or nil) and
-    "AEGISM_network" (Object or objNull).
+    Resolves which Personality data applies to a given System vehicle --
+    same order as aegism_system_fnc_resolveEngagementSettings: the Site's
+    personality ("AEGISM_crew" on the vehicle or its Site logic) or the
+    defaults when standalone, then the vehicle's own per-vehicle overrides
+    on top (aegism_system_fnc_applyOverrides).
 
 Parameters:
     _systemObject - the vehicle to resolve Personality data for <OBJECT>
+    _changes - optional; applied overrides are appended as "key=value"
+        (by reference, for logging) <ARRAY>
 
 Returns:
     The resolved crew data <HASHMAP>
@@ -27,19 +23,13 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["_systemObject"];
+params ["_systemObject", ["_changes", []]];
 
-private _ownCrew = _systemObject getVariable "AEGISM_crew";
-if (!isNil "_ownCrew") exitWith {
-    _ownCrew
+private _base = _systemObject getVariable "AEGISM_crew";
+if (isNil "_base") then {
+    private _network = _systemObject getVariable ["AEGISM_network", objNull];
+    if (!isNull _network) then { _base = _network getVariable "AEGISM_crew"; };
 };
+if (isNil "_base") then { _base = [] call aegism_system_fnc_defaultCrew; };
 
-private _network = _systemObject getVariable ["AEGISM_network", objNull];
-if (!isNull _network) then {
-    private _networkCrew = _network getVariable "AEGISM_crew";
-    if (!isNil "_networkCrew") exitWith {
-        _networkCrew
-    };
-};
-
-[] call aegism_system_fnc_defaultCrew
+[_systemObject, _base, "crew", _changes] call aegism_system_fnc_applyOverrides

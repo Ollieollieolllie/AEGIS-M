@@ -10,10 +10,11 @@ Description:
     Turrets/Sensors config -- rather than AEGIS-M re-implementing its own
     LOS/distance/confidence estimate on top of it. Detection is binary here
     (the engine already decided detected-or-not using its own, more
-    complete simulation); every allowlisted, non-friendly, non-destroyed
-    sensor target is pooled at full confidence, and anything previously
-    pooled that no longer appears in this tick's sensor targets (out of
-    range, behind terrain, destroyed, radar switched off, ...) is removed.
+    complete simulation); every allowlisted, genuinely hostile (IFF, see
+    aegism_detect_fnc_isHostile), non-destroyed sensor target is pooled at
+    full confidence. Contacts no longer refreshed by any sensor expire
+    (aegism_detect_fnc_pruneStaleContacts) rather than being deleted the
+    instant one radar loses them.
 
     This is the platform half of AEGIS-M's hybrid detection model --
     aircraft/helicopters/drones are real CfgVehicles objects with genuine
@@ -61,12 +62,15 @@ if (isNil "_engagementSettings") then { _engagementSettings = [_poolOwner] call 
 private _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", []];
 private _network = _poolOwner getVariable ["AEGISM_network", objNull];
 
-private _detectedKeys = [];
+private _ownSide = side _poolOwner;
 
 {
     _x params ["_target", "", "_relationship"];
 
-    if (_relationship != "friendly" && {_relationship != "destroyed"} && {!isNull _target} && {alive _target}) then {
+    // IFF: getSensorTargets reports not-yet-identified contacts as
+    // "unknown", including friendly aircraft at range -- engaging "unknown"
+    // alone would shoot down friendlies. Require real hostility.
+    if (_relationship != "friendly" && {_relationship != "destroyed"} && {!isNull _target} && {alive _target} && {[_ownSide, side _target] call aegism_detect_fnc_isHostile}) then {
         private _class = [_target] call aegism_detect_fnc_classifyTarget;
 
         if (_class in _allowlist) then {
@@ -74,7 +78,6 @@ private _detectedKeys = [];
             if (!isNull _network) then {
                 [_network, _target, _class, 1] call aegism_detect_fnc_addContact;
             };
-            _detectedKeys pushBack (str (netId _target));
         } else {
             // Change-only per [poolOwner, target] pair (a HashMap on the
             // pool owner itself, cleared when the contact eventually leaves
@@ -90,7 +93,7 @@ private _detectedKeys = [];
             // contact (e.g. a friendly plane briefly misread as hostile by
             // getSensorTargets) would otherwise spam the RPT for as long
             // as it stays in sensor range.
-            private _rejectKey = str (netId _target);
+            private _rejectKey = netId _target;
             private _rejectLog = _poolOwner getVariable ["AEGISM_lastDetectReject", createHashMap];
             if (!(_rejectKey in _rejectLog)) then {
                 _rejectLog set [_rejectKey, true];
@@ -101,16 +104,11 @@ private _detectedKeys = [];
     };
 } forEach (getSensorTargets _poolOwner);
 
-// Anything still pooled from a previous tick but absent from this tick's
-// sensor targets is no longer detected (out of range/arc, behind terrain,
-// destroyed, radar off, ...) and gets dropped from both pools.
-private _pool = _poolOwner getVariable ["AEGISM_pooledContacts", createHashMap];
-{
-    if !(_x in _detectedKeys) then {
-        private _obj = (_pool get _x) get "object";
-        [_poolOwner, _obj] call aegism_detect_fnc_removeContact;
-        if (!isNull _network) then {
-            [_network, _obj] call aegism_detect_fnc_removeContact;
-        };
-    };
-} forEach (keys _pool);
+// Only this System's OWN pool is pruned here, and only by expiry. The Site
+// pool is never touched: another radar may still hold a contact this one
+// lost, and munition contacts never appear in getSensorTargets at all --
+// the old "not in this tick's sensor targets -> remove from both pools"
+// step deleted every tracked munition (and its engagement assignment)
+// every second. The Site pool is pruned by aegism_intercept_fnc_
+// assignEngagements instead.
+[_poolOwner] call aegism_detect_fnc_pruneStaleContacts;

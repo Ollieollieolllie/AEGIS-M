@@ -26,7 +26,7 @@ params ["_poolOwner", "_contactObject"];
 private _pool = _poolOwner getVariable "AEGISM_pooledContacts";
 if (isNil "_pool") exitWith {};
 
-private _key = str (netId _contactObject);
+private _key = netId _contactObject;
 _pool deleteAt _key;
 
 _poolOwner setVariable ["AEGISM_pooledContacts", _pool, false];

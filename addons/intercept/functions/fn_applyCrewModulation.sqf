@@ -29,8 +29,9 @@ Returns:
     Modifiers <HASHMAP>. Keys:
         reactionTime - seconds of hesitation before the first shot at a
             newly-acquired target <NUMBER>
-        reliability - probability, 0-1, that a fired round is guided to a
-            true intercept rather than a deliberate near-miss <NUMBER>
+        reliability - probability, 0-1, that the crew gets a clean shot off
+            when a fire cycle comes up; a failure costs one fire cycle (see
+            aegism_intercept_fnc_engagementLoop) <NUMBER>
         shotIntervalMult - multiplier applied to the doctrine's
             minShotInterval <NUMBER>
 

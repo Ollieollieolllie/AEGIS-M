@@ -49,28 +49,37 @@ Description:
     moduleInit rather than an every-tick nearestObjects scan for module
     logics.
 
+    IFF: a radar HOSTILE to the shooter's side (aegism_detect_fnc_
+    isHostile) tracks a munition outright. A friendly or neutral munition is
+    only tracked -- and so only ever engaged -- while aegism_detect_fnc_
+    munitionThreat predicts it will hit that radar's own Site, and only if
+    that Site's doctrine engageFriendlyThreats is on. An AEGIS-M System's
+    own interceptors (tagged "AEGISM_fromSystem" by aegism_detect_fnc_
+    firedEventHandler) are never friendly threats.
+
 Parameters:
     _projectile - the fired munition object <OBJECT>
     _class - pre-classified target class, from aegism_detect_fnc_
         classifyTarget <STRING>
+    _shooterSide - side of the unit/vehicle that fired it <SIDE>
 
 Returns:
     Nothing
 
 Examples:
-    [_projectile, "missile"] call aegism_detect_fnc_trackMunition;
+    [_projectile, "missile", east] call aegism_detect_fnc_trackMunition;
 
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["_projectile", "_class"];
+params ["_projectile", "_class", ["_shooterSide", sideUnknown]];
 
 private _addedTo = [];
 
 [{
     params ["_args", "_pfhHandle"];
-    _args params ["_projectile", "_class", "_addedTo"];
+    _args params ["_projectile", "_class", "_addedTo", "_shooterSide"];
 
     if (isNull _projectile || {!alive _projectile}) exitWith {
         {
@@ -87,12 +96,21 @@ private _addedTo = [];
         // Network pool owners are never checked directly -- they have no
         // sensor/facing of their own; they only receive a contact via a
         // detecting member System's own push below.
-        if (!isNil "_system" && {_system get "hasRadar"}) then {
+        private _hostile = !isNil "_system" && {[side _poolOwner, _shooterSide] call aegism_detect_fnc_isHostile};
+        private _settings = createHashMap;
+        if (!isNil "_system" && {!_hostile}) then {
+            _settings = _poolOwner getVariable "AEGISM_resolvedEngagementSettings";
+            if (isNil "_settings") then { _settings = [_poolOwner] call aegism_system_fnc_resolveEngagementSettings; };
+        };
+
+        private _checkFriendly = !_hostile && {_settings getOrDefault ["engageFriendlyThreats", true]} && {!(_projectile getVariable ["AEGISM_fromSystem", false])};
+
+        if (!isNil "_system" && {_system get "hasRadar"} && {_hostile || _checkFriendly}) then {
             private _detected = false;
             private _radarRange = _system get "radarRange";
 
             if ((_poolOwner distance2D _projectile) <= _radarRange) then {
-                private _ownerPos = AGLToASL (eyePos _poolOwner);
+                private _ownerPos = eyePos _poolOwner; // already ASL
                 private _losClear = (lineIntersectsSurfaces [_ownerPos, _pos, _poolOwner, _projectile, true, 1]) isEqualTo [];
                 _detected = _losClear;
 
@@ -106,20 +124,44 @@ private _addedTo = [];
                 };
             };
 
+            // Friendly/neutral munition: a contact only while it's predicted
+            // to hit this radar's Site (otherwise it just goes stale and is
+            // pruned from the pool).
+            if (_detected && {!_hostile}) then {
+                private _threat = [_projectile, _class, _poolOwner, _settings getOrDefault ["friendlyThreatRadius", 0]] call aegism_detect_fnc_munitionThreat;
+                _detected = _threat isNotEqualTo [];
+                if (_detected && {!(_projectile getVariable ["AEGISM_friendlyThreatLogged", false])}) then {
+                    _projectile setVariable ["AEGISM_friendlyThreatLogged", true];
+                    _threat params ["_threatened", "_miss", "_radius", "_basis"];
+                    diag_log text format ["[AEGIS-M] FRIENDLY-THREAT: %1 (%2) fired by %3 side -- %4 -- engaging it as a threat.", typeOf _projectile, _class, _shooterSide,
+                        [format ["predicted impact %1m from %2 (threat radius %3m)", round _miss, _threatened, round _radius],
+                         format ["guided at Site member %1", _threatened]] select (_basis == "guided")];
+                };
+            };
+
             if (_detected) then {
+                private _firstDetection = _addedTo isEqualTo [];
                 private _added = [_poolOwner, _projectile, _class, 1] call aegism_detect_fnc_addContact;
                 if (_added && {!(_poolOwner in _addedTo)}) then {
                     _addedTo pushBack _poolOwner;
                 };
 
+                // Reported to the Site only if this radar's own settings
+                // engage the class (same rule as aegism_detect_fnc_
+                // confidenceLoop for aircraft), so a radar's per-vehicle
+                // override controls what it reports.
                 private _network = _poolOwner getVariable ["AEGISM_network", objNull];
-                if (!isNull _network) then {
+                if (_added && {!isNull _network}) then {
                     private _addedNetwork = [_network, _projectile, _class, 1] call aegism_detect_fnc_addContact;
                     if (_addedNetwork && {!(_network in _addedTo)}) then {
                         _addedTo pushBack _network;
                     };
                 };
+
+                if (_firstDetection && {_addedTo isNotEqualTo []}) then {
+                    diag_log text format ["[AEGIS-M] TRACKING: %1 (%2) detected by %3 at %4m.", typeOf _projectile, _class, _poolOwner, round (_poolOwner distance _projectile)];
+                };
             };
         };
     } forEach (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
-}, 0.5, [_projectile, _class, _addedTo]] call CBA_fnc_addPerFrameHandler;
+}, 0.5, [_projectile, _class, _addedTo, _shooterSide]] call CBA_fnc_addPerFrameHandler;
