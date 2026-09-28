@@ -12,7 +12,7 @@ Description:
     magazines, used later via fireAtTarget and magazineTurretAmmo.
 
     Radar: true if the vehicle's CfgVehicles config (its own top-level
-    Sensors, or any Turret's Sensors) contains an ActiveRadarSensorComponent
+    sensor config, or any Turret's) contains an ActiveRadarSensorComponent
     or PassiveRadarSensorComponent class. This is exactly the config the
     engine's own getSensorTargets already reads from, so a vehicle
     qualifying here is guaranteed to get real platform detections from it
@@ -29,6 +29,18 @@ Description:
     not a mission-designer-set number, so a vehicle with a genuinely
     narrow or short-ranged radar behaves like one for munition tracking
     too.
+
+    The sensor component actually lives under "Components >>
+    SensorsManagerComponent >> Components" in every vanilla Arma 3 vehicle
+    checked (this is the real, current nesting per BIS's own Sensors Config
+    Reference and the Arma 3 sensor-overhaul devblog; a bare top-level
+    "Sensors" class was an earlier assumption in this codebase that turned
+    out to be wrong -- confirmed the hard way when B_Radar_System_01_F, the
+    vanilla AA radar unit, never once registered as having radar during
+    testing despite very obviously having one in-game). Both paths are
+    checked (Components-nested first, since that's the real one; the older
+    bare "Sensors" path is kept as a fallback for any mod vehicle that might
+    still use it) rather than assuming either is universal.
 
     Launcher/CIWS: walks every currently-loaded magazine (magazinesAllTurrets,
     so a resupplied/rearmed vehicle is reflected correctly) and, for each
@@ -78,16 +90,30 @@ params ["_vehicle"];
 
 private _vehicleConfig = configOf _vehicle;
 
+// Given a vehicle or turret config entry, returns the config holding its
+// ActiveRadarSensorComponent/PassiveRadarSensorComponent classes directly
+// as sub-classes, checking the REAL nesting first (Components >>
+// SensorsManagerComponent >> Components) and falling back to a bare
+// top-level "Sensors" class for any vehicle/mod that still uses the older
+// structure -- configNull (isClass false) if neither exists.
+private _fnSensorsRoot = {
+    private _cfg = _this;
+    private _real = _cfg >> "Components" >> "SensorsManagerComponent" >> "Components";
+    if (isClass _real) exitWith { _real };
+    _cfg >> "Sensors"
+};
+
 // configProperties [configEntry, conditionString, recursive] (unary,
 // single array argument) lists a config entry's sub-entries matching
-// condition -- "isClass _x" filters to sub-classes only (a Turrets/
-// Sensors block also carries plain scalar properties we don't want here).
+// condition -- "isClass _x" filters to sub-classes only (this block also
+// carries plain scalar properties we don't want here).
 //
 // Returns [range, arc] for the first Active/PassiveRadarSensorComponent
-// found under a Sensors config, or [] if none qualifies. Range is the
-// largest maxRange across the component's own target-type sub-classes
-// (AirTarget, GroundTarget, ...); arc is its own angleRangeHorizontal, or
-// 360 if that property isn't defined (omnidirectional).
+// found directly under the given sensors-root config (see _fnSensorsRoot
+// above), or [] if none qualifies. Range is the largest maxRange across
+// the component's own target-type sub-classes (AirTarget, GroundTarget,
+// ...); arc is its own angleRangeHorizontal, or 360 if that property isn't
+// defined (omnidirectional).
 private _findRadarComponent = {
     private _sensorsCfg = _this;
     private _result = [];
@@ -97,6 +123,7 @@ private _findRadarComponent = {
         } else {
             if (isClass (_x >> "PassiveRadarSensorComponent")) then { _x >> "PassiveRadarSensorComponent" } else { configNull }
         };
+
         if (isClass _radarCfg) exitWith {
             private _maxRange = 0;
             {
@@ -127,8 +154,9 @@ private _radarArc = 360;
 // updating them (the assigned values would be lost the moment each if-block
 // exits). Plain `_radarRange = ...` assignment (no `private`) correctly
 // walks up to the existing outer declaration instead.
-if (isClass (_vehicleConfig >> "Sensors")) then {
-    private _found = (_vehicleConfig >> "Sensors") call _findRadarComponent;
+private _vehicleSensorsRoot = _vehicleConfig call _fnSensorsRoot;
+if (isClass _vehicleSensorsRoot) then {
+    private _found = _vehicleSensorsRoot call _findRadarComponent;
     if (_found isNotEqualTo []) then {
         _hasRadar = true;
         _radarRange = _found select 0;
@@ -137,12 +165,15 @@ if (isClass (_vehicleConfig >> "Sensors")) then {
 };
 if (!_hasRadar && {isClass (_vehicleConfig >> "Turrets")}) then {
     {
-        if (!_hasRadar && {isClass (_x >> "Sensors")}) then {
-            private _found = (_x >> "Sensors") call _findRadarComponent;
-            if (_found isNotEqualTo []) then {
-                _hasRadar = true;
-                _radarRange = _found select 0;
-                _radarArc = _found select 1;
+        if (!_hasRadar) then {
+            private _turretSensorsRoot = _x call _fnSensorsRoot;
+            if (isClass _turretSensorsRoot) then {
+                private _found = _turretSensorsRoot call _findRadarComponent;
+                if (_found isNotEqualTo []) then {
+                    _hasRadar = true;
+                    _radarRange = _found select 0;
+                    _radarArc = _found select 1;
+                };
             };
         };
     } forEach (configProperties [(_vehicleConfig >> "Turrets"), "isClass _x", false]);
