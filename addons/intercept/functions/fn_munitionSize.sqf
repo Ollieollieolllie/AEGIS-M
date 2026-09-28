@@ -12,7 +12,7 @@ Description:
 
     indirectHitRange is engine-mandatory for anything meant to actually
     explode (the engine uses it directly for splash damage, so it's
-    populated consistently across vanilla, ACE3, RHS, and CUP ammo rather
+    populated consistently across vanilla and modded ammo alike rather
     than being an optional/author-forgotten field), and scales monotonically
     with real-world warhead scale: near-zero for small arms/unguided AT
     rockets, moderate for a MANPAD/Titan-class missile, large for an anti-

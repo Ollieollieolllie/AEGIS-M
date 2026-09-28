@@ -22,7 +22,7 @@
 [
     "aegism_main_debugDraw",
     "CHECKBOX",
-    ["Enable Debug 3D Draw", "Draws pooled contacts, claims, engagement envelopes, and each System's acquired target/LOS check, similar to ACE's missile guidance debug draw. Client-side only, no effect on gameplay."],
+    ["Enable Debug 3D Draw", "Draws pooled contacts, claims, engagement envelopes, and each System's acquired target/LOS check. Client-side only, no effect on gameplay."],
     ["AEGIS-M", "Debug"],
     false,
     0

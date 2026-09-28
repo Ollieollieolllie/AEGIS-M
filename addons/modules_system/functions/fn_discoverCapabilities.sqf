@@ -19,8 +19,8 @@ Description:
     -- but getSensorTargets only reaches CfgVehicles-based objects with
     real target-size properties (radarTargetSize/irTargetSize/
     visualTargetSize); a fired CfgAmmo projectile has none of these (not
-    even ACE3's own guided-missile CfgAmmo entries define them), so it is
-    never itself a valid getSensorTargets result. Munitions are detected
+    even vanilla CfgAmmo entries define them), so it is never itself a
+    valid getSensorTargets result. Munitions are detected
     by a separate, dedicated pipeline instead (see aegism_detect_fnc_
     trackMunition), which needs this radar's own real detection reach --
     radarRange/radarArc below are read from the SAME ActiveRadar/

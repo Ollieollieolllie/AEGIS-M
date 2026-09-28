@@ -45,18 +45,18 @@ game's simulation, not a scripted projectile AEGIS-M spawns and steers
 itself. Aiming and firing themselves are scripted directly (lookAt to slew
 the turret, a real angle/elevation check against its live weaponDirection,
 then a single BIS_fnc_fire call once aligned) rather than handed to
-fireAtTarget's own AI judgement -- the same lookAt+BIS_fnc_fire pattern
-ACE3's own missile-defense system uses, adopted after fireAtTarget's shot
-count per call proved not to be a hard guarantee. If [ACE3](https://github.com/acemod/ACE3)
-is loaded and the fired ammo declares real ACE missile guidance, AEGIS-M
-also hands the target to ACE's own guidance system so the shot actually
-homes rather than flying ballistic -- note ACE's own "Missile Guidance"
-setting must allow AI-fired shots for this to take effect.
+fireAtTarget's own AI judgement, adopted after fireAtTarget's shot count
+per call proved not to be a hard guarantee. If a third-party scripted
+missile guidance mod is loaded and the fired ammo declares real scripted
+missile guidance, AEGIS-M also hands the target to that mod's own guidance
+system so the shot actually homes rather than flying ballistic -- note
+that mod's own missile guidance setting must allow AI-fired shots for this
+to take effect.
 
 **Intercepting a munition needs a proximity fuse, because Arma has no
 projectile-vs-projectile hit detection at all.** A fired interceptor is
-tracked frame-by-frame (closest-point-of-approach to its target, the same
-technique ACE's own missile-defense system uses) and detonated for real
+tracked frame-by-frame (closest-point-of-approach to its target) and
+detonated for real
 (triggerAmmo, genuine splash effects) once it closes within its own real
 blast radius or starts moving away again having already passed its closest
 point. A munition target has no hitpoints/damage pipeline for that splash
@@ -111,8 +111,7 @@ off by default, client-side/no gameplay effect) draws pooled contacts,
 radar range, and every active engagement -- Site-wide assignments or a
 standalone System's own acquired target, including live LOS state --
 directly from the same variables the detection/intercept pipeline itself
-reads and writes, similar in spirit to ACE missileguidance's own debug
-draw.
+reads and writes.
 
 ## License
 

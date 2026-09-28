@@ -4,16 +4,13 @@ Function: aegism_intercept_fnc_interceptorPFH
 Description:
     Proximity-fuse tracker for one of AEGIS-M's own fired interceptors,
     started by aegism_intercept_fnc_fireWeapon the instant it captures the
-    real projectile object resulting from its own fireAtTarget command.
+    real projectile object resulting from its own fire command.
     Necessary, not optional: Arma's damage system has no real notion of a
     projectile-vs-projectile hit at all -- a missile intercepting another
     missile has no meaningful hitbox/HandleDamage pipeline the way a unit or
     vehicle does, so relying on the game's own collision to ever register a
     kill against a munition target would simply never happen, no matter how
-    accurate the interceptor's own guidance is. This mirrors the same
-    approach (and the same closest-point-of-approach math) as ACE3's own
-    missile_defense addon's interceptor PFH, converged on independently for
-    the same underlying reason.
+    accurate the interceptor's own guidance is.
 
     Every frame, computes the minimum distance between the interceptor's
     flight segment since the last tick and the target's current position

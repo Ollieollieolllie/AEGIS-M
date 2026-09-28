@@ -3,8 +3,7 @@ Function: aegism_fnc_debugDraw
 
 Description:
     Per-frame 3D debug visualisation of AEGIS-M's live detection/engagement
-    state, in the spirit of ACE missileguidance's own debug draw (seeker
-    cone/lock/target line): pooled contacts, network claims, and each
+    state: pooled contacts, network claims, and each
     System's acquired target + LOS check, all drawn directly from the same
     variables the real detection/intercept pipeline reads and writes, so
     what's on screen is exactly what the mod is actually doing, not a

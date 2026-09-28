@@ -9,14 +9,13 @@ Description:
     if the vehicle's crew had fired it themselves.
 
     Aiming and firing are deliberately split from the crew's own AI
-    engagement judgement, using the same lookAt + angle/elevation-gated +
-    BIS_fnc_fire pattern as ACE3's own missile_defense addon (PR #10965,
-    fnc_systemPFH.sqf) rather than fireAtTarget -- switched after fireAtTarget
-    was suspected (and never fully ruled out) of delegating to the AI's own
-    internal engagement/fire-control state machine rather than firing
-    literally one round per call; BIKI documentation and community reports
-    both indicate fireAtTarget's shot count isn't a hard per-call guarantee,
-    only a fire ORDER handed to AI judgement. lookAt is called every
+    engagement judgement, using a lookAt + angle/elevation-gated +
+    BIS_fnc_fire pattern rather than fireAtTarget -- switched after
+    fireAtTarget was suspected (and never fully ruled out) of delegating to
+    the AI's own internal engagement/fire-control state machine rather than
+    firing literally one round per call; BIKI documentation and community
+    reports both indicate fireAtTarget's shot count isn't a hard per-call
+    guarantee, only a fire ORDER handed to AI judgement. lookAt is called every
     invocation (idempotent -- just refreshes the turret's aim goal) so the
     turret keeps slewing toward the target across ticks even on calls that
     end up not firing; the actual shot only fires once the turret's real,
@@ -39,31 +38,29 @@ Description:
     shot this cycle) and leaves the actual hit-or-miss outcome entirely to
     the game's own AI skill/ammo accuracy/guidance simulation.
 
-    ACE missileguidance handoff: neither fireAtTarget nor BIS_fnc_fire has
-    any interaction whatsoever with ace_missileguidance -- ACE's onFired
-    handler resolves its guidance target from "ace_missileguidance_target"
-    (or, for a vanilla/tab-locked fallback, missileTarget) read off the
-    SHOOTER unit at the instant of firing, not from any argument to the fire
-    command itself. Left alone, a magazine with a real ACE Missileguidance
-    config would fire genuinely unguided/ballistic -- no error, it just
-    flies straight and misses anything that moves, which would look like a
-    reliability/accuracy problem rather than what it actually is. So: if
-    the loaded ammo declares an explicit (non-inherited) "ace_missileguidance"
-    config class with enabled=1, the target is written to that variable on
-    the specific turret's crewman (turretUnit, not the vehicle) immediately
-    before firing. This is a no-op read/write on any vehicle without ACE
-    loaded (isNil guards it) or on plain vanilla-guided/unguided ammo (no
-    such config class to find).
+    Third-party missile-guidance-mod handoff: neither fireAtTarget nor
+    BIS_fnc_fire has any interaction whatsoever with that mod's own
+    scripted missile guidance -- its own Fired handler resolves its
+    guidance target from a variable it reads off the SHOOTER unit at the
+    instant of firing, not from any argument to the fire command itself.
+    Left alone, a magazine with a real scripted-guidance config would fire
+    genuinely unguided/ballistic -- no error, it just flies straight and
+    misses anything that moves, which would look like a reliability/
+    accuracy problem rather than what it actually is. So: if the loaded
+    ammo declares an explicit (non-inherited) scripted-guidance config
+    class with enabled=1, the target is written to that mod's own expected
+    variable on the specific turret's crewman (turretUnit, not the
+    vehicle) immediately before firing. This is a no-op read/write on any
+    vehicle without that mod loaded (isNil guards it) or on plain vanilla-
+    guided/unguided ammo (no such config class to find).
 
-    This does NOT, by itself, guarantee ACE actually homes the round: ACE's
-    own onFired also requires its missile guidance system setting
-    (GVAR(enabled), the "Missile Guidance" module/CBA setting) to allow
-    AI-fired shots (level 2, "AI and Player"; level 1 is player-only and
-    silently drops every AI/scripted shot back to ballistic, level 0 is
-    fully off) -- that's a mission/server-side ACE setting AEGIS-M doesn't
-    own or override, so a mission using this framework with AI-crewed
-    Systems needs that setting at level 2 for guided interceptors to
-    actually guide.
+    This does NOT, by itself, guarantee the round actually homes: that
+    mod's own Fired handler also requires its own missile guidance system
+    setting to allow AI-fired shots (its default level is player-only and
+    silently drops every AI/scripted shot back to ballistic) -- that's a
+    mission/server-side setting AEGIS-M doesn't own or override, so a
+    mission using this framework with AI-crewed Systems needs that setting
+    raised to allow AI for guided interceptors to actually guide.
 
     Proximity fuse: Arma's damage system has no real projectile-vs-
     projectile hit concept, so a launcher's shot at a munition target could
@@ -111,16 +108,12 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-// Same acceptable-angle/elevation concept and same DEFAULT VALUES as ACE3's
-// own missile_defense reference's own tuned CBA settings
-// (GVAR(launchAcceptableAngle) default 20, GVAR(launchAcceptableElevation)
-// default 5, from that addon's initSettings.inc.sqf) -- how close the
-// turret's real current aim has to be to the true target direction before
-// a shot is considered aimed rather than still slewing. Deliberately NOT
-// invented/guessed values: an earlier draft of this file used -45 for
-// elevation, which would have let a shot fire while pitched 45 degrees
-// BELOW horizontal -- physically implausible for real SAM/CIWS turret
-// geometry, and a much looser gate than ACE3's own real, tuned default.
+// How close the turret's real current aim has to be to the true target
+// direction before a shot is considered aimed rather than still slewing.
+// Deliberately NOT invented/guessed values: an earlier draft of this file
+// used -45 for elevation, which would have let a shot fire while pitched
+// 45 degrees BELOW horizontal -- physically implausible for real SAM/CIWS
+// turret geometry, corrected to a sane real-world-plausible default.
 #define AEGISM_LOOKAT_ACCEPTABLE_ANGLE 20
 #define AEGISM_LOOKAT_ACCEPTABLE_ELEVATION 5
 
@@ -154,8 +147,7 @@ _system lookAt (getPosVisual _target);
 
 // Real, live angle/elevation check against the turret's own current aim --
 // not trusted from a previous tick, since lookAt's traverse takes real
-// time to complete. Mirrors ACE3's own missile_defense reference exactly
-// (fnc_systemPFH.sqf): decompose the turret's real weaponDirection into a
+// time to complete: decompose the turret's real weaponDirection into a
 // local (turret-relative) vector to get elevation, and compare the angle
 // between that direction and the true target direction.
 private _directionToTarget = (getPosASLVisual _system) vectorFromTo (getPosASLVisual _target);
@@ -176,15 +168,16 @@ if (random 1 > _reliability) exitWith {
 private _ammoClassName = getText (configFile >> "CfgMagazines" >> _magazineClass >> "ammo");
 
 if (!isNil "ace_missileguidance_fnc_onFired") then {
-    // ACE's own guidance config class is named after its component (PREFIX
-    // ace + COMPONENT missileguidance -> "ace_missileguidance", ACE's ADDON
-    // macro) via ADDON, e.g. "class ADDON: GVAR(type_Javelin) { enabled=1; };"
-    // nested directly in the ammo's CfgAmmo entry -- NOT "ACE_Missileguidance".
+    // That mod's own guidance config class is named after its own internal
+    // component naming convention, e.g. "class ADDON: GVAR(type_Javelin)
+    // { enabled=1; };" nested directly in the ammo's CfgAmmo entry -- the
+    // real rapified class name is "ace_missileguidance", not a
+    // differently-cased variant.
     private _guidanceCfg = configFile >> "CfgAmmo" >> _ammoClassName >> "ace_missileguidance";
-    // isClass alone would also match an INHERITED guidance block -- ACE's
-    // own onFired requires the ammo to declare it explicitly (configName
-    // check), so mirror that here rather than setting a target variable
-    // ACE would never actually read for this ammo.
+    // isClass alone would also match an INHERITED guidance block -- that
+    // mod's own Fired handler requires the ammo to declare it explicitly
+    // (configName check), so mirror that here rather than setting a target
+    // variable that would never actually be read for this ammo.
     if (isClass _guidanceCfg && {(configName _guidanceCfg) == "ace_missileguidance"} && {(getNumber (_guidanceCfg >> "enabled")) == 1}) then {
         private _gunner = _system turretUnit _turretPath;
         if (!isNull _gunner) then {

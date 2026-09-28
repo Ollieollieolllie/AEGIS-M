@@ -20,9 +20,9 @@ Description:
     radarTargetSize/irTargetSize/visualTargetSize properties, so
     getSensorTargets detects them correctly. It does NOT cover munitions:
     a fired CfgAmmo projectile has none of those target-size properties
-    (confirmed against vanilla CfgAmmo and even ACE3's own guided-missile
-    CfgAmmo entries, neither define them), so it is never itself a valid
-    getSensorTargets result regardless of range/LOS/radar state. Munitions
+    (confirmed against vanilla CfgAmmo, which never defines them either),
+    so it is never itself a valid getSensorTargets result regardless of
+    range/LOS/radar state. Munitions
     are detected by a separate, dedicated pipeline instead (aegism_detect_
     fnc_trackMunition, driven by a global "Fired" event handler) -- see
     that function's doc comment for why this has to be a hybrid rather than
