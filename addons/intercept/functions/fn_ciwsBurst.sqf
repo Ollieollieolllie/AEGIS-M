@@ -82,7 +82,7 @@ private _targetDesc = format ["%1 (%2)", _target, typeOf _target];
         // Record the actual end time (the pause counts from it) -- only if
         // no newer burst owns the turret.
         if (!_superseded) then { _system setVariable [_burstKey, [time min _endsAt, _target, _burstId], false]; };
-        diag_log text format ["[AEGIS-M] BURST-END: %1 fired %2 round(s) of %3 at %4 in %5s%6.", _system, (_ammoAtStart - _ammo) max 0, _weaponClass, _targetDesc, round ((time - _startedAt) * 10) / 10,
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " BURST-END: %1 fired %2 round(s) of %3 at %4 in %5s%6.", _system, (_ammoAtStart - _ammo) max 0, _weaponClass, _targetDesc, round ((time - _startedAt) * 10) / 10,
             ["", format [" (held %1s: barrel below the %2 deg CIWS minimum elevation)", round (_elevationHeld * 10) / 10, _minElevation]] select (_elevationHeld > 0)];
     };
 

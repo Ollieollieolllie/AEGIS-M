@@ -14,9 +14,11 @@ class CfgFunctions
             class turretPoints {R;};
             class aimWeapon {R;};
             class elevationAngle {R;};
+            class envelopeBounds {R;};
             class inEnvelope {R;};
             class canEngage {R;};
             class timeToImpact {R;};
+            class launcherInterval {R;};
             class onSystemFired {R;};
             class targetHitRadius {R;};
             class selectTarget {R;};

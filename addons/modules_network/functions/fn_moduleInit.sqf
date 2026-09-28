@@ -125,7 +125,7 @@ private _engagementData = createHashMapFromArray [
     ["maxAltitude", _logic getVariable ["maxAltitude", 0]],
     ["targetPriority", _logic getVariable ["targetPriority", "soonestImpact"]],
     ["salvoSize", _logic getVariable ["salvoSize", 1]],
-    ["minShotInterval", _logic getVariable ["minShotInterval", 4]],
+    ["minShotInterval", _logic getVariable ["minShotInterval", 0]],
     ["ciwsBurstMin", _logic getVariable ["ciwsBurstMin", 3]],
     ["ciwsBurstMax", _logic getVariable ["ciwsBurstMax", 5]],
     ["ciwsBurstPause", _logic getVariable ["ciwsBurstPause", 1]],
@@ -255,7 +255,7 @@ private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_syst
         params ["_logic", "_logicNetId"];
         private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
         missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners - [_logic]];
-        diag_log text format ["[AEGIS-M] WARNING: Site (netId %1) was deleted -- pruned from AEGISM_allPoolOwners. Any vehicle still referencing it will lose battery contacts/deconfliction.", _logicNetId];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " WARNING: Site (netId %1) was deleted -- pruned from AEGISM_allPoolOwners. Any vehicle still referencing it will lose battery contacts/deconfliction.", _logicNetId];
     }
 ] call aegism_fnc_pollSyncedObjects;
 
@@ -277,4 +277,4 @@ if (isServer) then {
     }, 0.5, [_logic]] call CBA_fnc_addPerFrameHandler;
 };
 
-diag_log text format ["[AEGIS-M] Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];
+diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];

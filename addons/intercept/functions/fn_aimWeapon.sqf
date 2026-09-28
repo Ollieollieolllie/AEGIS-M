@@ -22,8 +22,17 @@ Description:
     the round can close, or the meeting point is beyond the weapon's reach)
     the turret tracks the target itself and the weapon is not aligned.
 
-    Tolerances: AEGISM_AIM_TOLERANCE_LAUNCHER 20 degrees (ACE3's own tuned
-    missile-defense launch angle), AEGISM_AIM_TOLERANCE_CIWS 2 degrees.
+    Alignment:
+        ciws - barrel within AEGISM_AIM_ON_TARGET degrees of the aim point.
+        launcher - barrel within AEGISM_AIM_ON_TARGET degrees, OR the turret
+            has stopped closing on the aim point (the angle hasn't shrunk for
+            AEGISM_AIM_SETTLE_TICKS checks in a row: it's at its elevation
+            limit, or trailing a fast-moving lead point) -- either way only
+            inside the missile's own lock cone (CfgAmmo missileLockCone, no
+            limit if the ammo doesn't set one), so it never fires at
+            something its seeker can't take. It used to be a flat 20 degrees,
+            which a turret still slewing passed on its way past: missiles
+            left the rail well off the aim point and turned hard after.
     Barrel direction: aegism_intercept_fnc_barrelDirection.
 
     Shared turrets: a vehicle whose launcher and gun sit on the same turret
@@ -33,9 +42,11 @@ Description:
     OWNERSHIP seconds and only checks alignment.
 
     Records [angle, tolerance, time, target, feasible] as "AEGISM_aim_<role>"
-    on the System for aegism_fnc_debugDraw and aegism_intercept_fnc_ciwsBurst
+    on the System for aegism_fnc_debugDraw, aegism_intercept_fnc_fireWeapon
+    (the launch angle in its FIRE line) and aegism_intercept_fnc_ciwsBurst
     (which only fires while this is fresh, on its target, feasible and in
-    tolerance).
+    tolerance). Per turret, "AEGISM_aimTrend_<turretPath>" [angle, target,
+    ticks not closing] tracks whether a launcher's turret is still closing.
 
 Parameters:
     _system - the firing System vehicle <OBJECT>
@@ -54,15 +65,15 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-#define AEGISM_AIM_TOLERANCE_LAUNCHER 20
-#define AEGISM_AIM_TOLERANCE_CIWS 2
+#define AEGISM_AIM_ON_TARGET 2
+#define AEGISM_AIM_SETTLE_TICKS 2
 #define AEGISM_CIWS_AIM_OWNERSHIP 0.5
 
 params ["_system", "_target", "_weaponInfo", "_role"];
-_weaponInfo params ["_turretPath", "_weaponClass"];
+_weaponInfo params ["_turretPath", "_weaponClass", "_magazineClass"];
 
 private _isCiws = _role == "ciws";
-private _tolerance = [AEGISM_AIM_TOLERANCE_LAUNCHER, AEGISM_AIM_TOLERANCE_CIWS] select _isCiws;
+private _tolerance = AEGISM_AIM_ON_TARGET;
 
 // The intercept is solved from the MUZZLE, and the camera lockCameraTo
 // points is aimed at the aim point shifted by (camera - muzzle), so the
@@ -87,4 +98,16 @@ private _angle = acos (((_barrel vectorCos (_origin vectorFromTo _aimPoint)) min
 
 _system setVariable [format ["AEGISM_aim_%1", _role], [_angle, _tolerance, time, _target, _feasible], false];
 
-[_feasible && {_angle <= _tolerance}, _angle, _tolerance, _aimPoint, _feasible]
+private _aligned = _feasible && {_angle <= _tolerance};
+if (!_isCiws) then {
+    private _trendKey = format ["AEGISM_aimTrend_%1", _turretPath];
+    (_system getVariable [_trendKey, [1e9, objNull, 0]]) params ["_lastAngle", "_lastTarget", "_notClosing"];
+    _notClosing = if (_lastTarget == _target && {_angle >= _lastAngle}) then { _notClosing + 1 } else { 0 };
+    _system setVariable [_trendKey, [_angle, _target, _notClosing], false];
+
+    private _lockCone = getNumber (configFile >> "CfgAmmo" >> getText (configFile >> "CfgMagazines" >> _magazineClass >> "ammo") >> "missileLockCone");
+    if (_lockCone <= 0) then { _lockCone = 180; };
+    _aligned = _feasible && {_angle <= _lockCone} && {_angle <= _tolerance || {_notClosing >= AEGISM_AIM_SETTLE_TICKS}};
+};
+
+[_aligned, _angle, _tolerance, _aimPoint, _feasible]

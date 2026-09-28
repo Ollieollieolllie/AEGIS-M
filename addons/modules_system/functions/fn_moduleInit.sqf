@@ -101,7 +101,7 @@ private _hasWeapons = (_capabilities get "launcherWeapons") isNotEqualTo [] || {
 private _hasAnyCapability = (_capabilities get "hasRadar") || _hasWeapons;
 if (!_hasAnyCapability) exitWith {
     _vehicle setVariable ["AEGISM_systemInitialized", true, false];
-    diag_log text format ["[AEGIS-M] DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
 };
 
 // Adoption policy: a vehicle synced to a Site is always adopted (the
@@ -116,7 +116,7 @@ private _standaloneEligible = ("aegism_main_standaloneAdoption" call CBA_setting
 if (!_synced && !_standaloneEligible) exitWith {
     if !(_vehicle getVariable ["AEGISM_systemDeferred", false]) then {
         _vehicle setVariable ["AEGISM_systemDeferred", true, false];
-        diag_log text format ["[AEGIS-M] DISCOVERY: %1 (%2) has AEGIS-M capability (radar=%3 launchers=%4 ciws=%5) but is not synced to a Site and is not a self-contained AA platform (or standalone adoption is disabled) -- deferred until synced.", _vehicle, typeOf _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons")];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has AEGIS-M capability (radar=%3 launchers=%4 ciws=%5) but is not synced to a Site and is not a self-contained AA platform (or standalone adoption is disabled) -- deferred until synced.", _vehicle, typeOf _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons")];
     };
 };
 
@@ -162,7 +162,7 @@ private _overrides = [];
 private _engagementSettings = [_vehicle, _overrides] call aegism_system_fnc_resolveEngagementSettings;
 private _crew = [_vehicle, _overrides] call aegism_system_fnc_resolveCrew;
 if (_overrides isNotEqualTo []) then {
-    diag_log text format ["[AEGIS-M] OVERRIDES: %1 uses its own vehicle settings instead of its Site's: %2", _vehicle, _overrides joinString ", "];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OVERRIDES: %1 uses its own vehicle settings instead of its Site's: %2", _vehicle, _overrides joinString ", "];
 };
 
 _vehicle setVariable ["AEGISM_resolvedContactSource", _contactSource, false];
@@ -218,10 +218,10 @@ if (_weaponTurretPaths isNotEqualTo []) then {
     [_vehicle, _weaponTurretPaths, true] call aegism_fnc_setWeaponAiSuppressed;
 };
 
-// CIWS ticks 5x faster than launchers: a gun has to keep re-aiming at a
-// moving lead point, and a 0.5s cadence let fast crossing targets move
-// several degrees between aim updates, so the 2-degree CIWS gate rarely
-// passed. Launchers don't need it (guided rounds, 20-degree gate).
+// Every weapon ticks at 0.1s: its turret has to keep re-aiming at a moving
+// lead point, and a 0.5s cadence let a fast target move several degrees
+// between aim updates, so a 2-degree gate rarely passed. Launchers used to
+// tick at 0.5s behind a 20-degree gate, and fired while still slewing.
 if (isServer) then {
     {
         private _role = _x;
@@ -232,8 +232,8 @@ if (isServer) then {
                 [_pfhHandle] call CBA_fnc_removePerFrameHandler;
             };
             [_vehicle, _role] call aegism_intercept_fnc_engagementLoop;
-        }, [0.5, 0.1] select (_role == "ciws"), [_vehicle, _role]] call CBA_fnc_addPerFrameHandler;
+        }, 0.1, [_vehicle, _role]] call CBA_fnc_addPerFrameHandler;
     } forEach _activeWeaponRoles;
 };
 
-diag_log text format ["[AEGIS-M] System initialized on %1 -- hasRadar=%2 launcherWeapons=%3 ciwsWeapons=%4 contactSource=%5", _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];
+diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " System initialized on %1 -- hasRadar=%2 launcherWeapons=%3 ciwsWeapons=%4 contactSource=%5", _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];

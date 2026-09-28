@@ -66,7 +66,7 @@ private _ammoBefore = _system magazineTurretAmmo [_magazineClass, _turretPath];
 if (_ammoBefore <= 0) exitWith { -1 };
 
 if (random 1 > _reliability) exitWith {
-    diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 (%2) at %3 -- crew reliability roll failed (reliability=%4), losing this fire cycle.", _system, _role, _target, _reliability];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-SKIP: %1 (%2) at %3 -- crew reliability roll failed (reliability=%4), losing this fire cycle.", _system, _role, _target, _reliability];
     0
 };
 
@@ -98,10 +98,13 @@ private _contextLifetime = [2, _burstDuration + 0.5] select _isCiws;
 _system setVariable [format ["AEGISM_capture_%1", _weaponClass], [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition], false];
 
 if (_isCiws) then {
-    diag_log text format ["[AEGIS-M] FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
     [_system, _target, _weaponInfo, _burstDuration] call aegism_intercept_fnc_ciwsBurst;
 } else {
-    diag_log text format ["[AEGIS-M] FIRE: %1 (%2) fires %3 (%4, %5 rounds left) at %6 (%7) -- %8.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _role];
+    // Launch angle: barrel vs aim point at the alignment check this shot
+    // passed (aegism_intercept_fnc_aimWeapon's record).
+    private _launchAngle = (_system getVariable ["AEGISM_aim_launcher", [-1]]) select 0;
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) fires %3 (%4, %5 rounds left) at %6 (%7) -- %8, barrel %9 deg off aim point.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _role, round (_launchAngle * 10) / 10];
     [_system, _weaponClass, _turretPath] call BIS_fnc_fire;
 };
 
@@ -122,7 +125,7 @@ if (!_isCiws) then {
         private _commanded = (_system getVariable [_shotsKey, 0]) - _shotsBefore;
         // A reload in the window refills the count; only an excess is an anomaly.
         if (_consumed > _commanded) then {
-            diag_log text format ["[AEGIS-M] FIRE-ANOMALY: %1 -- %2 fire command(s) consumed %3 missiles.", _system, _commanded, _consumed];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-ANOMALY: %1 -- %2 fire command(s) consumed %3 missiles.", _system, _commanded, _consumed];
         };
     }, [_system, _magazineClass, _turretPath, _ammoBefore, _shotsKey, _shotsBefore], 1] call CBA_fnc_waitAndExecute;
 };

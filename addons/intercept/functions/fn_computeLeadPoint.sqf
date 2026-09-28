@@ -37,6 +37,12 @@ Description:
     _useAcceleration false for a side-effect-free, velocity-only estimate
     (the Site coordinator's envelope check).
 
+    Planning ahead (the Site coordinator's layered reserve, aegism_intercept_
+    fnc_assignEngagements): _delay solves for a shot fired that many seconds
+    from now, from the target's state projected to that moment, and
+    _ballistic projects it on gravity alone -- exact for an unguided
+    artillery round or rocket (CfgAmmo airFriction 0).
+
 Parameters:
     _system - the firing System vehicle (keys the acceleration sample) <OBJECT>
     _origin - ASL position the round/missile leaves from <ARRAY>
@@ -44,6 +50,9 @@ Parameters:
     _weaponInfo - weaponInfo, see aegism_system_fnc_discoverCapabilities <ARRAY>
     _role - "ciws" (gun) or "launcher" (missile) <STRING>
     _useAcceleration - optional, default true <BOOLEAN>
+    _delay - optional, seconds from now the shot leaves, default 0 <NUMBER>
+    _ballistic - optional, project the target on gravity alone, default
+        false <BOOLEAN>
 
 Returns:
     [aimPoint ASL <ARRAY>, feasible <BOOLEAN>, timeOfFlight s <NUMBER>
@@ -64,7 +73,7 @@ Author:
 // (e^30 ~ 1e13) -- treated as "can't get there" rather than overflowing.
 #define AEGISM_MAX_DRAG_EXPONENT 30
 
-params ["_system", "_origin", "_target", "_weaponInfo", "_role", ["_useAcceleration", true]];
+params ["_system", "_origin", "_target", "_weaponInfo", "_role", ["_useAcceleration", true], ["_delay", 0], ["_ballistic", false]];
 _weaponInfo params ["", "_weaponClass", "_magazineClass", "", "", ["_maxRange", 0]];
 
 private _targetPos = getPosASLVisual _target;
@@ -134,6 +143,12 @@ if (_useAcceleration) then {
     } else {
         _target setVariable [_sampleKey, [_targetVelocity, time, [0, 0, 0]], false];
     };
+};
+if (_ballistic) then { _targetAcceleration = [0, 0, -AEGISM_GRAVITY]; };
+if (_delay > 0) then {
+    _targetPos = _targetPos vectorAdd (_targetVelocity vectorMultiply _delay) vectorAdd (_targetAcceleration vectorMultiply (0.5 * _delay * _delay));
+    _targetVelocity = _targetVelocity vectorAdd (_targetAcceleration vectorMultiply _delay);
+    _currentDistance = _origin distance _targetPos;
 };
 
 private _fnOutOfReach = {

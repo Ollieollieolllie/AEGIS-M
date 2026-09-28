@@ -73,9 +73,9 @@ private _lastWarning = _systemObject getVariable ["AEGISM_lastContactSourceWarni
 if (_warning != _lastWarning) then {
     _systemObject setVariable ["AEGISM_lastContactSourceWarning", _warning, false];
     if (_warning != "") then {
-        diag_log text ("[AEGIS-M] WARNING: " + _warning);
+        diag_log text ("[AEGIS-M] t=" + (time toFixed 1) + " WARNING: " + _warning);
     } else {
-        diag_log text format ["[AEGIS-M] System on %1 now has a contact source: %2 (earlier warning resolved).", _systemObject, _sources];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " System on %1 now has a contact source: %2 (earlier warning resolved).", _systemObject, _sources];
     };
 };
 

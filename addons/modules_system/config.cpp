@@ -260,7 +260,7 @@ class Cfg3DEN
                     AEGISM_OVR_NUMBER(AEGISM_ovr_minRange,"AEGISM_ovr_minRange","if (_value != '') then {_this setVariable ['AEGISM_ovr_minRange', parseNumber _value]};","Min Range (m)","On top of the missile's own config minimum. 0 = only the missile's own. Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_maxRange,"AEGISM_ovr_maxRange","if (_value != '') then {_this setVariable ['AEGISM_ovr_maxRange', parseNumber _value]};","Max Range (m)","0 = the missile's own config reach. Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_salvoSize,"AEGISM_ovr_salvoSize","if (_value != '') then {_this setVariable ['AEGISM_ovr_salvoSize', parseNumber _value]};","Missiles per Target","Blank = Site setting.");
-                    AEGISM_OVR_NUMBER(AEGISM_ovr_minShotInterval,"AEGISM_ovr_minShotInterval","if (_value != '') then {_this setVariable ['AEGISM_ovr_minShotInterval', parseNumber _value]};","Seconds Between Missiles","Blank = Site setting.");
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_minShotInterval,"AEGISM_ovr_minShotInterval","if (_value != '') then {_this setVariable ['AEGISM_ovr_minShotInterval', parseNumber _value]};","Seconds Between Missiles","0 = Auto: this launcher's own config fire rate. Blank = Site setting.");
 
                     // --------------------------------------------------- CIWS
                     class AEGISM_ovr_section_ciws

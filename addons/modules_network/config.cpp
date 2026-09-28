@@ -355,12 +355,12 @@ class CfgVehicles
             class MinShotInterval
             {
                 displayName = "Seconds Between Missiles";
-                tooltip = "Minimum seconds between two missiles from the same launcher (scaled by Crew Temperament).";
+                tooltip = "Minimum seconds between two missiles from the same launcher (scaled by Crew Temperament). 0 = Auto: each launcher's own fire rate from its weapon config, which scales with the missile (vanilla MIM-145 Defender 4s, Mk49 Spartan 2s, Mk21 Centurion 1s).";
                 property = "minShotInterval";
                 control = "Edit";
                 expression = "_this setVariable ['minShotInterval', _value];";
                 typeName = "NUMBER";
-                defaultValue = "4";
+                defaultValue = "0";
             };
 
             // ========================================================== CIWS

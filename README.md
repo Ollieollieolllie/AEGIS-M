@@ -70,7 +70,11 @@ its **intercept point**: where its round or missile would meet the target,
 from real config kinematics (gun: muzzle velocity, drag, drop; missile:
 launch speed, thrust, top speed) and the target's measured velocity and
 acceleration. Launchers therefore leave the rail already pointed at the
-meeting point instead of turning hard after launch. A target with **no
+meeting point instead of turning hard after launch: a launcher fires only
+with its barrel within 2 degrees of that point, or once its turret has
+stopped closing on it (at its elevation limit, or trailing a fast lead
+point) with the target inside the missile's own lock cone
+(`missileLockCone`). The RPT's `FIRE` line gives the launch angle. A target with **no
 feasible intercept** -- receding faster than the round can close, or
 meeting point beyond the weapon's reach or the round's lifetime -- is not
 engaged, and a weapon already on it is released (`NO-SOLUTION` /
@@ -98,7 +102,11 @@ hit. A munition target has no hitpoints/damage pipeline for that splash
 to actually kill it through, so it's separately detonated too; a real
 platform target (helicopter/drone) is left to its own genuine hitpoints and
 the interceptor's real splash damage, since it can legitimately survive a
-near miss.
+near miss. A **carrier** round (one that releases a payload in flight, like
+the MLRS rocket `R_230mm_HE` and its `R_230mm_fly` warhead, or a cluster
+round) is detonated too, but whatever it releases is deleted as it's
+created -- detonating a carrier on its own just releases the warhead, which
+used to cost a second interceptor for every rocket.
 
 **AEGISM_Module_Site** ("AEGIS-M: Site", in the AEGIS-M module folder in
 both Eden and Zeus) is the one placeable/syncable AEGIS-M module. Sync
@@ -122,11 +130,30 @@ fast-cycling magazine like a RAM launcher takes the bulk of a rocket
 barrage instead of a long-range SAM. Each launcher works its queue
 soonest-impact first (time to impact from the round's ballistic arc), plans
 it with its own **measured** time per missile (lost reliability rolls and
-re-aiming included), and a queued round it can no longer reach in time is
-**handed off** early to a launcher that can (`HANDOFF` in the RPT).
+re-aiming included), and is never queued past its **last missile**. A
+queued round it can no longer reach in time, or has no missile left for, is
+**handed off** early to a launcher that can (`HANDOFF` in the RPT); an
+empty launcher gives its targets back at once.
+
+**Layered reserve.** Against incoming munitions, long-range launchers hold
+their missiles while the cheaper, shorter-range layer can cope. Every half
+second the Site plays each launcher tier forward (shortest reach first):
+its launchers' queues, cooldowns, measured shot spacing and missiles left,
+and when each incoming round will enter each launcher's envelope along its
+ballistic path. A round a cheaper tier is predicted to kill in time is left
+to it (`RESERVE` in the RPT); only rounds no cheaper tier can take in time
+-- the volume has saturated it -- open up the long-range launchers
+(`SATURATION`). So a Patriot battery sitting behind RAM launchers doesn't
+spend its missiles on MLRS rockets the RAMs will handle, but steps in, early
+and far out, for the part of a barrage they can't.
+
 Guns are matched by warhead size, then distance. Automated (drone-crewed)
 systems ignore the crew model by default -- no reaction delay, no skipped
-fire cycles (Site setting "Crew Skill on Automated Systems"). CIWS can
+fire cycles (Site setting "Crew Skill on Automated Systems"). When a crewed
+launcher's reliability roll fails, the Site is told: the target is re-tasked
+to the rest of the Site straight away, and that launcher can't take it back
+until its lost fire cycle is over, so another weapon gets the next try
+(`ASSIGN-CLEAR ... crew failed to fire`). CIWS can
 engage in parallel with a launcher already working the same contact by
 default (a fast/close threat shouldn't wait on an unproven missile shot),
 or only as a last resort if the Site's Doctrine says so. A launcher shot is
@@ -159,7 +186,9 @@ reads and writes. Every System also shows a live status label (networked/
 standalone, contact source, per-role ammo, ASSIGNED, and live barrel
 alignment while aiming). An assigned weapon that isn't firing always logs
 why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
-`ASSIGN-CLEAR` with a reason.
+`ASSIGN-CLEAR` with a reason. Every AEGIS-M RPT line carries the mission's
+game time (`[AEGIS-M] t=123.4 ...`): the RPT's own timestamp is wall-clock
+time, which keeps running while the game is paused.
 
 **Site status hint** (CBA setting "AEGIS-M > Debug > Site Status Hint", off
 by default) shows a live board in the hint box: the nearest Site's vehicles
@@ -201,7 +230,7 @@ envelope, and all threat classes are engaged.
 | Min Range (m) | 0 | Extra minimum on top of the missile's own (MIM-145: 1000 m). |
 | Max Range (m) | 0 | 0 = the missile's own reach (MIM-145: 16000 m). |
 | Missiles per Target | 1 | Missiles fired before waiting for the result; re-engages if all miss. |
-| Seconds Between Missiles | 4 | Minimum gap between missiles from one launcher. |
+| Seconds Between Missiles | 0 | Minimum gap between missiles from one launcher. 0 = Auto: each launcher's own fire rate, the `reloadTime` of its weapon's fire mode, which scales with the missile (MIM-145 Defender 4 s, Mk49 Spartan 2 s, Mk21 Centurion 1 s). The RPT logs each launcher's rate as `FIRE-RATE`. |
 
 **CIWS (Guns)**
 

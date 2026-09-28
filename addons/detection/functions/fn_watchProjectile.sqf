@@ -39,6 +39,9 @@ if ((toLower getText (configOf _projectile >> "simulation")) == "shotsubmunition
     _projectile setVariable ["AEGISM_shooterSide", _shooterSide];
     _projectile addEventHandler ["SubmunitionCreated", {
         params ["_projectile", "_submunitionProjectile"];
+        // Intercepted by AEGIS-M: its payload is deleted as it's released
+        // (aegism_intercept_fnc_interceptorPFH), nothing to track.
+        if (_projectile getVariable ["AEGISM_intercepted", false]) exitWith {};
         [_submunitionProjectile, _projectile getVariable ["AEGISM_shooterSide", sideUnknown]] call aegism_detect_fnc_watchProjectile;
     }];
 };

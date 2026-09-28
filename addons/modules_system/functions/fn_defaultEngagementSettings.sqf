@@ -22,7 +22,9 @@ Returns:
             0 = no cap <NUMBER>
         targetPriority - "nearest" | "fastestClosing" | "highestValue" <STRING>
         salvoSize - rounds fired per engagement <NUMBER>
-        minShotInterval - seconds between shots in a salvo <NUMBER>
+        minShotInterval - seconds between two missiles from one launcher;
+            0 = Auto, each launcher's own config fire rate (aegism_intercept_
+            fnc_launcherInterval) <NUMBER>
         ciwsBurstMin, ciwsBurstMax - CIWS sustained-burst length, seconds;
             each burst picks a random length in this range <NUMBER>
         ciwsBurstPause - seconds a CIWS gun pauses between bursts <NUMBER>
@@ -50,7 +52,7 @@ createHashMapFromArray [
     ["maxAltitude", 0],
     ["targetPriority", "soonestImpact"],
     ["salvoSize", 1],
-    ["minShotInterval", 4],
+    ["minShotInterval", 0],
     ["ciwsBurstMin", 3],
     ["ciwsBurstMax", 5],
     ["ciwsBurstPause", 1],

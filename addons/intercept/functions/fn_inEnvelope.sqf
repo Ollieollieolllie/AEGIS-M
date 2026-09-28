@@ -56,18 +56,8 @@ Author:
 params ["_engagementSettings", "_weaponInfo", "_distance", "_height", ["_role", "launcher"], ["_elevation", 90]];
 
 if (_role == "ciws" && {_elevation < (_engagementSettings getOrDefault ["ciwsMinElevation", 5])}) exitWith { false };
-_weaponInfo params ["", "", "", "", ["_weaponMin", 0], ["_weaponMax", 0]];
 
-private _isCiws = _role == "ciws";
-private _doctrineMin = if (_isCiws) then { 0 } else {
-    [_engagementSettings getOrDefault ["minRange", 0]] call aegism_fnc_scaledRange
-};
-private _doctrineMax = [_engagementSettings getOrDefault [["maxRange", "ciwsMaxRange"] select _isCiws, 0]] call aegism_fnc_scaledRange;
-private _minAltitude = _engagementSettings getOrDefault ["minAltitude", 0];
-private _maxAltitude = _engagementSettings getOrDefault ["maxAltitude", 0];
-
-private _minRange = _weaponMin max _doctrineMin;
-private _maxRange = if (_doctrineMax > 0) then { _weaponMax min _doctrineMax } else { _weaponMax };
+([_engagementSettings, _weaponInfo, _role] call aegism_intercept_fnc_envelopeBounds) params ["_minRange", "_maxRange", "_minAltitude", "_maxAltitude"];
 
 (_distance >= _minRange)
     && {_distance <= _maxRange}

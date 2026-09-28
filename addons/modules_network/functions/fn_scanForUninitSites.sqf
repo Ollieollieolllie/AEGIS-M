@@ -59,7 +59,7 @@ Author:
     private _site = _x;
     if (isNil { _site getVariable "AEGISM_networkMembers" }) then {
         private _units = synchronizedObjects _site;
-        diag_log text format ["[AEGIS-M] FALLBACK-INIT: %1 never received its own Eden/Preview module activation (a known Preview-mode limitation, not an AEGIS-M bug) -- manually running aegism_network_fnc_moduleInit with %2 synced unit(s) found via synchronizedObjects.", _site, count _units];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FALLBACK-INIT: %1 never received its own Eden/Preview module activation (a known Preview-mode limitation, not an AEGIS-M bug) -- manually running aegism_network_fnc_moduleInit with %2 synced unit(s) found via synchronizedObjects.", _site, count _units];
         [_site, _units, true] call aegism_network_fnc_moduleInit;
     };
 } forEach (allMissionObjects "AEGISM_Module_Site");

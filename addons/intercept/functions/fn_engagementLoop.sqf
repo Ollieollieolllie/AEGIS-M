@@ -24,8 +24,9 @@ Description:
         2. Crew reaction time since assignment (CIWS capped at
            AEGISM_CIWS_REACTION_CAP: automated fire control).
         3. Fire cadence:
-             launcher - doctrine salvoSize per engagement, minShotInterval
-                 between shots (both crew-modulated)
+             launcher - doctrine salvoSize per engagement, the launcher's
+                 shot interval between shots (aegism_intercept_fnc_
+                 launcherInterval; both crew-modulated)
              ciws - sustained bursts (aegism_intercept_fnc_ciwsBurst) of a
                  random doctrine ciwsBurstMin..ciwsBurstMax seconds at the
                  gun's own rate of fire, ciwsBurstPause (crew-modulated)
@@ -38,7 +39,11 @@ Description:
            sibling with a different view).
         5. Alignment from step 1.
         6. Fire (aegism_intercept_fnc_fireWeapon). A failed crew
-           reliability roll costs one fire cycle (nextAttemptAt).
+           reliability roll costs one fire cycle (nextAttemptAt). A Site
+           launcher's lost cycle holds the whole turret ("AEGISM_turret
+           HoldUntil_<path>") and flags the assignment "crewFailed": the
+           coordinator re-tasks the contact to another weapon rather than
+           leaving it with a crew that just failed to shoot.
 
     Every silent wait is logged once per engagement (REACTING, SLEWING
     every AEGISM_SLEW_LOG_INTERVAL s, LOS-BLOCKED on change), so an assigned
@@ -97,7 +102,7 @@ private _salvoSize = _engagementSettings getOrDefault ["salvoSize", 1];
 
 // Hand a turret back to its crew once nothing has aimed it for
 // AEGISM_TURRET_RELEASE s. While engaged, aegism_intercept_fnc_aimWeapon
-// re-locks it every tick (0.5s at the slowest, the launcher interval).
+// re-locks it every tick (0.1s).
 {
     private _turretPath = _x select 0;
     private _lockKey = format ["AEGISM_turretLockAt_%1", _turretPath];
@@ -126,7 +131,7 @@ private _fnExecute = {
     if (time < (_state get "assignedAt") + _reactionTime) exitWith {
         if !(_state getOrDefault ["reactionLogged", false]) then {
             _state set ["reactionLogged", true];
-            diag_log text format ["[AEGIS-M] REACTING: %1 (%2) on %3 -- crew reaction %4s, turret slewing meanwhile.", _system, _role, _target, _reactionTime];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " REACTING: %1 (%2) on %3 -- crew reaction %4s, turret slewing meanwhile.", _system, _role, _target, _reactionTime];
         };
     };
 
@@ -145,21 +150,31 @@ private _fnExecute = {
         };
     };
 
-    // Launcher: minShotInterval since this LAUNCHER's last missile, whatever
-    // it was fired at ("AEGISM_turretShotAt_<turretPath>"). CIWS: the burst
-    // pause, counted from when the last burst ENDED (aegism_intercept_fnc_
-    // ciwsBurst rewrites endsAt to the actual end time).
-    private _interval = (_engagementSettings getOrDefault [["minShotInterval", "ciwsBurstPause"] select _isCiws, [4, 1] select _isCiws]) * (_crewMods get "shotIntervalMult");
+    // Launcher: its shot interval (aegism_intercept_fnc_launcherInterval --
+    // the setting, or Auto: the launcher's own config fire rate) since this
+    // LAUNCHER's last missile, whatever it was fired at ("AEGISM_turretShotAt_
+    // <turretPath>"). CIWS: the burst pause, counted from when the last burst
+    // ENDED (aegism_intercept_fnc_ciwsBurst rewrites endsAt to the actual end
+    // time).
+    private _baseInterval = if (_isCiws) then {
+        _engagementSettings getOrDefault ["ciwsBurstPause", 1]
+    } else {
+        [_system, _weaponInfo, _engagementSettings] call aegism_intercept_fnc_launcherInterval
+    };
+    private _interval = _baseInterval * (_crewMods get "shotIntervalMult");
     private _turretShotKey = format ["AEGISM_turretShotAt_%1", _turretPath];
     private _intervalFrom = [_system getVariable [_turretShotKey, -1], _burstEndsAt] select _isCiws;
 
+    private _turretHoldKey = format ["AEGISM_turretHoldUntil_%1", _turretPath];
+
     if (_intervalFrom >= 0 && {time < _intervalFrom + _interval}) exitWith {};
     if (time < (_state getOrDefault ["nextAttemptAt", -1])) exitWith {};
+    if (!_isCiws && {time < (_system getVariable [_turretHoldKey, -1])}) exitWith {};
 
     if (!_losClear) exitWith {
         if !(_state getOrDefault ["losBlocked", false]) then {
             _state set ["losBlocked", true];
-            diag_log text format ["[AEGIS-M] LOS-BLOCKED: %1 (%2) cannot see %3 -- holding, re-checking every tick.", _system, _role, _target];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOS-BLOCKED: %1 (%2) cannot see %3 -- holding, re-checking every tick.", _system, _role, _target];
         };
     };
     _state set ["losBlocked", false];
@@ -167,14 +182,15 @@ private _fnExecute = {
     if (!_feasible) exitWith {
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
-            diag_log text format ["[AEGIS-M] NO-SOLUTION: %1 (%2) holding on %3 -- no intercept inside the weapon's reach (target receding faster than the round can close, or meeting point beyond range).", _system, _role, _target];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " NO-SOLUTION: %1 (%2) holding on %3 -- no intercept inside the weapon's reach (target receding faster than the round can close, or meeting point beyond range).", _system, _role, _target];
         };
     };
 
     if (!_aligned) exitWith {
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
-            diag_log text format ["[AEGIS-M] SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5.", _system, _role, _target, round (_angle * 10) / 10, _tolerance];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6.", _system, _role, _target, round (_angle * 10) / 10, _tolerance,
+                ["", " (or the turret settled inside the missile's lock cone)"] select !_isCiws];
         };
     };
 
@@ -208,6 +224,14 @@ private _fnExecute = {
         };
         case 0: {
             _state set ["nextAttemptAt", time + _interval];
+            // Site launcher, nothing fired at this contact yet: the crew's
+            // lost cycle holds the turret, and the coordinator hands the
+            // contact to another weapon (aegism_intercept_fnc_assign
+            // Engagements, "crew failed to fire").
+            if (!_isCiws && {!isNull _network} && {(_state get "roundsFired") == 0}) then {
+                _system setVariable [_turretHoldKey, time + _interval, false];
+                _state set ["crewFailed", true];
+            };
         };
     };
 };
@@ -288,7 +312,7 @@ _system setVariable [_stateKey, _state, false];
 if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}
     && {time > (_state get "lastShotAt") + AEGISM_INTERCEPTOR_SETTLE}
     && {((_state get "interceptors") findIf { !isNull _x && {alive _x} }) == -1}) then {
-    diag_log text format ["[AEGIS-M] MISSED: %1 (%2) salvo at %3 failed -- re-engaging.", _system, _role, _target];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSED: %1 (%2) salvo at %3 failed -- re-engaging.", _system, _role, _target];
     _state set ["roundsFired", 0];
     _state set ["interceptors", []];
 };

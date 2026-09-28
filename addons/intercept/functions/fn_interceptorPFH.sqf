@@ -38,6 +38,16 @@ Description:
     a munition target is detonated too (it has no hitpoints for the splash
     to act on). A platform target is left to real splash damage.
 
+    A CARRIER target (CfgAmmo simulation "shotSubmunitions") is triggered
+    the same way, but everything it releases is deleted the moment it's
+    created (its "SubmunitionCreated" event). Triggering a carrier doesn't
+    destroy it -- it makes it release its payload on the spot: every MLRS
+    R_230mm_HE "kill" used to hand the Site a live R_230mm_fly warhead
+    (1250m danger radius) to shoot at again, so each rocket cost two
+    interceptors. A cluster carrier would have scattered its bomblets over
+    the Site. The carrier is flagged "AEGISM_intercepted" first so
+    aegism_detect_fnc_watchProjectile doesn't start tracking the payload.
+
     The engine's own proximity fuse (CfgAmmo proximityExplosionDistance, set
     on most vanilla SAMs) may detonate the missile first; this handler then
     simply sees the projectile gone and removes itself.
@@ -99,8 +109,17 @@ private _launchPos = getPosASLVisual _projectile;
     if (_armed && {_minDistance <= _hitRadius}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         triggerAmmo _projectile;
-        if (_isMunitionTarget) then { triggerAmmo _target; };
-        diag_log text format ["[AEGIS-M] INTERCEPT: %1 hit %2 (closest %3m, hit radius %4m).", typeOf _projectile, _target, _minDistance, _hitRadius];
+        if (_isMunitionTarget) then {
+            if ((toLower getText (configOf _target >> "simulation")) == "shotsubmunitions") then {
+                _target setVariable ["AEGISM_intercepted", true];
+                _target addEventHandler ["SubmunitionCreated", {
+                    params ["", "_submunitionProjectile"];
+                    deleteVehicle _submunitionProjectile;
+                }];
+            };
+            triggerAmmo _target;
+        };
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " INTERCEPT: %1 hit %2 (closest %3m, hit radius %4m).", typeOf _projectile, _target, _minDistance, _hitRadius];
     };
 
     if (_separation < _lastSeparation) then { _hasClosed = true; };

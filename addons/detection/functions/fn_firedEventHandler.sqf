@@ -69,7 +69,7 @@ if (!(_projectile getVariable ["AEGISM_fromSystem", false]) && {time > (_unit ge
         private _system = _x getVariable "AEGISM_system";
         !isNil "_system" && {_system getOrDefault ["hasRadar", false]} && {[side _x, _shooterSide] call aegism_detect_fnc_isHostile}
     } count (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
-    diag_log text format ["[AEGIS-M] MUNITION: %1 (%2) fired %3 (%4) -- %5", _unit, _shooterSide, _ammo, _class,
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MUNITION: %1 (%2) fired %3 (%4) -- %5", _unit, _shooterSide, _ammo, _class,
         [format ["%1 AEGIS-M radar(s) hostile to %2 will track it when in range and line of sight.", _hostileRadars, _shooterSide],
          format ["no AEGIS-M radar is hostile to %1 (IFF: friendly) -- tracked and engaged only if predicted to hit a Site whose doctrine engages friendly threats (see FRIENDLY-THREAT).", _shooterSide]] select (_hostileRadars == 0)];
 };

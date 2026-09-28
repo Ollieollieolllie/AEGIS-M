@@ -133,7 +133,7 @@ private _addedTo = [];
                 if (_detected && {!(_projectile getVariable ["AEGISM_friendlyThreatLogged", false])}) then {
                     _projectile setVariable ["AEGISM_friendlyThreatLogged", true];
                     _threat params ["_threatened", "_miss", "_radius", "_basis"];
-                    diag_log text format ["[AEGIS-M] FRIENDLY-THREAT: %1 (%2) fired by %3 side -- %4 -- engaging it as a threat.", typeOf _projectile, _class, _shooterSide,
+                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FRIENDLY-THREAT: %1 (%2) fired by %3 side -- %4 -- engaging it as a threat.", typeOf _projectile, _class, _shooterSide,
                         [format ["predicted impact %1m from %2 (threat radius %3m)", round _miss, _threatened, round _radius],
                          format ["guided at Site member %1", _threatened]] select (_basis == "guided")];
                 };
@@ -159,7 +159,7 @@ private _addedTo = [];
                 };
 
                 if (_firstDetection && {_addedTo isNotEqualTo []}) then {
-                    diag_log text format ["[AEGIS-M] TRACKING: %1 (%2) detected by %3 at %4m.", typeOf _projectile, _class, _poolOwner, round (_poolOwner distance _projectile)];
+                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TRACKING: %1 (%2) detected by %3 at %4m.", typeOf _projectile, _class, _poolOwner, round (_poolOwner distance _projectile)];
                 };
             };
         };

@@ -47,5 +47,5 @@ private _newlyScanned = 0;
 // spamming the RPT every 2 seconds for the rest of the mission.
 if (isNil "AEGISM_scanForRolesFirstPassLogged") then {
     missionNamespace setVariable ["AEGISM_scanForRolesFirstPassLogged", true];
-    diag_log text format ["[AEGIS-M] DISCOVERY: first scan pass ran, %1 vehicle(s) in mission at this point, %2 newly checked.", count vehicles, _newlyScanned];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: first scan pass ran, %1 vehicle(s) in mission at this point, %2 newly checked.", count vehicles, _newlyScanned];
 };

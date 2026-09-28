@@ -98,7 +98,7 @@ private _ownSide = side _poolOwner;
             if (!(_rejectKey in _rejectLog)) then {
                 _rejectLog set [_rejectKey, true];
                 _poolOwner setVariable ["AEGISM_lastDetectReject", _rejectLog, false];
-                diag_log text format ["[AEGIS-M] DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
             };
         };
     };
