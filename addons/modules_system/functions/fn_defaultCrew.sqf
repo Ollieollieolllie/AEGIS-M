@@ -16,6 +16,8 @@ Returns:
         skillTier - "green" | "regular" | "veteran" | "elite" <STRING>
         temperament - "cautious" | "standard" | "aggressive" | "nervous" <STRING>
         costValueJudgment - optional saturation heuristic toggle <BOOLEAN>
+        crewOnAutomated - apply the crew model to automated (UAV-crewed)
+            systems too; off = they never hesitate or skip <BOOLEAN>
 
 Examples:
     [] call aegism_system_fnc_defaultCrew;
@@ -27,5 +29,6 @@ Author:
 createHashMapFromArray [
     ["skillTier", "regular"],
     ["temperament", "standard"],
-    ["costValueJudgment", false]
+    ["costValueJudgment", false],
+    ["crewOnAutomated", false]
 ]

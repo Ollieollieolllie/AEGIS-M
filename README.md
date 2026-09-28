@@ -109,11 +109,24 @@ System before any of them fire, rather than each System independently
 guessing what to shoot at. The Site's settings apply battery-wide (see
 **Settings** below); a vehicle never synced to a Site uses the defaults.
 
-**Engagement is coordinated, not just deconflicted.** A launcher's fit for
-a contact is scored by how closely its loaded interceptor's real warhead
-size (CfgAmmo indirectHitRange -- never a hand-set number) matches the
-threat's own size, so a small inbound rocket doesn't burn a heavy
-interceptor when a lighter one is available, and vice versa. CIWS can
+**Engagement is coordinated, not just deconflicted.** Launchers are chosen
+by layered-defence doctrine, from each launcher's real values: first, one
+that can fire in time (its readiness, its queue, its own Seconds Between
+Missiles and the missile's flight time, against the threat's time to
+impact); then the **shortest-reach** interceptor, keeping long-range
+missiles for threats only they can reach; then the one with the **most
+rounds left**; then the soonest ready and closest warhead size. A launcher
+is free for its next target as soon as its missiles are away (they guide
+themselves), and can **queue** several incoming munitions -- so a deep,
+fast-cycling magazine like a RAM launcher takes the bulk of a rocket
+barrage instead of a long-range SAM. Each launcher works its queue
+soonest-impact first (time to impact from the round's ballistic arc), plans
+it with its own **measured** time per missile (lost reliability rolls and
+re-aiming included), and a queued round it can no longer reach in time is
+**handed off** early to a launcher that can (`HANDOFF` in the RPT).
+Guns are matched by warhead size, then distance. Automated (drone-crewed)
+systems ignore the crew model by default -- no reaction delay, no skipped
+fire cycles (Site setting "Crew Skill on Automated Systems"). CIWS can
 engage in parallel with a launcher already working the same contact by
 default (a fast/close threat shouldn't wait on an unproven missile shot),
 or only as a last resort if the Site's Doctrine says so. A launcher shot is
@@ -166,9 +179,10 @@ envelope, and all threat classes are engaged.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Target Priority | Nearest | Which contacts get weapons first when threats outnumber free weapons: Nearest (to any Site vehicle), Fastest Closing, or Highest Value (missile > bomb > aircraft > drone/rocket > artillery). |
+| Target Priority | Soonest Impact | Which contacts get weapons first when threats outnumber free weapons: Soonest Impact (whatever reaches the Site first -- an incoming salvo is worked front to back), Nearest (to any Site vehicle), Fastest Closing, or Highest Value (missile > bomb > aircraft > drone/rocket > artillery). |
 | Crew Skill | Regular | Reaction time and reliability: Green 4.0 s / 55 %, Regular 2.5 s / 70 %, Veteran 1.2 s / 85 %, Elite 0.5 s / 95 %. Reliability is rolled once per missile or CIWS burst; CIWS reaction is capped at 1 s. |
 | Crew Temperament | Standard | Scales reaction, reliability and the pause between shots (Cautious / Standard / Aggressive / Nervous). |
+| Crew Skill on Automated Systems | Off | Off: automated systems (crewed by UAV AI -- Phalanx, RAM, MIM-145, radars) ignore Crew Skill and Temperament -- no reaction delay, no skipped fire cycles, no interval scaling. On: they get the same crew model as manned systems. |
 | Save Ammo for Bigger Threats | Off | Hold fire if firing would leave fewer rounds than tracked higher-value contacts. |
 
 **Interception Targets**

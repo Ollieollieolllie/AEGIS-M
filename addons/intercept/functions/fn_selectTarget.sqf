@@ -35,7 +35,7 @@ Author:
 params ["_weaponPos", "_candidates", "_engagementSettings", "_weapons", "_role", "_system"];
 
 private _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", []];
-private _priority = _engagementSettings getOrDefault ["targetPriority", "nearest"];
+private _priority = _engagementSettings getOrDefault ["targetPriority", "soonestImpact"];
 
 // [object, class, weaponInfo] for every candidate some ready weapon reaches.
 private _engageable = [];
@@ -67,8 +67,15 @@ private _scores = switch (_priority) do {
             ([_class] call aegism_intercept_fnc_threatValue) * 1e6 - (_weaponPos distance (getPosASL _object))
         };
     };
-    default {
+    case "nearest": {
         _engageable apply { -(_weaponPos distance (getPosASL (_x select 0))) };
+    };
+    default {
+        // Soonest Impact: the one that reaches this vehicle first.
+        _engageable apply {
+            _x params ["_object", "_class"];
+            -([_object, _class, [getPosASL _system]] call aegism_intercept_fnc_timeToImpact)
+        };
     };
 };
 

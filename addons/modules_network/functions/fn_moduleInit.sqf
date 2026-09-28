@@ -123,7 +123,7 @@ private _engagementData = createHashMapFromArray [
     ["ciwsMaxRange", _logic getVariable ["ciwsMaxRange", 0]],
     ["minAltitude", _logic getVariable ["minAltitude", 0]],
     ["maxAltitude", _logic getVariable ["maxAltitude", 0]],
-    ["targetPriority", _logic getVariable ["targetPriority", "nearest"]],
+    ["targetPriority", _logic getVariable ["targetPriority", "soonestImpact"]],
     ["salvoSize", _logic getVariable ["salvoSize", 1]],
     ["minShotInterval", _logic getVariable ["minShotInterval", 4]],
     ["ciwsBurstMin", _logic getVariable ["ciwsBurstMin", 3]],
@@ -139,7 +139,8 @@ private _engagementData = createHashMapFromArray [
 private _crewData = createHashMapFromArray [
     ["skillTier", _logic getVariable ["skillTier", "regular"]],
     ["temperament", _logic getVariable ["temperament", "standard"]],
-    ["costValueJudgment", _logic getVariable ["costValueJudgment", false]]
+    ["costValueJudgment", _logic getVariable ["costValueJudgment", false]],
+    ["crewOnAutomated", _logic getVariable ["crewOnAutomated", false]]
 ];
 
 _logic setVariable ["AEGISM_pooledContacts", createHashMap, false];

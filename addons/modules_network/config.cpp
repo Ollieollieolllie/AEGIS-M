@@ -76,14 +76,19 @@ class CfgVehicles
             class TargetPriority
             {
                 displayName = "Target Priority";
-                tooltip = "Which contacts get weapons first when there are more threats than free weapons. Nearest: closest to any Site vehicle. Fastest Closing: highest speed toward the nearest Site vehicle. Highest Value: by threat class (missile, then bomb, then aircraft, then drone/rocket, then artillery), then nearest.";
+                tooltip = "Which contacts get weapons first when there are more threats than free weapons. Soonest Impact (default): the contact that will reach the Site first -- works an incoming salvo front to back (ballistic arc for rockets/shells/bombs, closing speed for missiles/aircraft). Nearest: closest to any Site vehicle. Fastest Closing: highest speed toward the nearest Site vehicle. Highest Value: by threat class (missile, then bomb, then aircraft, then drone/rocket, then artillery), then nearest.";
                 property = "targetPriority";
                 control = "Combo";
                 expression = "_this setVariable ['targetPriority', _value];";
                 typeName = "STRING";
-                defaultValue = "'nearest'";
+                defaultValue = "'soonestImpact'";
                 class Values
                 {
+                    class SoonestImpact
+                    {
+                        name = "Soonest Impact";
+                        value = "soonestImpact";
+                    };
                     class Nearest
                     {
                         name = "Nearest";
@@ -166,6 +171,16 @@ class CfgVehicles
                         value = "nervous";
                     };
                 };
+            };
+            class CrewOnAutomated
+            {
+                displayName = "Crew Skill on Automated Systems";
+                tooltip = "Off (default): automated systems -- anything crewed by UAV AI, e.g. Phalanx, RAM, MIM-145, radar units -- ignore Crew Skill and Temperament: no reaction delay, no skipped fire cycles, no interval scaling. On: they get the same crew model as manned systems.";
+                property = "crewOnAutomated";
+                control = "Checkbox";
+                expression = "_this setVariable ['crewOnAutomated', _value];";
+                typeName = "BOOL";
+                defaultValue = "false";
             };
             class CostValueJudgment
             {

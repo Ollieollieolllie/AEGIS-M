@@ -87,7 +87,7 @@ class Cfg3DEN
                     class AEGISM_ovr_targetPriority
                     {
                         displayName = "Target Priority";
-                        tooltip = "Only used when this vehicle is NOT synced to a Site (a Site orders engagements for all its vehicles). Nearest / Fastest Closing / Highest Value.";
+                        tooltip = "Only used when this vehicle is NOT synced to a Site (a Site orders engagements for all its vehicles). Soonest Impact / Nearest / Fastest Closing / Highest Value.";
                         property = "AEGISM_ovr_targetPriority";
                         control = "Combo";
                         expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_targetPriority', _value]};";
@@ -97,6 +97,7 @@ class Cfg3DEN
                         class Values
                         {
                             class Site { name = "Site setting"; value = ""; };
+                            class SoonestImpact { name = "Soonest Impact"; value = "soonestImpact"; };
                             class Nearest { name = "Nearest"; value = "nearest"; };
                             class FastestClosing { name = "Fastest Closing"; value = "fastestClosing"; };
                             class HighestValue { name = "Highest Value"; value = "highestValue"; };
@@ -156,6 +157,14 @@ class Cfg3DEN
                             class On { name = "On"; value = "on"; };
                             class Off { name = "Off"; value = "off"; };
                         };
+                    };
+
+                    class AEGISM_ovr_crewOnAutomated: AEGISM_ovr_costValueJudgment
+                    {
+                        displayName = "Crew Skill on Automated Systems";
+                        tooltip = "For a UAV-crewed vehicle: whether Crew Skill and Temperament apply to it (reaction delay, skipped fire cycles, interval scaling). Off = it never hesitates or skips.";
+                        property = "AEGISM_ovr_crewOnAutomated";
+                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_crewOnAutomated', _value == 'on']};";
                     };
 
                     // ----------------------------------- Interception targets

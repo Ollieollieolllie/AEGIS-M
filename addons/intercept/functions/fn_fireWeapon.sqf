@@ -105,17 +105,26 @@ if (_isCiws) then {
     [_system, _weaponClass, _turretPath] call BIS_fnc_fire;
 };
 
-// A launcher fire command should consume exactly one missile; more means
-// the engine fired a ripple. (A CIWS burst reports its own count, BURST-END.)
+// Each launcher fire command should consume exactly one missile; more means
+// the engine fired a ripple. Counted against the fire commands actually
+// issued to this turret in the meantime ("AEGISM_turretShots_<path>") -- a
+// launcher on a 1s interval legitimately fires its NEXT missile inside the
+// 1s check window, which used to be reported as an anomaly. (A CIWS burst
+// reports its own count, BURST-END.)
 if (!_isCiws) then {
+    private _shotsKey = format ["AEGISM_turretShots_%1", _turretPath];
+    private _shotsBefore = _system getVariable [_shotsKey, 0];
+    _system setVariable [_shotsKey, _shotsBefore + 1, false];
     [{
-        params ["_system", "_magazineClass", "_turretPath", "_ammoBefore"];
+        params ["_system", "_magazineClass", "_turretPath", "_ammoBefore", "_shotsKey", "_shotsBefore"];
         if (isNull _system) exitWith {};
         private _consumed = _ammoBefore - (_system magazineTurretAmmo [_magazineClass, _turretPath]);
-        if (_consumed != 1) then {
-            diag_log text format ["[AEGIS-M] FIRE-ANOMALY: %1 -- expected 1 missile consumed, engine consumed %2.", _system, _consumed];
+        private _commanded = (_system getVariable [_shotsKey, 0]) - _shotsBefore;
+        // A reload in the window refills the count; only an excess is an anomaly.
+        if (_consumed > _commanded) then {
+            diag_log text format ["[AEGIS-M] FIRE-ANOMALY: %1 -- %2 fire command(s) consumed %3 missiles.", _system, _commanded, _consumed];
         };
-    }, [_system, _magazineClass, _turretPath, _ammoBefore], 1] call CBA_fnc_waitAndExecute;
+    }, [_system, _magazineClass, _turretPath, _ammoBefore, _shotsKey, _shotsBefore], 1] call CBA_fnc_waitAndExecute;
 };
 
 1

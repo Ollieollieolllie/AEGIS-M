@@ -64,17 +64,19 @@ _weaponInfo params ["_turretPath", "_weaponClass"];
 private _isCiws = _role == "ciws";
 private _tolerance = [AEGISM_AIM_TOLERANCE_LAUNCHER, AEGISM_AIM_TOLERANCE_CIWS] select _isCiws;
 
-// Measured from the turret's own crewman (close to the weapon) rather than
-// the vehicle origin, which can be metres away on a large vehicle.
-private _gunner = _system turretUnit _turretPath;
-private _origin = if (isNull _gunner) then { getPosASLVisual _system } else { eyePos _gunner };
+// The intercept is solved from the MUZZLE, and the camera lockCameraTo
+// points is aimed at the aim point shifted by (camera - muzzle), so the
+// parallel barrel line passes through the aim point itself (see
+// aegism_intercept_fnc_turretPoints: this offset put CIWS rounds about a
+// metre low).
+([_system, _turretPath, _role] call aegism_intercept_fnc_turretPoints) params ["_origin", "_camera"];
 
 ([_system, _origin, _target, _weaponInfo, _role] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible"];
 
 private _ownerKey = format ["AEGISM_ciwsAimAt_%1", _turretPath];
 if (_isCiws) then { _system setVariable [_ownerKey, time, false]; };
 if (_isCiws || {time - (_system getVariable [_ownerKey, -1e9]) > AEGISM_CIWS_AIM_OWNERSHIP}) then {
-    [_system, _turretPath, _aimPoint] call aegism_intercept_fnc_lockTurret;
+    [_system, _turretPath, _aimPoint vectorAdd (_camera vectorDiff _origin)] call aegism_intercept_fnc_lockTurret;
     _system setVariable [format ["AEGISM_turretLockAt_%1", _turretPath], time, false];
 };
 

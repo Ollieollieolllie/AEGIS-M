@@ -22,8 +22,17 @@ Description:
     faster but sloppier, cautious crews are slower but steadier, standard
     is a neutral 1x baseline.
 
+    Automated systems -- crewed by UAV AI (unitIsUAV: Phalanx, RAM, MIM-145,
+    radar units) -- have no human in the loop, so by default none of this
+    applies to them: no reaction delay, every fire cycle goes out (no
+    FIRE-SKIP), and the interval isn't scaled. The crew setting "Crew Skill
+    on Automated Systems" (crewOnAutomated, off by default) applies the full
+    crew model to them as well.
+
 Parameters:
     _crew - resolved crew data, from aegism_system_fnc_resolveCrew <HASHMAP>
+    _system - optional, the System vehicle; needed for the automated-system
+        rule <OBJECT>
 
 Returns:
     Modifiers <HASHMAP>. Keys:
@@ -36,13 +45,21 @@ Returns:
             minShotInterval <NUMBER>
 
 Examples:
-    [_crew] call aegism_intercept_fnc_applyCrewModulation;
+    [_crew, _samLauncher] call aegism_intercept_fnc_applyCrewModulation;
 
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["_crew"];
+params ["_crew", ["_system", objNull]];
+
+if (!isNull _system && {unitIsUAV _system} && {!(_crew getOrDefault ["crewOnAutomated", false])}) exitWith {
+    createHashMapFromArray [
+        ["reactionTime", 0],
+        ["reliability", 1],
+        ["shotIntervalMult", 1]
+    ]
+};
 
 private _skillTier = _crew getOrDefault ["skillTier", "regular"];
 private _temperament = _crew getOrDefault ["temperament", "standard"];

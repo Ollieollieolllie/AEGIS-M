@@ -11,10 +11,12 @@ class CfgFunctions
             class computeLeadPoint {R;};
             class lockTurret {R;};
             class barrelDirection {R;};
+            class turretPoints {R;};
             class aimWeapon {R;};
             class elevationAngle {R;};
             class inEnvelope {R;};
             class canEngage {R;};
+            class timeToImpact {R;};
             class onSystemFired {R;};
             class targetHitRadius {R;};
             class selectTarget {R;};

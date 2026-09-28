@@ -70,6 +70,8 @@ Author:
 #define AEGISM_SLEW_LOG_INTERVAL 5
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
 #define AEGISM_TURRET_RELEASE 1.5
+// Weight of each new sample in a launcher's measured shot spacing.
+#define AEGISM_SPACING_SMOOTHING 0.3
 
 params ["_system", "_role"];
 
@@ -81,7 +83,7 @@ private _engagementSettings = _system getVariable "AEGISM_resolvedEngagementSett
 if (isNil "_engagementSettings") then { _engagementSettings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
 private _crew = _system getVariable "AEGISM_resolvedCrew";
 if (isNil "_crew") then { _crew = [_system] call aegism_system_fnc_resolveCrew; };
-private _crewMods = [_crew] call aegism_intercept_fnc_applyCrewModulation;
+private _crewMods = [_crew, _system] call aegism_intercept_fnc_applyCrewModulation;
 
 private _weaponPool = _systemData getOrDefault [["launcherWeapons", "ciwsWeapons"] select _isCiws, []];
 // eyePos is already ASL (it used to be wrapped in AGLToASL, which raised the
@@ -113,6 +115,12 @@ private _fnExecute = {
 
     if ((_system magazineTurretAmmo [_magClass, _turretPath]) <= 0) exitWith {};
 
+    // A launcher whose salvo is away has nothing left to do for this target
+    // (its missiles guide themselves): it no longer aims at it, so the
+    // turret is free for its next assignment while they fly. It used to keep
+    // aiming at it until the kill/miss was known, holding the launcher idle.
+    if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) exitWith {};
+
     ([_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon) params ["_aligned", "_angle", "_tolerance", "", "_feasible"];
 
     if (time < (_state get "assignedAt") + _reactionTime) exitWith {
@@ -137,13 +145,14 @@ private _fnExecute = {
         };
     };
 
-    // Launcher: minShotInterval since the last missile. CIWS: the burst
+    // Launcher: minShotInterval since this LAUNCHER's last missile, whatever
+    // it was fired at ("AEGISM_turretShotAt_<turretPath>"). CIWS: the burst
     // pause, counted from when the last burst ENDED (aegism_intercept_fnc_
     // ciwsBurst rewrites endsAt to the actual end time).
     private _interval = (_engagementSettings getOrDefault [["minShotInterval", "ciwsBurstPause"] select _isCiws, [4, 1] select _isCiws]) * (_crewMods get "shotIntervalMult");
-    private _intervalFrom = [_state get "lastShotAt", _burstEndsAt] select _isCiws;
+    private _turretShotKey = format ["AEGISM_turretShotAt_%1", _turretPath];
+    private _intervalFrom = [_system getVariable [_turretShotKey, -1], _burstEndsAt] select _isCiws;
 
-    if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) exitWith {};
     if (_intervalFrom >= 0 && {time < _intervalFrom + _interval}) exitWith {};
     if (time < (_state getOrDefault ["nextAttemptAt", -1])) exitWith {};
 
@@ -181,6 +190,21 @@ private _fnExecute = {
         case 1: {
             _state set ["lastShotAt", time];
             _state set ["roundsFired", (_state get "roundsFired") + 1];
+            if (!_isCiws) then {
+                // Measured time per missile when firing back to back (it
+                // includes lost reliability rolls and re-aiming between
+                // targets, which the configured interval alone doesn't) --
+                // the Site coordinator plans each launcher's queue with it.
+                // A gap longer than twice the estimate was idle time, not
+                // firing rate, and is ignored.
+                private _spacingKey = format ["AEGISM_turretSpacing_%1", _turretPath];
+                private _spacing = _system getVariable [_spacingKey, _interval / ((_crewMods get "reliability") max 0.05)];
+                private _gap = time - (_system getVariable [_turretShotKey, -1e9]);
+                if (_gap <= 2 * _spacing) then {
+                    _system setVariable [_spacingKey, (1 - AEGISM_SPACING_SMOOTHING) * _spacing + AEGISM_SPACING_SMOOTHING * _gap, false];
+                };
+            };
+            _system setVariable [_turretShotKey, time, false];
         };
         case 0: {
             _state set ["nextAttemptAt", time + _interval];
@@ -196,14 +220,35 @@ if (!isNull _network) exitWith {
     // returned objNull for every one, so no networked System ever executed
     // a single assignment.
     private _claims = _network getVariable ["AEGISM_claims", createHashMap];
+    private _mine = [];
     {
         {
             private _target = _x getOrDefault ["target", objNull];
             if ((_x get "system") == _system && {(_x get "role") == _role} && {!isNull _target} && {alive _target}) then {
-                [_target, _x get "weaponInfo", _x] call _fnExecute;
+                _mine pushBack _x;
             };
         } forEach _y;
     } forEach _claims;
+
+    // A launcher can hold a queue of targets (aegism_intercept_fnc_
+    // assignEngagements): per turret, only the assignment whose target
+    // IMPACTS SOONEST (and whose salvo isn't away yet) is worked this tick --
+    // front to back through a salvo -- while the rest wait their turn
+    // instead of fighting over the turret's aim.
+    private _memberPositions = ((_network getVariable ["AEGISM_networkMembers", []]) select { !isNull _x && {alive _x} }) apply { getPosASL _x };
+    _mine = [_mine, [_memberPositions], {
+        private _target = _x get "target";
+        [_target, _x getOrDefault ["class", [_target] call aegism_detect_fnc_classifyTarget], _input0] call aegism_intercept_fnc_timeToImpact
+    }, "ASCEND"] call BIS_fnc_sortBy;
+    private _workingTurrets = [];
+    {
+        (_x get "weaponInfo") params ["_turretPath"];
+        private _salvoAway = !_isCiws && {(_x get "roundsFired") >= _salvoSize};
+        if (_isCiws || _salvoAway || {!(_turretPath in _workingTurrets)}) then {
+            if (!_isCiws && {!_salvoAway}) then { _workingTurrets pushBack _turretPath; };
+            [_x get "target", _x get "weaponInfo", _x] call _fnExecute;
+        };
+    } forEach _mine;
 };
 
 // --- STANDALONE ---

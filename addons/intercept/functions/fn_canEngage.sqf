@@ -31,7 +31,8 @@ Parameters:
     _settings - that vehicle's resolved engagement settings <HASHMAP>
 
 Returns:
-    [canEngage <BOOLEAN>, reason if not <STRING>]
+    [canEngage <BOOLEAN>, reason if not <STRING>, flight time to the
+     intercept in seconds, if it can (0 if unknown) <NUMBER>]
 
 Examples:
     [_cheetah, "ciws", _weaponInfo, _jet, _settings] call aegism_intercept_fnc_canEngage;
@@ -58,10 +59,10 @@ if (!_isCiws) then {
     if !([_settings, _weaponInfo, _currentDistance, _height, _role, _elevation] call aegism_intercept_fnc_inEnvelope) exitWith {
         [false, [_currentDistance, _elevation] call _fnEnvelopeReason]
     };
-    private _feasible = ([_system, _origin, _target, _weaponInfo, _role, false] call aegism_intercept_fnc_computeLeadPoint) select 1;
-    [_feasible, ["", format ["missile cannot catch it (%1m, receding)", round _currentDistance]] select !_feasible]
+    ([_system, _origin, _target, _weaponInfo, _role, false] call aegism_intercept_fnc_computeLeadPoint) params ["", "_feasible", "_flightTime"];
+    [_feasible, ["", format ["missile cannot catch it (%1m, receding)", round _currentDistance]] select !_feasible, _flightTime max 0]
 } else {
-    ([_system, _origin, _target, _weaponInfo, _role, false] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "", "_interceptDistance"];
+    ([_system, _origin, _target, _weaponInfo, _role, false] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "_flightTime", "_interceptDistance"];
     if (!_feasible) exitWith {
         [false, format ["no intercept solution (%1m, receding faster than the rounds close, or beyond reach)", round _currentDistance]]
     };
@@ -69,5 +70,5 @@ if (!_isCiws) then {
     if !([_settings, _weaponInfo, _interceptDistance, _height, _role, _elevation] call aegism_intercept_fnc_inEnvelope) exitWith {
         [false, [_interceptDistance, _elevation] call _fnEnvelopeReason]
     };
-    [true, ""]
+    [true, "", _flightTime max 0]
 }

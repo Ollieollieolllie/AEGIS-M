@@ -48,7 +48,7 @@ createHashMapFromArray [
     ["ciwsMaxRange", 0],
     ["minAltitude", 0],
     ["maxAltitude", 0],
-    ["targetPriority", "nearest"],
+    ["targetPriority", "soonestImpact"],
     ["salvoSize", 1],
     ["minShotInterval", 4],
     ["ciwsBurstMin", 3],
