@@ -2,39 +2,58 @@
 Function: aegism_intercept_fnc_fireWeapon
 
 Description:
-    Commands a System's own real weapon to engage a target via fireAtTarget
-    -- AEGIS-M never spawns its own projectile or steers it: the vehicle's
-    actual loaded ammo, its real ballistics/guidance (CfgAmmo's own
-    Guidance config), and the resulting damage are entirely the game's own
-    simulation, exactly as if the vehicle's crew had fired it themselves.
+    Commands a System's own real weapon to fire a single round at a target
+    -- AEGIS-M never spawns its own projectile or steers it in flight: the
+    vehicle's actual loaded ammo and its real ballistics/guidance (CfgAmmo's
+    own Guidance config) are entirely the game's own simulation, exactly as
+    if the vehicle's crew had fired it themselves.
 
-    Crew reliability is rolled once here, gating whether the crew gets a
-    clean shot off THIS cycle at all -- if the roll fails, no fireAtTarget
-    command is issued and the engagement loop will simply try again next
-    tick (subject to its own minShotInterval cooldown). This is different
-    from AEGIS-M's earlier custom-guidance design, where reliability instead
-    decided whether a self-guided round was steered to a deliberate near-
-    miss: now that firing uses the vehicle's own real weapon, there is no
-    scripted flight path left to deliberately spoil, so reliability governs
-    the crew's shot discipline (do they loose a clean shot this cycle) and
-    leaves the actual hit-or-miss outcome entirely to the game's own AI
-    skill/ammo accuracy/guidance simulation.
+    Aiming and firing are deliberately split from the crew's own AI
+    engagement judgement, using the same lookAt + angle/elevation-gated +
+    BIS_fnc_fire pattern as ACE3's own missile_defense addon (PR #10965,
+    fnc_systemPFH.sqf) rather than fireAtTarget -- switched after fireAtTarget
+    was suspected (and never fully ruled out) of delegating to the AI's own
+    internal engagement/fire-control state machine rather than firing
+    literally one round per call; BIKI documentation and community reports
+    both indicate fireAtTarget's shot count isn't a hard per-call guarantee,
+    only a fire ORDER handed to AI judgement. lookAt is called every
+    invocation (idempotent -- just refreshes the turret's aim goal) so the
+    turret keeps slewing toward the target across ticks even on calls that
+    end up not firing; the actual shot only fires once the turret's real,
+    live weaponDirection is within AEGISM_LOOKAT_ACCEPTABLE_ANGLE/ELEVATION
+    of the true target direction, checked fresh every call rather than
+    trusted from a previous tick. A call that arrives before the turret has
+    finished slewing returns false (still aiming, not a failure) so the
+    caller's cooldown/salvo bookkeeping isn't touched -- the engagement loop
+    simply calls again next tick as the turret continues traversing.
 
-    ACE missileguidance handoff: fireAtTarget is a pure vanilla command and
-    has no interaction whatsoever with ace_missileguidance -- ACE's onFired
+    Crew reliability is rolled once alignment is confirmed, gating whether
+    the crew gets a clean shot off THIS cycle at all -- if the roll fails,
+    no BIS_fnc_fire command is issued and the engagement loop will simply
+    try again next tick (subject to its own minShotInterval cooldown). This
+    is different from AEGIS-M's earlier custom-guidance design, where
+    reliability instead decided whether a self-guided round was steered to
+    a deliberate near-miss: now that firing uses the vehicle's own real
+    weapon, there is no scripted flight path left to deliberately spoil, so
+    reliability governs the crew's shot discipline (do they loose a clean
+    shot this cycle) and leaves the actual hit-or-miss outcome entirely to
+    the game's own AI skill/ammo accuracy/guidance simulation.
+
+    ACE missileguidance handoff: neither fireAtTarget nor BIS_fnc_fire has
+    any interaction whatsoever with ace_missileguidance -- ACE's onFired
     handler resolves its guidance target from "ace_missileguidance_target"
-    (or, for a vanilla/tab-locked fallback, missileTarget, which fireAtTarget
-    also never sets) read off the SHOOTER unit at the instant of firing, not
-    from fireAtTarget's own target argument. Left alone, a magazine with a
-    real ACE Missileguidance config would fire genuinely unguided/ballistic
-    -- no error, it just flies straight and misses anything that moves,
-    which would look like a reliability/accuracy problem rather than what
-    it actually is. So: if the loaded ammo declares an explicit (non-
-    inherited) "ace_missileguidance" config class with enabled=1, the target
-    is written to that variable on the specific turret's crewman
-    (turretUnit, not the vehicle) immediately before firing. This is a no-op
-    read/write on any vehicle without ACE loaded (isNil guards it) or on
-    plain vanilla-guided/unguided ammo (no such config class to find).
+    (or, for a vanilla/tab-locked fallback, missileTarget) read off the
+    SHOOTER unit at the instant of firing, not from any argument to the fire
+    command itself. Left alone, a magazine with a real ACE Missileguidance
+    config would fire genuinely unguided/ballistic -- no error, it just
+    flies straight and misses anything that moves, which would look like a
+    reliability/accuracy problem rather than what it actually is. So: if
+    the loaded ammo declares an explicit (non-inherited) "ace_missileguidance"
+    config class with enabled=1, the target is written to that variable on
+    the specific turret's crewman (turretUnit, not the vehicle) immediately
+    before firing. This is a no-op read/write on any vehicle without ACE
+    loaded (isNil guards it) or on plain vanilla-guided/unguided ammo (no
+    such config class to find).
 
     This does NOT, by itself, guarantee ACE actually homes the round: ACE's
     own onFired also requires its missile guidance system setting
@@ -54,18 +73,19 @@ Description:
     engagement relies on real collision/rate of fire and has no use for
     this), a short-lived "Fired" event handler is registered on the exact
     turret's gunner immediately before firing, to capture the REAL resulting
-    projectile object (fireAtTarget doesn't return one) and hand it to
-    aegism_intercept_fnc_interceptorPFH -- see that function's own doc
-    comment for the actual proximity-fuse/detonation logic. The capture EH
-    checks the fired ammo classname matches what was actually commanded and
-    removes itself on the first match, mitigating (not perfectly
-    guaranteeing -- no hard engine guarantee ties a specific Fired event to
-    a specific fireAtTarget call) catching an unrelated shot from the same
-    gunner in between. Self-expires after 10 seconds (CBA_fnc_waitAndExecute)
-    if the expected shot never actually happens (ammo jam, crew
-    reassignment, or any other reason fireAtTarget doesn't result in a real
-    fired round), so the handler doesn't sit registered on that gunner for
-    the rest of the mission waiting for a match that will never come.
+    projectile object (neither fireAtTarget nor BIS_fnc_fire returns one)
+    and hand it to aegism_intercept_fnc_interceptorPFH -- see that
+    function's own doc comment for the actual proximity-fuse/detonation
+    logic. The capture EH checks the fired ammo classname matches what was
+    actually commanded and removes itself on the first match, mitigating
+    (not perfectly guaranteeing -- no hard engine guarantee ties a specific
+    Fired event to a specific fire call) catching an unrelated shot from
+    the same gunner in between. Self-expires after 10 seconds
+    (CBA_fnc_waitAndExecute) if the expected shot never actually happens
+    (ammo jam, crew reassignment, or any other reason the fire command
+    doesn't result in a real fired round), so the handler doesn't sit
+    registered on that gunner for the rest of the mission waiting for a
+    match that will never come.
 
 Parameters:
     _system - the firing System vehicle <OBJECT>
@@ -80,8 +100,9 @@ Parameters:
         applyCrewModulation <NUMBER>
 
 Returns:
-    True if a fireAtTarget command was issued, false if the crew's
-    reliability roll failed or the target was invalid <BOOLEAN>
+    True if a BIS_fnc_fire command was issued, false if the turret is still
+    aiming, the crew's reliability roll failed, or the target was invalid
+    <BOOLEAN>
 
 Examples:
     [_tigris, _incomingMissile, _weaponInfo, 0.85] call aegism_intercept_fnc_fireWeapon;
@@ -90,19 +111,30 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+// Same acceptable-angle/elevation concept and same DEFAULT VALUES as ACE3's
+// own missile_defense reference's own tuned CBA settings
+// (GVAR(launchAcceptableAngle) default 20, GVAR(launchAcceptableElevation)
+// default 5, from that addon's initSettings.inc.sqf) -- how close the
+// turret's real current aim has to be to the true target direction before
+// a shot is considered aimed rather than still slewing. Deliberately NOT
+// invented/guessed values: an earlier draft of this file used -45 for
+// elevation, which would have let a shot fire while pitched 45 degrees
+// BELOW horizontal -- physically implausible for real SAM/CIWS turret
+// geometry, and a much looser gate than ACE3's own real, tuned default.
+#define AEGISM_LOOKAT_ACCEPTABLE_ANGLE 20
+#define AEGISM_LOOKAT_ACCEPTABLE_ELEVATION 5
+
 params ["_system", "_target", "_weaponInfo", "_reliability"];
 _weaponInfo params ["_turretPath", "_weaponClass", "_magazineClass"];
 
 // Hard circuit breaker, deliberately independent of engagementLoop's own
 // salvoSize/minShotInterval bookkeeping (which is what SHOULD already
-// prevent more than one shot per assignment, but is exactly the mechanism
-// under suspicion while a real multi-round-per-fireAtTarget-call bug is
-// being tracked down) -- this is the single, narrowest choke point every
-// real fireAtTarget call in the whole codebase passes through, so gating
-// HERE guarantees no second shot from this turret regardless of what
-// upstream logic (buggy or not) tries to trigger it. Keyed per turret
-// (system + turretPath), not per System, so a multi-weapon System's other
-// turrets are unaffected.
+// prevent more than one shot per assignment) -- this is the single,
+// narrowest choke point every real fire command in the whole codebase
+// passes through, so gating HERE guarantees no second shot from this
+// turret regardless of what upstream logic (buggy or not) tries to
+// trigger it. Keyed per turret (system + turretPath), not per System, so a
+// multi-weapon System's other turrets are unaffected.
 private _holdKey = format ["AEGISM_fireHold_%1", _turretPath];
 if (_system getVariable [_holdKey, false]) exitWith {
     diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 turret %2 is on hold (aegism_intercept_fnc_debugSetFireHold) -- not firing.", _system, _turretPath];
@@ -113,6 +145,29 @@ if (isNull _target || {!alive _target}) exitWith {
     diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 -- target null or already dead.", _system];
     false
 };
+
+// Keep the turret slewing onto the target every call, whether or not this
+// specific call ends up firing -- lookAt just sets an aim goal, it doesn't
+// teleport the turret there, so this has to be re-issued every tick a
+// target is being pursued for the turret to actually catch up over time.
+_system lookAt (getPosVisual _target);
+
+// Real, live angle/elevation check against the turret's own current aim --
+// not trusted from a previous tick, since lookAt's traverse takes real
+// time to complete. Mirrors ACE3's own missile_defense reference exactly
+// (fnc_systemPFH.sqf): decompose the turret's real weaponDirection into a
+// local (turret-relative) vector to get elevation, and compare the angle
+// between that direction and the true target direction.
+private _directionToTarget = (getPosASLVisual _system) vectorFromTo (getPosASLVisual _target);
+private _turretDirection = _system weaponDirection _weaponClass;
+private _localDirection = _system vectorWorldToModelVisual _turretDirection;
+private _elevation = 90 - ((_localDirection#1) atan2 (_localDirection#2));
+private _angle = acos (_turretDirection vectorCos _directionToTarget);
+
+if (_angle > AEGISM_LOOKAT_ACCEPTABLE_ANGLE || {_elevation < AEGISM_LOOKAT_ACCEPTABLE_ELEVATION}) exitWith {
+    false // still slewing onto the target -- caller retries next tick, no cooldown/salvo state touched
+};
+
 if (random 1 > _reliability) exitWith {
     diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 at %2 -- crew reliability roll failed (reliability=%3).", _system, _target, _reliability];
     false
@@ -168,13 +223,13 @@ if (_fuseRange > 0) then {
             };
         }, [_ammoClassName, _target, _ehIdBox]]];
 
-        // Self-expiry: if fireAtTarget never actually results in a shot
-        // (ammo depletes/jams, crew reassigned, or any other reason the
-        // engine doesn't fire this specific round), the handler above would
-        // otherwise sit registered on this gunner for the rest of the
-        // mission, waiting for an ammo match that's never coming -- harmless
-        // (an idle EH), but unbounded. 10s is well beyond any plausible
-        // fire-command latency.
+        // Self-expiry: if the fire command never actually results in a
+        // shot (ammo jam, crew reassignment, or any other reason the
+        // engine doesn't fire this specific round), the handler above
+        // would otherwise sit registered on this gunner for the rest of
+        // the mission, waiting for an ammo match that's never coming --
+        // harmless (an idle EH), but unbounded. 10s is well beyond any
+        // plausible fire-command latency.
         [{
             params ["_gunner", "_ehIdBox"];
             if (!isNull _gunner && {(_ehIdBox#0) != -1}) then {
@@ -185,20 +240,20 @@ if (_fuseRange > 0) then {
 };
 
 private _ammoBefore = _system magazineTurretAmmo [_magazineClass, _turretPath];
-diag_log text format ["[AEGIS-M] FIRE: %1 (%2) fires %3 (mag %4, %5 rounds before shot) at %6 (%7).", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
+diag_log text format ["[AEGIS-M] FIRE: %1 (%2) fires %3 (mag %4, %5 rounds before shot) at %6 (%7) -- angle=%8 elevation=%9.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _angle, _elevation];
 
-_system fireAtTarget [_target, _weaponClass];
+[_system, _weaponClass, _turretPath] call BIS_fnc_fire;
 
 // Checked 1s later (not synchronously/next-frame -- the actual physical
-// launch can take a moment after fireAtTarget is called, e.g. turret
-// traverse/lock time, so checking too early would report a false anomaly
-// before the real shot has even left the tube yet) -- if more than exactly
-// 1 round is missing, that's direct proof the engine itself launched more
-// than one physical round from this single fireAtTarget call, rather than
-// this function (or its caller) somehow being invoked multiple times --
-// fireAtTarget is only ever called from this one place in the whole
-// codebase, always logged immediately above, so a genuine multi-round
-// mystery narrows to exactly this.
+// launch can take a moment after the fire command, so checking too early
+// would report a false anomaly before the real shot has even left the
+// tube yet) -- if more than exactly 1 round is missing, that's direct
+// proof the engine itself launched more than one physical round from a
+// single BIS_fnc_fire call, rather than this function (or its caller)
+// somehow being invoked multiple times -- the fire command is only ever
+// issued from this one place in the whole codebase, always logged
+// immediately above, so a genuine multi-round mystery narrows to exactly
+// this.
 [{
     params ["_system", "_magazineClass", "_turretPath", "_ammoBefore"];
     if (!isNull _system) then {

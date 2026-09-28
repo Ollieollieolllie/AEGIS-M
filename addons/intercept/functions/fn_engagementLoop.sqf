@@ -77,6 +77,19 @@ Description:
     mode (typically full-auto/burst for an autocannon) produces the actual
     sustained-fire feel, not a script-managed burst loop.
 
+    aegism_intercept_fnc_fireWeapon does its own live turret-aiming (lookAt
+    + a real angle/elevation check against the turret's current
+    weaponDirection, then BIS_fnc_fire) rather than handing the whole
+    engage-and-shoot decision to fireAtTarget's own AI judgement -- see that
+    function's own doc comment for why. This means a call can return false
+    simply because the turret hasn't finished slewing onto the target yet,
+    which is NOT the same as a genuine skip (dead target/reliability roll):
+    this loop only advances lastShotAt/roundsFired (networked) or
+    lastShotTime/roundsFiredThisEngagement (standalone) on a confirmed true
+    return, so a still-aiming tick doesn't wrongly consume salvo budget or
+    start the shot-interval cooldown before a round has actually left the
+    tube.
+
 Parameters:
     _system - the System vehicle to run this role's engagement loop for <OBJECT>
     _role - "launcher" or "ciws" -- selects which weapon pool and
@@ -152,10 +165,17 @@ if (!isNull _network) then {
         diag_log text format ["[AEGIS-M] LOS-BLOCKED: %1 (role=%2) cannot see assigned contact %3 -- staying assigned, retrying next tick.", _system, _role, _target];
     }; // masked right now -- stay assigned, re-check next tick
 
-    [_system, _target, _weaponInfo, (_crewMods get "reliability")] call aegism_intercept_fnc_fireWeapon;
-
-    _record set ["lastShotAt", time];
-    _record set ["roundsFired", (_record get "roundsFired") + 1];
+    // fireWeapon returns false both for a genuine skip (reliability roll,
+    // dead target) AND for "turret still slewing onto the target, call
+    // again next tick" -- either way, no real round was fired, so
+    // lastShotAt/roundsFired must only advance on a confirmed true, or a
+    // still-aiming tick would wrongly consume salvo budget and start the
+    // minShotInterval cooldown before a shot ever actually left the tube.
+    private _fired = [_system, _target, _weaponInfo, (_crewMods get "reliability")] call aegism_intercept_fnc_fireWeapon;
+    if (_fired) then {
+        _record set ["lastShotAt", time];
+        _record set ["roundsFired", (_record get "roundsFired") + 1];
+    };
 } else {
     // --- STANDALONE: original per-System selection, no Site to defer to ---
     private _stateKey = format ["AEGISM_engagementState_%1", _role];
@@ -222,9 +242,14 @@ if (!isNull _network) then {
     private _losClear = (lineIntersectsSurfaces [_weaponPos, _targetPos, _system, _target, true, 1]) isEqualTo [];
     if (!_losClear) exitWith {}; // masked right now (e.g. a terrain-following threat behind cover) -- stay acquired, re-check next tick
 
-    [_system, _target, (_readyWeapons select 0), (_crewMods get "reliability")] call aegism_intercept_fnc_fireWeapon;
-
-    _state set ["lastShotTime", time];
-    _state set ["roundsFiredThisEngagement", (_state get "roundsFiredThisEngagement") + 1];
-    _system setVariable [_stateKey, _state, false];
+    // See the networked branch's own comment above -- fireWeapon returning
+    // false can mean "still slewing onto the target", not just a genuine
+    // skip, so lastShotTime/roundsFiredThisEngagement must only advance on
+    // a confirmed true.
+    private _fired = [_system, _target, (_readyWeapons select 0), (_crewMods get "reliability")] call aegism_intercept_fnc_fireWeapon;
+    if (_fired) then {
+        _state set ["lastShotTime", time];
+        _state set ["roundsFiredThisEngagement", (_state get "roundsFiredThisEngagement") + 1];
+        _system setVariable [_stateKey, _state, false];
+    };
 };
