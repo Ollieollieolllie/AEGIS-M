@@ -8,3 +8,11 @@
 [{
     [] call aegism_fnc_debugDraw;
 }, 0, []] call CBA_fnc_addPerFrameHandler;
+
+// Site status hint, once a second (a no-op while its setting is off). Only
+// where there's a screen to show it on.
+if (hasInterface) then {
+    [{
+        [] call aegism_fnc_debugHint;
+    }, 1, []] call CBA_fnc_addPerFrameHandler;
+};

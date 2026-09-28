@@ -13,8 +13,9 @@ Description:
 
     2. Review existing assignments (AEGISM_claims) and keep each unless:
          - its System is dead, or the contact left the pool
-         - the contact left that weapon's envelope (aegism_intercept_fnc_
-           inEnvelope: weapon's real range AND doctrine limits)
+         - the weapon can no longer usefully engage it (aegism_intercept_
+           fnc_canEngage: envelope, and a feasible intercept -- a gun is
+           released from a jet flying away that its rounds can't catch)
          - launcher MISSED: salvo spent, AEGISM_INTERCEPTOR_SETTLE seconds
            since the last shot, and none of its interceptors are still in
            flight. This is judged from the real missiles (captured by
@@ -136,8 +137,6 @@ private _busyTurrets = [];
     if (isNull _object || {!alive _object} || {!((_entry getOrDefault ["class", ""]) in _allowlist)}) then {
         _claims deleteAt _contactKey;
     } else {
-        private _targetPos = getPosASL _object;
-        private _height = _object call _fnHeight;
         private _kept = _records select {
             private _record = _x;
             private _system = _record get "system";
@@ -146,14 +145,12 @@ private _busyTurrets = [];
             private _lastShotAt = _record get "lastShotAt";
             private _alive = !isNull _system && {alive _system};
             private _systemSettings = if (_alive) then { _system call _fnSettings } else { createHashMap };
-            private _dist = if (_alive) then { (getPosASL _system) distance _targetPos } else { -1 };
-            private _elevation = if (_alive) then { [eyePos _system, _targetPos] call aegism_intercept_fnc_elevationAngle } else { 0 };
-            private _inEnvelope = _alive && {[_systemSettings, _weaponInfo, _dist, _height, _role, _elevation] call aegism_intercept_fnc_inEnvelope};
+            private _engage = if (_alive) then { [_system, _role, _weaponInfo, _object, _systemSettings] call aegism_intercept_fnc_canEngage } else { [false, ""] };
 
             private _reason = switch (true) do {
                 case (!_alive): { "system dead" };
                 case !((_entry get "class") in (_systemSettings getOrDefault ["targetClassAllowlist", []])): { format ["%1 not engaged by this vehicle (its settings)", _entry get "class"] };
-                case (!_inEnvelope): { format ["out of envelope (%1m, %2m AGL, %3 deg elevation)", round _dist, round _height, round (_elevation * 10) / 10] };
+                case !(_engage select 0): { _engage select 1 };
                 case (_role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])} && {time > _lastShotAt + AEGISM_INTERCEPTOR_SETTLE} && {((_record get "interceptors") findIf { !isNull _x && {alive _x} }) == -1}): { "missed (salvo spent, no interceptor still in flight)" };
                 case (_role == "ciws" && {_lastShotAt >= 0} && {time > _lastShotAt + AEGISM_CIWS_IDLE_GRACE}): { "CIWS idle" };
                 case (_lastShotAt < 0 && {time > (_record get "assignedAt") + AEGISM_NEVER_FIRED_TIMEOUT}): { "never fired (cannot bear or no LOS)" };
@@ -269,7 +266,7 @@ if (_memberPositions isNotEqualTo [] && {count _orderedKeys > 1}) then {
                         }) != -1;
                         if (!_turretBusyElsewhere
                             && {_class in (_candSettings getOrDefault ["targetClassAllowlist", []])}
-                            && {[_candSettings, _candInfo, (getPosASL _candSystem) distance _targetPos, _height, _role, [eyePos _candSystem, _targetPos] call aegism_intercept_fnc_elevationAngle] call aegism_intercept_fnc_inEnvelope}) then {
+                            && {([_candSystem, _role, _candInfo, _object, _candSettings] call aegism_intercept_fnc_canEngage) select 0}) then {
                             _roleIndices pushBack _forEachIndex;
                         };
                     };

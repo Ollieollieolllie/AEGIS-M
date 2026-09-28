@@ -6,7 +6,7 @@ Description:
     System gets its assignment from aegism_intercept_fnc_assignEngagements
     instead). Filters the System's own pooled contacts to those on the
     doctrine allowlist that at least one of its ready weapons can engage
-    (aegism_intercept_fnc_inEnvelope), picks the best per the doctrine's
+    (aegism_intercept_fnc_canEngage), picks the best per the doctrine's
     targetPriority rule, and returns the nearest-envelope weapon for it.
 
     Previously the chosen target was matched against the doctrine envelope
@@ -18,20 +18,21 @@ Parameters:
     _candidates - [object, class] pairs from the System's own pool <ARRAY>
     _engagementSettings - resolved doctrine <HASHMAP>
     _weapons - this role's weaponInfos that currently have ammo <ARRAY>
-    _role - "launcher" or "ciws" (optional, default "launcher") <STRING>
+    _role - "launcher" or "ciws" <STRING>
+    _system - the System vehicle <OBJECT>
 
 Returns:
     [target <OBJECT>, weaponInfo <ARRAY>], or [objNull, []] if nothing is
     engageable
 
 Examples:
-    [_weaponPos, _candidates, _settings, _readyWeapons, "ciws"] call aegism_intercept_fnc_selectTarget;
+    [_weaponPos, _candidates, _settings, _readyWeapons, "ciws", _cheetah] call aegism_intercept_fnc_selectTarget;
 
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["_weaponPos", "_candidates", "_engagementSettings", "_weapons", ["_role", "launcher"]];
+params ["_weaponPos", "_candidates", "_engagementSettings", "_weapons", "_role", "_system"];
 
 private _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", []];
 private _priority = _engagementSettings getOrDefault ["targetPriority", "nearest"];
@@ -41,11 +42,7 @@ private _engageable = [];
 {
     _x params ["_object", "_class"];
     if (!isNull _object && {alive _object} && {_class in _allowlist}) then {
-        private _targetPos = getPosASL _object;
-        private _dist = _weaponPos distance _targetPos;
-        private _height = (ASLToAGL _targetPos) select 2;
-        private _elevation = [_weaponPos, _targetPos] call aegism_intercept_fnc_elevationAngle;
-        private _idx = _weapons findIf { [_engagementSettings, _x, _dist, _height, _role, _elevation] call aegism_intercept_fnc_inEnvelope };
+        private _idx = _weapons findIf { ([_system, _role, _x, _object, _engagementSettings] call aegism_intercept_fnc_canEngage) select 0 };
         if (_idx != -1) then {
             _engageable pushBack [_object, _class, _weapons select _idx];
         };

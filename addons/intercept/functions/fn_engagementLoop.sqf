@@ -113,7 +113,7 @@ private _fnExecute = {
 
     if ((_system magazineTurretAmmo [_magClass, _turretPath]) <= 0) exitWith {};
 
-    ([_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon) params ["_aligned", "_angle", "_tolerance"];
+    ([_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon) params ["_aligned", "_angle", "_tolerance", "", "_feasible"];
 
     if (time < (_state get "assignedAt") + _reactionTime) exitWith {
         if !(_state getOrDefault ["reactionLogged", false]) then {
@@ -154,6 +154,13 @@ private _fnExecute = {
         };
     };
     _state set ["losBlocked", false];
+
+    if (!_feasible) exitWith {
+        if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
+            _state set ["lastSlewLog", time];
+            diag_log text format ["[AEGIS-M] NO-SOLUTION: %1 (%2) holding on %3 -- no intercept inside the weapon's reach (target receding faster than the round can close, or meeting point beyond range).", _system, _role, _target];
+        };
+    };
 
     if (!_aligned) exitWith {
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
@@ -211,7 +218,7 @@ if (_readyWeapons isEqualTo []) exitWith {};
 private _pool = _system getVariable ["AEGISM_pooledContacts", createHashMap];
 private _candidates = (values _pool) apply { [_x get "object", _x get "class"] };
 
-([_weaponPos, _candidates, _engagementSettings, _readyWeapons, _role] call aegism_intercept_fnc_selectTarget) params ["_target", "_weaponInfo"];
+([_weaponPos, _candidates, _engagementSettings, _readyWeapons, _role, _system] call aegism_intercept_fnc_selectTarget) params ["_target", "_weaponInfo"];
 
 private _state = _system getVariable [_stateKey, createHashMap];
 if (isNull _target) exitWith {

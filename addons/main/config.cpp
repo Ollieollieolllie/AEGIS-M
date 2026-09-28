@@ -6,7 +6,7 @@ class CfgPatches
         weapons[] = {};
         author = "Snow(Dryden)";
         requiredVersion = 2.10;
-        requiredAddons[] = {"cba_main", "cba_settings"};
+        requiredAddons[] = {"cba_main", "cba_settings", "A3_Modules_F"};
         #include "version.hpp"
     };
 };
@@ -40,24 +40,17 @@ class Extended_PostInit_EventHandlers
     };
 };
 
-// Eden/Zeus module browser categorization for every AEGIS-M module class.
-// A Module_F-derived class needs a real editorCategory/editorSubcategory
-// pair (referencing a class defined here) to appear in the module browser
-// tree at all -- there is no fallback "uncategorized" bucket a mission
-// designer can find it in. Defined once here (main is a hard dependency of
-// every other AEGIS-M addon) rather than duplicated per module addon.
-class CfgEditorCategories
+// Module browser folder for every AEGIS-M module, in both Eden (Systems >
+// Modules) and Zeus (Modules tab). Modules are grouped by their `category`,
+// a CfgFactionClasses entry -- NOT by editorCategory/editorSubcategory,
+// which only group props/objects. The Site used to set only those, so it
+// fell into the default "Other" folder. Defined once here (main is a hard
+// dependency of every other AEGIS-M addon).
+class CfgFactionClasses
 {
-    class AEGISM_EditorCategory
+    class NO_CATEGORY;
+    class AEGISM_Modules: NO_CATEGORY
     {
         displayName = "AEGIS-M";
-    };
-};
-
-class CfgEditorSubcategories
-{
-    class AEGISM_EditorSubcategory_Modules
-    {
-        displayName = "AEGIS-M Modules";
     };
 };

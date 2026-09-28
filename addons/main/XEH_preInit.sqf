@@ -39,3 +39,13 @@
     false,
     0
 ] call CBA_fnc_addSetting;
+
+// Client-side, like the 3D draw. See aegism_fnc_debugHint.
+[
+    "aegism_main_debugHint",
+    "CHECKBOX",
+    ["Site Status Hint", "Live status board in the hint box: the nearest Site's vehicles (roles, colour-coded status, target, ammo) and contacts, other Sites and standalone Systems in summary. Shows data only where AEGIS-M runs its engagement logic: singleplayer, Eden Preview, or a hosted game's host."],
+    ["AEGIS-M", "Debug"],
+    false,
+    0
+] call CBA_fnc_addSetting;

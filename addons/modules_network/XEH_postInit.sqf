@@ -11,3 +11,15 @@
 [{
     [] call aegism_network_fnc_scanForUninitSites;
 }, 2, []] call CBA_fnc_addPerFrameHandler;
+
+// Zeus: a Game Master only lists modules from addons activated for it, and
+// the Game Master module's default ("All official addons") excludes mods --
+// so the Site wasn't placeable from Zeus. Activate this addon for every
+// curator, including ones created later (retroactive class init handler).
+// addCuratorAddons is server-only.
+if (isServer) then {
+    ["ModuleCurator_F", "Init", {
+        params ["_curator"];
+        _curator addCuratorAddons ["aegism_modules_network"];
+    }, true, [], true] call CBA_fnc_addClassEventHandler;
+};

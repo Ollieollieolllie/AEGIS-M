@@ -10,9 +10,11 @@ class CfgFunctions
             class munitionSize {R;};
             class computeLeadPoint {R;};
             class lockTurret {R;};
+            class barrelDirection {R;};
             class aimWeapon {R;};
             class elevationAngle {R;};
             class inEnvelope {R;};
+            class canEngage {R;};
             class onSystemFired {R;};
             class targetHitRadius {R;};
             class selectTarget {R;};

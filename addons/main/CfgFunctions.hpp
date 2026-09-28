@@ -8,6 +8,7 @@ class CfgFunctions
             class scaledRange {R;};
             class pollSyncedObjects {R;};
             class debugDraw {R;};
+            class debugHint {R;};
             class debugCheckSite {R;};
             class setWeaponAiSuppressed {R;};
         };

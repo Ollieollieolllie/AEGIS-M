@@ -64,12 +64,19 @@ game's simulation, not a scripted projectile AEGIS-M spawns and steers
 itself. Aiming and firing themselves are scripted directly (lockCameraTo on
 the weapon's own turret path -- the command ACE's Hunter-Killer uses to slew
 a gunner's turret -- from the moment a target is assigned, a real angle
-check against
-its live weaponDirection, then a single BIS_fnc_fire call once aligned)
-rather than handed to fireAtTarget's own AI judgement. A launched missile is
-handed its target (`setMissileTarget`) so vanilla guidance actually homes.
-CIWS guns aim at a lead point computed from the round's real muzzle
-velocity and drag, and fire sustained bursts at the gun's own rate of fire
+check against the barrel's live direction, then firing once aligned)
+rather than handed to fireAtTarget's own AI judgement. Every weapon aims at
+its **intercept point**: where its round or missile would meet the target,
+from real config kinematics (gun: muzzle velocity, drag, drop; missile:
+launch speed, thrust, top speed) and the target's measured velocity and
+acceleration. Launchers therefore leave the rail already pointed at the
+meeting point instead of turning hard after launch. A target with **no
+feasible intercept** -- receding faster than the round can close, or
+meeting point beyond the weapon's reach or the round's lifetime -- is not
+engaged, and a weapon already on it is released (`NO-SOLUTION` /
+`ASSIGN-CLEAR`), so a gun doesn't burn ammo on a jet flying away from it.
+A launched missile is handed its target (`setMissileTarget`) so vanilla
+guidance actually homes. CIWS guns fire sustained bursts at the gun's own rate of fire
 (doctrine: burst length 3-5 s by default, 1 s pause between bursts),
 holding fire whenever the turret drifts off the lead point or the barrel
 drops below the CIWS minimum elevation (doctrine, 5 degrees by default; a
@@ -93,7 +100,8 @@ platform target (helicopter/drone) is left to its own genuine hitpoints and
 the interceptor's real splash damage, since it can legitimately survive a
 near miss.
 
-**AEGISM_Module_Site** is the one placeable/syncable AEGIS-M module. Sync
+**AEGISM_Module_Site** ("AEGIS-M: Site", in the AEGIS-M module folder in
+both Eden and Zeus) is the one placeable/syncable AEGIS-M module. Sync
 it to every vehicle that makes up a site (its radar, its launchers, its
 CIWS) to link them into a battery: contacts are pooled, and a Site-wide
 coordinator matches each contact to the best-fit weapon across every member
@@ -137,8 +145,16 @@ directly from the same variables the detection/intercept pipeline itself
 reads and writes. Every System also shows a live status label (networked/
 standalone, contact source, per-role ammo, ASSIGNED, and live barrel
 alignment while aiming). An assigned weapon that isn't firing always logs
-why: `REACTING`, `SLEWING`, `LOS-BLOCKED`, `FIRE-SKIP`, or `ASSIGN-CLEAR`
-with a reason.
+why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
+`ASSIGN-CLEAR` with a reason.
+
+**Site status hint** (CBA setting "AEGIS-M > Debug > Site Status Hint", off
+by default) shows a live board in the hint box: the nearest Site's vehicles
+with their roles, colour-coded status (READY, TRACKING, REACTING, SLEWING,
+ENGAGING, FIRING, NO SOLUTION, LOS BLOCKED, NO AMMO, DESTROYED), target and
+ammo, then its contacts and which weapons are on each; other Sites and
+standalone Systems in summary. It shows data wherever AEGIS-M runs its
+engagement logic: singleplayer, Eden Preview, or a hosted game's host.
 
 ## Settings
 

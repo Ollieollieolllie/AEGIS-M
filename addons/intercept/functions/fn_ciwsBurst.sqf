@@ -13,10 +13,11 @@ Description:
     second apart instead of sustained fire.
 
     Fires only while the latest aim record (aegism_intercept_fnc_aimWeapon,
-    refreshed every CIWS engagement tick) is for THIS target, fresh, and
-    within tolerance: a turret that falls off the lead point mid-burst holds
-    fire until it's back on. It also holds fire while the barrel itself
-    (weaponDirection, world space) is below doctrine ciwsMinElevation, so a
+    refreshed every CIWS engagement tick) is for THIS target, fresh, has a
+    feasible intercept, and is within tolerance: a turret that falls off the
+    lead point mid-burst holds fire until it's back on. It also holds fire
+    while the barrel itself (aegism_intercept_fnc_barrelDirection, world
+    space) is below doctrine ciwsMinElevation, so a
     target dipping low mid-burst never pulls rounds into the ground or
     friendly positions; the time held is reported in BURST-END.
     The burst ends at its deadline -- which the
@@ -71,7 +72,7 @@ private _targetDesc = format ["%1 (%2)", _target, typeOf _target];
     _args params ["_system", "_target", "_turretPath", "_weaponClass", "_magazineClass", "_burstKey", "_startedAt", "_ammoAtStart", "_minElevation", "_elevationHeld", "_burstId", "_targetDesc"];
 
     (_system getVariable [_burstKey, [-1, objNull, 0]]) params ["_endsAt", "", "_currentId"];
-    (_system getVariable ["AEGISM_aim_ciws", []]) params [["_angle", 180], ["_tolerance", 0], ["_aimAt", -1e9], ["_aimTarget", objNull]];
+    (_system getVariable ["AEGISM_aim_ciws", []]) params [["_angle", 180], ["_tolerance", 0], ["_aimAt", -1e9], ["_aimTarget", objNull], ["_feasible", false]];
     private _ammo = if (alive _system) then { _system magazineTurretAmmo [_magazineClass, _turretPath] } else { 0 };
     private _superseded = _currentId != _burstId;
 
@@ -85,9 +86,9 @@ private _targetDesc = format ["%1 (%2)", _target, typeOf _target];
             ["", format [" (held %1s: barrel below the %2 deg CIWS minimum elevation)", round (_elevationHeld * 10) / 10, _minElevation]] select (_elevationHeld > 0)];
     };
 
-    if (_aimTarget != _target || {_angle > _tolerance}) exitWith {};
+    if (_aimTarget != _target || {!_feasible} || {_angle > _tolerance}) exitWith {};
 
-    private _barrelElevation = asin ((((_system weaponDirection _weaponClass) select 2) max -1) min 1);
+    private _barrelElevation = asin (((([_system, _turretPath, _weaponClass] call aegism_intercept_fnc_barrelDirection) select 2) max -1) min 1);
     if (_barrelElevation < _minElevation) exitWith {
         _args set [9, _elevationHeld + diag_deltaTime];
     };

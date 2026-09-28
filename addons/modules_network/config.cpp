@@ -6,7 +6,7 @@ class CfgPatches
         weapons[] = {};
         author = "Snow(Dryden)";
         requiredVersion = 2.10;
-        requiredAddons[] = {"aegism_main", "aegism_intercept"};
+        requiredAddons[] = {"aegism_main", "aegism_intercept", "A3_Modules_F"};
         #include "version.hpp"
     };
 };
@@ -30,16 +30,26 @@ class Extended_PostInit_EventHandlers
 
 class CfgVehicles
 {
-    class Module_F;
-    class ModuleDescription;
+    // ModuleDescription is a class NESTED in Module_F, so it is declared
+    // there. It used to be declared at the root of CfgVehicles, which created
+    // an empty *vehicle* class called ModuleDescription: the engine then
+    // tried to load it as a vehicle (hundreds of "No entry
+    // CfgVehicles/ModuleDescription.scope/.icon/..." RPT warnings) and it
+    // polluted the Eden/Zeus asset lists.
+    class Logic;
+    class Module_F: Logic
+    {
+        class ModuleDescription;
+    };
 
     class AEGISM_Module_Site: Module_F
     {
         scope = 2;
+        scopeCurator = 2;
         displayName = "AEGIS-M: Site";
-        icon = "\x\aegism\addons\main\data\aegism_icon_network_ca.paa";
-        editorCategory = "AEGISM_EditorCategory";
-        editorSubcategory = "AEGISM_EditorSubcategory_Modules";
+        icon = "\x\aegism\addons\main\data\aegism_logo_ca.paa";
+        portrait = "\x\aegism\addons\main\data\aegism_logo_ca.paa";
+        category = "AEGISM_Modules";
         function = "aegism_network_fnc_moduleInit";
         functionPriority = 0;
         isGlobal = 1;

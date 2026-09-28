@@ -21,7 +21,8 @@ Description:
     munition's own CfgAmmo dangerRadiusHit (the radius the game's AI keeps
     friendlies out of, e.g. 750m for 155mm, 1250m for the MLRS rocket,
     1000m for bombs), else its blast radius (indirectHitRange) when
-    dangerRadiusHit is unset (-1).
+    dangerRadiusHit is unset (-1). A carrier round uses its payload's
+    radius (see below).
 
 Parameters:
     _projectile - the munition <OBJECT>
@@ -50,10 +51,42 @@ private _protected = if (isNull _network) then { [_poolOwner] } else {
 };
 if (_protected isEqualTo []) exitWith { [] };
 
+// A carrier round (simulation shotSubmunitions, e.g. the MLRS R_230mm_HE)
+// has no warhead of its own -- dangerRadiusHit -1 and a token blast radius
+// -- because its payload is the submunition it releases near the target
+// (R_230mm_fly: dangerRadiusHit 1250). Judged on its own numbers, a carrier
+// on a dead-centre trajectory was never a threat, so a friendly MLRS salvo
+// was only flagged once the terminal stage appeared ~500m from impact. The
+// radius is taken from the payload instead (the first listed submunition,
+// or the heaviest-weighted one of a weighted list).
+private _fnRadius = {
+    params ["_cfg"];
+    private _r = getNumber (_cfg >> "dangerRadiusHit");
+    if (_r <= 0) then { _r = getNumber (_cfg >> "indirectHitRange"); };
+    _r
+};
+
 private _ammoCfg = configOf _projectile;
 private _radius = _radiusSetting;
-if (_radius <= 0) then { _radius = getNumber (_ammoCfg >> "dangerRadiusHit"); };
-if (_radius <= 0) then { _radius = getNumber (_ammoCfg >> "indirectHitRange"); };
+if (_radius <= 0) then {
+    _radius = [_ammoCfg] call _fnRadius;
+    if ((toLower getText (_ammoCfg >> "simulation")) == "shotsubmunitions") then {
+        private _payload = if (isArray (_ammoCfg >> "submunitionAmmo")) then {
+            // [class, weight, class, weight, ...] -> heaviest weight
+            private _list = getArray (_ammoCfg >> "submunitionAmmo");
+            private _best = "";
+            private _bestWeight = -1;
+            for "_i" from 0 to (count _list - 2) step 2 do {
+                if ((_list select (_i + 1)) > _bestWeight) then { _best = _list select _i; _bestWeight = _list select (_i + 1); };
+            };
+            _best
+        } else {
+            getText (_ammoCfg >> "submunitionAmmo")
+        };
+        private _payloadCfg = configFile >> "CfgAmmo" >> _payload;
+        if (isClass _payloadCfg) then { _radius = _radius max ([_payloadCfg] call _fnRadius); };
+    };
+};
 
 private _missileTarget = if (_class == "missile") then { missileTarget _projectile } else { objNull };
 if (!isNull _missileTarget) exitWith {
