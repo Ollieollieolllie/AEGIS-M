@@ -103,45 +103,49 @@ private _fnSensorsRoot = {
     _cfg >> "Sensors"
 };
 
-// configProperties [configEntry, conditionString, recursive] (unary,
-// single array argument) lists a config entry's sub-entries matching
-// condition -- "isClass _x" filters to sub-classes only (this block also
-// carries plain scalar properties we don't want here).
-//
-// Returns [range, arc] for the first Active/PassiveRadarSensorComponent
-// found directly under the given sensors-root config (see _fnSensorsRoot
-// above), or [] if none qualifies. Range is the largest maxRange across
-// the component's own target-type sub-classes (AirTarget, GroundTarget,
-// ...); arc is its own angleRangeHorizontal, or 360 if that property isn't
-// defined (omnidirectional).
+// Returns [range, arc] if the given sensors-root config (see _fnSensorsRoot
+// above) has an ActiveRadarSensorComponent or PassiveRadarSensorComponent
+// as a DIRECT child class, or [] if neither exists. Confirmed against real
+// vehicle configs (BIS's own jets, and third-party mods defining their own
+// radar-equipped aircraft) that these two are always direct siblings under
+// "Components >> SensorsManagerComponent >> Components" alongside things
+// like IRSensorComponent/LaserSensorComponent/NVSensorComponent -- NOT
+// nested inside some further intermediate wrapper class (an earlier version
+// of this function wrongly assumed an extra nesting layer here, which meant
+// it silently never found a real vehicle's radar at all). Range is the
+// largest maxRange across the component's own target-type sub-classes
+// (AirTarget, GroundTarget, ...); arc is its own angleRangeHorizontal, or
+// 360 if that property isn't defined (omnidirectional).
 private _findRadarComponent = {
     private _sensorsCfg = _this;
-    private _result = [];
+    private _radarCfg = if (isClass (_sensorsCfg >> "ActiveRadarSensorComponent")) then {
+        _sensorsCfg >> "ActiveRadarSensorComponent"
+    } else {
+        if (isClass (_sensorsCfg >> "PassiveRadarSensorComponent")) then { _sensorsCfg >> "PassiveRadarSensorComponent" } else { configNull }
+    };
+
+    if (!isClass _radarCfg) exitWith { [] };
+
+    // configProperties [configEntry, conditionString, recursive] (unary,
+    // single array argument) lists a config entry's sub-entries matching
+    // condition -- "isClass _x" filters to sub-classes only, e.g. this
+    // component's own AirTarget/GroundTarget target-type blocks (a
+    // component class also carries plain scalar properties, like
+    // angleRangeHorizontal itself, that aren't sub-classes).
+    private _maxRange = 0;
     {
-        private _radarCfg = if (isClass (_x >> "ActiveRadarSensorComponent")) then {
-            _x >> "ActiveRadarSensorComponent"
-        } else {
-            if (isClass (_x >> "PassiveRadarSensorComponent")) then { _x >> "PassiveRadarSensorComponent" } else { configNull }
+        if (isNumber (_x >> "maxRange")) then {
+            _maxRange = _maxRange max (getNumber (_x >> "maxRange"));
         };
+    } forEach (configProperties [_radarCfg, "isClass _x", false]);
 
-        if (isClass _radarCfg) exitWith {
-            private _maxRange = 0;
-            {
-                if (isNumber (_x >> "maxRange")) then {
-                    _maxRange = _maxRange max (getNumber (_x >> "maxRange"));
-                };
-            } forEach (configProperties [_radarCfg, "isClass _x", false]);
+    private _arc = if (isNumber (_radarCfg >> "angleRangeHorizontal")) then {
+        getNumber (_radarCfg >> "angleRangeHorizontal")
+    } else {
+        360
+    };
 
-            private _arc = if (isNumber (_radarCfg >> "angleRangeHorizontal")) then {
-                getNumber (_radarCfg >> "angleRangeHorizontal")
-            } else {
-                360
-            };
-
-            _result = [_maxRange, _arc];
-        };
-    } forEach (configProperties [_sensorsCfg, "isClass _x", false]);
-    _result
+    [_maxRange, _arc]
 };
 
 private _hasRadar = false;
