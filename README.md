@@ -79,6 +79,17 @@ Syncing or unsyncing a vehicle to a Site, or editing the Site's own
 Attributes, takes effect live -- nothing requires re-placing modules or
 restarting the mission.
 
+**A weapon under AEGIS-M control can only fire through AEGIS-M.** Every
+launcher/CIWS turret AEGIS-M recognizes has its crew's own independent
+targeting and engagement disabled, so a shot only ever happens because
+AEGIS-M's own gates (a real assignment, live ammo, crew reaction time,
+shot-interval cooldown, salvo cap, a real line-of-sight check, a crew-
+reliability roll) all passed -- not because the crew spotted something and
+decided to engage on its own. A vehicle synced to a Site has this applied
+the moment it's synced, independent of whether AEGIS-M ends up recognizing
+it as a System at all, so a misconfigured or unrecognized vehicle goes
+quiet rather than fighting uncontrolled.
+
 **Debug 3D draw** (CBA setting "AEGIS-M > Debug > Enable Debug 3D Draw",
 off by default, client-side/no gameplay effect) draws pooled contacts,
 radar range, and every active engagement -- Site-wide assignments or a

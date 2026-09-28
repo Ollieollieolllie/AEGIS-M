@@ -57,6 +57,20 @@ Description:
     only ever registered on the server (isServer), the single source of
     truth in both singleplayer (always isServer) and dedicated multiplayer.
 
+    Every discovered launcher/CIWS turret also has its crew's own
+    independent AI targeting/engagement suppressed (aegism_fnc_
+    setWeaponAiSuppressed) the moment this System is recognized -- so that
+    weapon can ONLY ever fire via AEGIS-M's own aegism_intercept_fnc_
+    fireWeapon call, never because the crew spotted and independently
+    decided to engage something themselves outside AEGIS-M's own
+    assignment/ammo/reaction-time/cooldown/LOS/reliability gates. Runs on
+    every machine (not isServer-gated), matching the rest of this
+    function's non-loop-registration setup, since disableAI is local AI
+    simulation state. A vehicle synced to a Site gets a broader, blunter
+    version of this same suppression applied immediately at sync time
+    (aegism_network_fnc_moduleInit), independent of whether discovery here
+    ever actually recognizes it -- see that function's own doc comment.
+
 Parameters:
     _vehicle - the vehicle to set up as an AEGIS-M System <OBJECT>
 
@@ -134,6 +148,17 @@ if ("ownRadar" in _contactSource) then {
 private _activeWeaponRoles = [];
 if ((_capabilities get "launcherWeapons") isNotEqualTo []) then { _activeWeaponRoles pushBack "launcher"; };
 if ((_capabilities get "ciwsWeapons") isNotEqualTo []) then { _activeWeaponRoles pushBack "ciws"; };
+
+// Suppress the crew's own independent targeting/engagement on every
+// discovered launcher/CIWS turret (see aegism_fnc_setWeaponAiSuppressed's
+// own doc comment for why) -- runs on every machine, same as the rest of
+// this function's non-loop-registration setup, since disableAI affects
+// local AI simulation and needs to apply wherever this vehicle's crew is
+// actually simulated, not just the server.
+private _weaponTurretPaths = ((_capabilities get "launcherWeapons") + (_capabilities get "ciwsWeapons")) apply { _x select 0 };
+if (_weaponTurretPaths isNotEqualTo []) then {
+    [_vehicle, _weaponTurretPaths, true] call aegism_fnc_setWeaponAiSuppressed;
+};
 
 if (isServer) then {
     {

@@ -9,6 +9,7 @@ class CfgFunctions
             class pollSyncedObjects {R;};
             class debugDraw {R;};
             class debugCheckSite {R;};
+            class setWeaponAiSuppressed {R;};
         };
     };
 };

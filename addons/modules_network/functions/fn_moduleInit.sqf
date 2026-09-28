@@ -31,6 +31,23 @@ Description:
     (missionNamespace) so the detection loop's trackers can find it without
     a per-tick module-logic scan.
 
+    Also suppresses independent AI targeting/engagement (aegism_fnc_
+    setWeaponAiSuppressed) on EVERY turret of every synced vehicle, applied
+    to the whole vehicle rather than any specific weapon -- deliberately
+    broader/blunter than aegism_system_fnc_moduleInit's own precise per-
+    discovered-weapon suppression, since a vehicle synced here is declared
+    by the mission designer to be part of this Site and should never open
+    fire on its own initiative even if aegism_system_fnc_discoverCapabilities
+    never actually recognizes it (a bug there, or simply syncing before its
+    own scan pass reaches it, should never mean "fires uncontrolled" rather
+    than "doesn't fire until AEGIS-M is ready"). The tradeoff: this also
+    suppresses turrets AEGIS-M will never use (e.g. a mixed-role vehicle's
+    own coax MG) -- accepted, since syncing a vehicle here is an explicit
+    choice to hand it to AEGIS-M. Restored on unsync ONLY if the vehicle
+    isn't also independently recognized as a System in its own right (that
+    recognition owns its own, narrower suppression and shouldn't be undone
+    by a Site-level unsync).
+
     Also registers a server-only per-tick call into aegism_intercept_fnc_
     assignEngagements for this Site (below), at the same cadence as
     engagementLoop so a member System's own tick always sees a fresh
@@ -129,6 +146,22 @@ missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
     _x setVariable ["AEGISM_network", _logic, false];
     _x setVariable ["AEGISM_engagement", _engagementData, false];
     _x setVariable ["AEGISM_crew", _crewData, false];
+    // Blanket-suppress every turret's independent AI targeting the MOMENT
+    // a vehicle is synced, regardless of whether aegism_system_fnc_
+    // discoverCapabilities ever actually recognizes it as a launcher/CIWS
+    // System -- deliberately broader/blunter than aegism_system_fnc_
+    // moduleInit's own precise per-weapon suppression (which only touches
+    // turrets it discovered as a real launcher/CIWS): a vehicle synced here
+    // is DECLARED to be part of this Site by the mission designer, so it
+    // should never independently open fire on its own initiative even if
+    // discovery fails or hasn't run yet (a bug there, or simply syncing a
+    // vehicle before its own scan pass reaches it, should never mean
+    // "fires uncontrolled" -- see aegism_fnc_setWeaponAiSuppressed's own
+    // doc comment for what this actually disables). This does suppress
+    // turrets that AEGIS-M will never end up using (e.g. a mixed-role
+    // vehicle's coax MG) -- an accepted tradeoff for a synced vehicle,
+    // since the mission designer chose to sync it as an AEGIS-M asset.
+    [_x, allTurrets _x, true] call aegism_fnc_setWeaponAiSuppressed;
 } forEach _units;
 
 [
@@ -139,6 +172,15 @@ missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
         _object setVariable ["AEGISM_network", _siteLogic, false];
         _object setVariable ["AEGISM_engagement", _data get "engagementData", false];
         _object setVariable ["AEGISM_crew", _data get "crewData", false];
+        // remoteExecCall, not a plain call -- unlike the initial-sync
+        // suppression above (which runs via the module's own isGlobal=1
+        // activation, already executing on every machine), this callback
+        // runs from aegism_fnc_pollSyncedObjects, which is deliberately
+        // server-only (to avoid duplicate PFH registration/AEGISM_claims
+        // mutation). disableAI is local AI-simulation state, so a plain
+        // call here would only ever suppress the SERVER's own simulation
+        // of this crewman, leaving a client's own local AI un-suppressed.
+        [_object, allTurrets _object, true] remoteExecCall ["aegism_fnc_setWeaponAiSuppressed", -2];
         private _members = _siteLogic getVariable ["AEGISM_networkMembers", []];
         _members pushBackUnique _object;
         _siteLogic setVariable ["AEGISM_networkMembers", _members, false];
@@ -149,6 +191,33 @@ missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
         _object setVariable ["AEGISM_network", nil, false];
         _object setVariable ["AEGISM_engagement", nil, false];
         _object setVariable ["AEGISM_crew", nil, false];
+        // Restore full native AI only if this vehicle isn't ALSO a
+        // recognized System in its own right (aegism_system_fnc_moduleInit
+        // applies its own, narrower suppression independently of the Site
+        // sync -- unsyncing from a Site shouldn't re-enable firing on a
+        // vehicle that's still a standalone AEGIS-M launcher/CIWS).
+        //
+        // Deliberately re-checked via aegism_system_fnc_discoverCapabilities
+        // directly here, NOT via the "AEGISM_system" variable -- that
+        // variable is written local-only (setVariable's global flag is
+        // false) by whichever machine's own discovery scan happens to reach
+        // this vehicle first, per that function's own doc comment. This
+        // poll only ever runs on the server (aegism_fnc_pollSyncedObjects
+        // is isServer-gated), so on a dedicated MP server the server's own
+        // copy of "AEGISM_system" can be nil even though a CLIENT already
+        // recognized this vehicle as a System -- checking that variable
+        // here would then wrongly restore full native AI on a vehicle
+        // that's still meant to be under AEGIS-M's control. Capability
+        // discovery is a pure config/loadout read with no dependency on
+        // which machine asks, so it gives the same answer everywhere.
+        private _capabilities = [_object] call aegism_system_fnc_discoverCapabilities;
+        private _stillASystem = (_capabilities get "hasRadar") || {(_capabilities get "launcherWeapons") isNotEqualTo []} || {(_capabilities get "ciwsWeapons") isNotEqualTo []};
+        if (!_stillASystem) then {
+            // remoteExecCall for the same reason as the apply callback
+            // above -- this restore must reach every machine's own local
+            // AI simulation, not just the server's.
+            [_object, allTurrets _object, false] remoteExecCall ["aegism_fnc_setWeaponAiSuppressed", -2];
+        };
         private _members = _siteLogic getVariable ["AEGISM_networkMembers", []];
         _siteLogic setVariable ["AEGISM_networkMembers", _members - [_object], false];
     },
