@@ -93,6 +93,22 @@ Author:
 params ["_system", "_target", "_weaponInfo", "_reliability"];
 _weaponInfo params ["_turretPath", "_weaponClass", "_magazineClass"];
 
+// Hard circuit breaker, deliberately independent of engagementLoop's own
+// salvoSize/minShotInterval bookkeeping (which is what SHOULD already
+// prevent more than one shot per assignment, but is exactly the mechanism
+// under suspicion while a real multi-round-per-fireAtTarget-call bug is
+// being tracked down) -- this is the single, narrowest choke point every
+// real fireAtTarget call in the whole codebase passes through, so gating
+// HERE guarantees no second shot from this turret regardless of what
+// upstream logic (buggy or not) tries to trigger it. Keyed per turret
+// (system + turretPath), not per System, so a multi-weapon System's other
+// turrets are unaffected.
+private _holdKey = format ["AEGISM_fireHold_%1", _turretPath];
+if (_system getVariable [_holdKey, false]) exitWith {
+    diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 turret %2 is on hold (aegism_intercept_fnc_debugSetFireHold) -- not firing.", _system, _turretPath];
+    false
+};
+
 if (isNull _target || {!alive _target}) exitWith {
     diag_log text format ["[AEGIS-M] FIRE-SKIP: %1 -- target null or already dead.", _system];
     false

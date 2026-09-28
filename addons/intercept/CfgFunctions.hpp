@@ -13,6 +13,7 @@ class CfgFunctions
             class engagementLoop {R;};
             class fireWeapon {R;};
             class interceptorPFH {R;};
+            class debugSetFireHold {R;};
         };
     };
 };

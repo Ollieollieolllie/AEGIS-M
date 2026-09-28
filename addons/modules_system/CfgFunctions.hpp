@@ -13,6 +13,7 @@ class CfgFunctions
             class defaultEngagementSettings {R;};
             class defaultCrew {R;};
             class scanForRoles {R;};
+            class debugCheckCiws {R;};
         };
     };
 };
