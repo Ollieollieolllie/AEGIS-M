@@ -217,6 +217,13 @@ private _ciwsWeapons = [];
                 // element anyway so launcherWeapons/ciwsWeapons share one
                 // [turretPath, weaponClass, magazineClass, size] shape.
                 _ciwsWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, 0];
+            } else {
+                // Deliberately verbose -- a real autocannon that "should"
+                // read as CIWS-capable but doesn't is otherwise a silent,
+                // hard-to-diagnose dead end (the vehicle still qualifies as
+                // a System via its other weapons, so nothing else would
+                // ever surface that this specific gun was excluded, or why).
+                diag_log text format ["[AEGIS-M] DISCOVERY: %1's %2 (ammo %3, reloadTime=%4) did not qualify as CIWS -- threshold is reloadTime > 0 and < %5.", _vehicle, _weaponClass, _ammoClassName, _reloadTime, AEGISM_CIWS_ROF_THRESHOLD];
             };
         };
     };

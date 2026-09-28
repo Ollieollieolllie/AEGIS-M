@@ -168,6 +168,30 @@ if (_fuseRange > 0) then {
     };
 };
 
-diag_log text format ["[AEGIS-M] FIRE: %1 (%2) fires %3 (mag %4) at %5 (%6).", _system, typeOf _system, _weaponClass, _magazineClass, _target, typeOf _target];
+private _ammoBefore = _system magazineTurretAmmo [_magazineClass, _turretPath];
+diag_log text format ["[AEGIS-M] FIRE: %1 (%2) fires %3 (mag %4, %5 rounds before shot) at %6 (%7).", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
 
-_system fireAtTarget [_target, _weaponClass]
+_system fireAtTarget [_target, _weaponClass];
+
+// Checked 1s later (not synchronously/next-frame -- the actual physical
+// launch can take a moment after fireAtTarget is called, e.g. turret
+// traverse/lock time, so checking too early would report a false anomaly
+// before the real shot has even left the tube yet) -- if more than exactly
+// 1 round is missing, that's direct proof the engine itself launched more
+// than one physical round from this single fireAtTarget call, rather than
+// this function (or its caller) somehow being invoked multiple times --
+// fireAtTarget is only ever called from this one place in the whole
+// codebase, always logged immediately above, so a genuine multi-round
+// mystery narrows to exactly this.
+[{
+    params ["_system", "_magazineClass", "_turretPath", "_ammoBefore"];
+    if (!isNull _system) then {
+        private _ammoAfter = _system magazineTurretAmmo [_magazineClass, _turretPath];
+        private _consumed = _ammoBefore - _ammoAfter;
+        if (_consumed != 1) then {
+            diag_log text format ["[AEGIS-M] FIRE-ANOMALY: %1 -- expected 1 round consumed by that shot, engine actually consumed %2 (before=%3, after=%4).", _system, _consumed, _ammoBefore, _ammoAfter];
+        };
+    };
+}, [_system, _magazineClass, _turretPath, _ammoBefore], 1] call CBA_fnc_waitAndExecute;
+
+true
