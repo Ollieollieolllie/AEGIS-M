@@ -129,6 +129,7 @@ private _engagementData = createHashMapFromArray [
     ["ciwsBurstMax", _logic getVariable ["ciwsBurstMax", 5]],
     ["ciwsBurstPause", _logic getVariable ["ciwsBurstPause", 1]],
     ["ciwsMinElevation", _logic getVariable ["ciwsMinElevation", 5]],
+    ["ciwsOpenFireChance", _logic getVariable ["ciwsOpenFireChance", 50]],
     ["engageFriendlyThreats", _logic getVariable ["engageFriendlyThreats", true]],
     ["engageOnlyThreats", _logic getVariable ["engageOnlyThreats", true]],
     ["friendlyThreatRadius", _logic getVariable ["friendlyThreatRadius", 0]],

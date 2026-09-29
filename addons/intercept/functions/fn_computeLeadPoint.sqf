@@ -11,11 +11,25 @@ Description:
     style), iterated to convergence. All kinematics come from real config,
     read once per weapon + magazine (aegism_intercept_fnc_weaponKinematics):
 
-        gun (ciws) - muzzle velocity from CfgMagazines initSpeed (overridden
-            per engine rules by CfgWeapons initSpeed: > 0 replaces, < 0
-            multiplies) and drag from CfgAmmo airFriction: v(t) = v0/(1 +
-            |k| v0 t), so covering distance d takes (exp(|k| d) - 1)/(|k| v0).
-            The aim point is raised by the round's gravity drop.
+        gun (ciws) - muzzle velocity v0 from CfgMagazines initSpeed
+            (overridden per engine rules by CfgWeapons initSpeed: > 0
+            replaces, < 0 multiplies), drag k from CfgAmmo airFriction (the
+            engine's a = -k |v| v), and gravity. With a = k v0, the round's
+            speed falls as v0/(1 + a t), and its velocity solves
+            dv/dt = -k v0/(1 + a t) v + g exactly:
+                position(t) = muzzle + aim direction x ln(1 + a t)/k
+                              + g x (t + a t^2/2 - ln(1 + a t)/a) / (2a)
+            So the round falls (g/2a)(t + a t^2/2 - ln(1 + a t)/a) below its
+            launch line -- LESS than the vacuum g t^2/2, because the same
+            drag slows its fall -- and it covers the distance to the RAISED
+            point along that line: exp(k d) - 1 = a t. The aim point is the
+            intercept raised by that fall. (It used to be raised by the
+            vacuum drop, with the flight time measured to the un-raised
+            point: at 2s of flight that aimed ~4m high, and a round climbing
+            to a shell overhead arrived late -- behind it.)
+            The one approximation: drag is taken at the round's speed along
+            its line; gravity's own small change to that speed is second
+            order.
         missile (launcher) - CfgMagazines initSpeed at launch, then CfgAmmo
             thrust (m/s^2) until CfgAmmo maxSpeed or thrustTime, then that
             speed (e.g. MIM-145: 45 m/s, +450 m/s^2, 850 m/s). No drop: the
@@ -62,7 +76,9 @@ Returns:
     [aimPoint ASL <ARRAY>, feasible <BOOLEAN>, timeOfFlight s <NUMBER>
      (-1 if infeasible), interceptDistance m <NUMBER>, predicted track
      [position ASL, velocity, acceleration] the target was projected from
-     <ARRAY> -- CIWS spotting replays it (aegism_intercept_fnc_ciwsSpot)]
+     <ARRAY> -- CIWS spotting replays it (aegism_intercept_fnc_ciwsSpot),
+     interceptPoint ASL: where the target is met (the aim point before the
+     gun's drop is added) <ARRAY>]
 
 Examples:
     [_cheetah, eyePos gunner _cheetah, _heli, _weaponInfo, "ciws"] call aegism_intercept_fnc_computeLeadPoint;
@@ -115,7 +131,7 @@ private _fnTimeOfFlight = if (_isGun) then {
 // nor thrust): nothing to predict with, so aim at the target and don't
 // block the engagement -- the old behaviour -- rather than calling every
 // target unreachable.
-if ((_isGun && {_v0 <= 0}) || {!_isGun && {_burnSpeed <= 0}}) exitWith { [_targetPos, true, -1, _currentDistance, [_targetPos, velocity _target, [0, 0, 0]]] };
+if ((_isGun && {_v0 <= 0}) || {!_isGun && {_burnSpeed <= 0}}) exitWith { [_targetPos, true, -1, _currentDistance, [_targetPos, velocity _target, [0, 0, 0]], _targetPos] };
 
 private _targetVelocity = velocity _target;
 private _targetAcceleration = [0, 0, 0];
@@ -153,29 +169,50 @@ private _fnOutOfReach = {
     _time < 0 || {_maxRange > 0 && {_distance > _maxRange}} || {_maxTime > 0 && {_time > _maxTime}}
 };
 
+// A gun round's fall below its launch line after _t s: gravity, damped by
+// the same drag that slows the round (see header). Near-zero drag: the
+// series of the same expression (it cancels badly in 32-bit floats there).
+private _fnDrop = {
+    params ["_t"];
+    if (!_isGun) exitWith { 0 };
+    private _a = _k * _v0;
+    private _at = _a * _t;
+    if (_at < 0.001) exitWith { 0.5 * AEGISM_GRAVITY * _t * _t * (1 - _at / 3) };
+    (AEGISM_GRAVITY / (2 * _a)) * (_t + 0.5 * _at * _t - (ln (1 + _at)) / _a)
+};
+
 private _timeToGo = [_currentDistance] call _fnTimeOfFlight;
+private _interceptPoint = _targetPos;
 private _interceptDistance = _currentDistance;
 private _aimPoint = _targetPos;
 private _feasible = !([_currentDistance, _timeToGo] call _fnOutOfReach);
 
+// For a flight time _t: where the target is met, and the point to aim at
+// for it (raised by a gun round's fall).
+private _fnSolveAt = {
+    params ["_t"];
+    private _leadTime = (_t + _leadBias) max 0;
+    _interceptPoint = _targetPos
+        vectorAdd (_targetVelocity vectorMultiply _leadTime)
+        vectorAdd (_targetAcceleration vectorMultiply (0.5 * _leadTime * _leadTime));
+    _interceptDistance = _origin distance _interceptPoint;
+    _aimPoint = _interceptPoint vectorAdd [0, 0, [_t] call _fnDrop];
+};
+
 if (_feasible) then {
     for "_i" from 1 to AEGISM_LEAD_SOLVE_ITERATIONS do {
-        private _leadTime = (_timeToGo + _leadBias) max 0;
-        _aimPoint = _targetPos
-            vectorAdd (_targetVelocity vectorMultiply _leadTime)
-            vectorAdd (_targetAcceleration vectorMultiply (0.5 * _leadTime * _leadTime));
-        _interceptDistance = _origin distance _aimPoint;
-        _timeToGo = [_interceptDistance] call _fnTimeOfFlight;
+        [_timeToGo] call _fnSolveAt;
+        // The round covers the distance to the aim point along its launch
+        // line (for a gun that's the raised point, see header).
+        _timeToGo = [_origin distance _aimPoint] call _fnTimeOfFlight;
         if ([_interceptDistance, _timeToGo] call _fnOutOfReach) exitWith { _feasible = false; };
     };
 };
 
 private _track = [_targetPos, _targetVelocity, _targetAcceleration];
 
-if (!_feasible) exitWith { [_targetPos, false, -1, _interceptDistance, _track] };
+if (!_feasible) exitWith { [_targetPos, false, -1, _interceptDistance, _track, _targetPos] };
 
-if (_isGun) then {
-    _aimPoint = _aimPoint vectorAdd [0, 0, 0.5 * AEGISM_GRAVITY * _timeToGo * _timeToGo];
-};
+[_timeToGo] call _fnSolveAt;
 
-[_aimPoint, true, _timeToGo, _interceptDistance, _track]
+[_aimPoint, true, _timeToGo, _interceptDistance, _track, _interceptPoint]

@@ -76,7 +76,11 @@ _cached = [
 ];
 _cache set [_key, _cached];
 
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " KINEMATICS: %1 / %2 -> %3: v0 %4 m/s, airFriction %5, thrust %6 m/s2 to %7 m/s, timeToLive %8s, lockCone %9, fuseDistance %10m, guided %11, blast %12m (cached).",
-    _weaponClass, _magazineClass, _ammoClass, _v0, _drag, _thrust, _burnSpeed, _cached select 7, _lockCone, _cached select 9, _cached select 10, _cached select 11];
+// Thrust only for a missile: every CfgAmmo inherits a thrust value from the
+// defaults, which a bullet or shell never uses.
+diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " KINEMATICS: %1 / %2 -> %3: v0 %4 m/s, airFriction %5%6, timeToLive %7s, lockCone %8, fuseDistance %9m, guided %10, blast %11m (cached).",
+    _weaponClass, _magazineClass, _ammoClass, _v0, _drag,
+    ["", format [", thrust %1 m/s2 to %2 m/s", _thrust, _burnSpeed]] select (_cached select 10),
+    _cached select 7, _lockCone, _cached select 9, _cached select 10, _cached select 11];
 
 _cached

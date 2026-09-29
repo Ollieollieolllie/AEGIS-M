@@ -175,7 +175,7 @@ private _fnExecute = {
     } else {
         [_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon
     };
-    _aim params ["_aligned", "_angle", "_tolerance", "_aimPoint", "_feasible"];
+    _aim params ["_aligned", "_angle", "_tolerance", "_aimPoint", "_feasible", ["_inRange", true]];
 
     if (time < (_state get "assignedAt") + _reactionTime) exitWith {
         if !(_state getOrDefault ["reactionLogged", false]) then {
@@ -231,6 +231,17 @@ private _fnExecute = {
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
             diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " NO-SOLUTION: %1 (%2) holding on %3 -- no intercept inside the weapon's reach (target receding faster than the round can close, or meeting point beyond range).", _system, _role, _target];
+        };
+    };
+
+    // A gun tracking a target still beyond its open-fire range (aegism_
+    // intercept_fnc_openFireRange): on it, holding fire until it's closer.
+    if (!_inRange) exitWith {
+        if !(_state getOrDefault ["rangeHoldLogged", false]) then {
+            _state set ["rangeHoldLogged", true];
+            (_ts getOrDefault ["solve", []]) params ["", "", "", "", "", "", "", ["_interceptDistance", 0], "", "", ["_openFireRange", 0]];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " RANGE-HOLD: %1 (%2) tracking %3 -- intercept at %4m, beyond its %5m open-fire range (its own config hit probability is lower out there): holding fire until it's closer.",
+                _system, _role, _target, round _interceptDistance, round _openFireRange];
         };
     };
 
@@ -360,12 +371,19 @@ private _taken = [];
 
     // Target pick: a launcher reuses its pick for AEGISM_SELECT_REUSE s; an
     // empty pick is retried after AEGISM_SELECT_EMPTY_RETRY s; a gun checks
-    // its current target first (aegism_intercept_fnc_selectTarget).
+    // its current target first (aegism_intercept_fnc_selectTarget) -- and
+    // while that target is still beyond its open-fire range (so every tick
+    // would be a full re-pick, looking for one in range), re-picks at most
+    // every AEGISM_SELECT_REUSE s.
     private _current = _state getOrDefault ["target", objNull];
     (_ts getOrDefault [_selectKey, [-1e9, objNull, []]]) params ["_selectedAt", "_selectedTarget", "_selectedWeapon"];
+    private _currentAim = _ts getOrDefault ["aim_ciws", []];
     private _selection = switch (true) do {
         case (!_isCiws && {time - _selectedAt < AEGISM_SELECT_REUSE} && {!isNull _selectedTarget} && {alive _selectedTarget}
             && {!(_selectedTarget in _exclude)} && {_selectedWeapon in _weapons}): { [_selectedTarget, _selectedWeapon] };
+        case (_isCiws && {time - _selectedAt < AEGISM_SELECT_REUSE} && {!isNull _current} && {alive _current} && {_selectedTarget == _current}
+            && {!(_current in _exclude)} && {_selectedWeapon in _weapons}
+            && {(_currentAim param [3, objNull]) == _current} && {!(_currentAim param [7, true])}): { [_current, _selectedWeapon] };
         case (isNull _selectedTarget && {isNull _current} && {time - _selectedAt < AEGISM_SELECT_EMPTY_RETRY}): { [objNull, []] };
         default {
             private _picked = [_weaponPos, _turretCandidates, _engagementSettings, _weapons, _role, _system, _current, _turretPath] call aegism_intercept_fnc_selectTarget;

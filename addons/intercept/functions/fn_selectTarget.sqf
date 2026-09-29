@@ -9,15 +9,21 @@ Description:
     engage (aegism_intercept_fnc_canEngage), picks the best per the
     doctrine's targetPriority rule, and returns the weapon for it.
 
-    A gun keeps its current target while it can still engage it and its own
-    aim has a solution -- as a Site's claim does -- instead of re-picking
-    every tick: under Soonest Impact the shells of one salvo trade places
-    constantly, and a standalone Praetorian swung 40-127 degrees between six
-    of them in 12s without firing. That check comes FIRST and alone: only if
-    the current target has to go are the other candidates evaluated (each
-    one is a full intercept solve). Launchers always re-pick (the engagement
-    loop reuses a launcher's pick for a moment and excludes targets its
-    missiles are already flying at).
+    A gun keeps its current target while it can still engage it, its own
+    aim has a solution, and that aim is inside its open-fire range (aegism_
+    intercept_fnc_openFireRange) -- as a Site's claim does -- instead of
+    re-picking every tick: under Soonest Impact the shells of one salvo
+    trade places constantly, and a standalone Praetorian swung 40-127
+    degrees between six of them in 12s without firing. That check comes
+    FIRST and alone: only if the current target has to go are the other
+    candidates evaluated (each one is a full intercept solve). Launchers
+    always re-pick (the engagement loop reuses a launcher's pick for a
+    moment and excludes targets its missiles are already flying at).
+
+    A gun prefers targets it could open fire on now (intercept inside its
+    open-fire range) over any it could only track, then the priority rule
+    decides -- so it doesn't sit holding fire on a far shell while a nearer
+    one passes through its reach.
 
 Parameters:
     _weaponPos - ASL position ranges are measured from <ARRAY>
@@ -50,9 +56,10 @@ private _priority = _engagementSettings getOrDefault ["targetPriority", "soonest
 // --- A gun on a target keeps it while it can (see header) ---------------------
 private _kept = [];
 if (_role == "ciws" && {!isNull _current} && {alive _current} && {(_candidates findIf { (_x select 0) == _current }) != -1}) then {
-    // ...unless the gun's own latest aim at it found no solution.
+    // ...unless the gun's own latest aim at it found no solution, or has it
+    // beyond its open-fire range.
     private _aim = if (_turretPath isEqualTo []) then { [] } else { ([_system, _turretPath] call aegism_intercept_fnc_turretState) getOrDefault ["aim_ciws", []] };
-    private _unsolved = (_aim param [3, objNull]) == _current && {!(_aim param [4, true])};
+    private _unsolved = (_aim param [3, objNull]) == _current && {!(_aim param [4, true]) || {!(_aim param [7, true])}};
     if (!_unsolved && {([_current] call aegism_detect_fnc_classifyTarget) in _allowlist}) then {
         private _index = _weapons findIf { ([_system, _role, _x, _current, _engagementSettings] call aegism_intercept_fnc_canEngage) select 0 };
         if (_index != -1) then { _kept = [_current, _weapons select _index]; };
@@ -62,19 +69,32 @@ if (_kept isNotEqualTo []) exitWith { _kept };
 
 PERF_INC(PERF_SELECT_FULL);
 
-// [object, class, weaponInfo] for every candidate some ready weapon reaches.
+// [object, class, weaponInfo, in open-fire range] for every candidate some
+// ready weapon reaches.
+private _openFireChance = (_engagementSettings getOrDefault ["ciwsOpenFireChance", 50]) / 100;
 private _engageable = [];
 {
     _x params ["_object", "_class"];
     if (!isNull _object && {alive _object} && {_class in _allowlist}) then {
-        private _idx = _weapons findIf { ([_system, _role, _x, _object, _engagementSettings] call aegism_intercept_fnc_canEngage) select 0 };
+        private _inRange = false;
+        private _idx = _weapons findIf {
+            private _engage = [_system, _role, _x, _object, _engagementSettings] call aegism_intercept_fnc_canEngage;
+            if (_engage select 0) then {
+                _inRange = _role != "ciws" || {(_engage param [3, 0]) <= ([_x select 1, _openFireChance] call aegism_intercept_fnc_openFireRange)};
+            };
+            _engage select 0
+        };
         if (_idx != -1) then {
-            _engageable pushBack [_object, _class, _weapons select _idx];
+            _engageable pushBack [_object, _class, _weapons select _idx, _inRange];
         };
     };
 } forEach _candidates;
 
 if (_engageable isEqualTo []) exitWith { [objNull, []] };
+
+// Targets it could open fire on now come first.
+private _inRangeOnly = _engageable select { _x select 3 };
+if (_inRangeOnly isNotEqualTo []) then { _engageable = _inRangeOnly; };
 
 // Higher score = more preferred. SQF's selectMax only works on numbers, so
 // scores are a parallel array.

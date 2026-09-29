@@ -9,6 +9,7 @@ class CfgFunctions
             class munitionSize {};
             class weaponKinematics {};
             class fireModeStats {};
+            class openFireRange {};
             class turretConfig {};
             class turretState {};
             class computeLeadPoint {};

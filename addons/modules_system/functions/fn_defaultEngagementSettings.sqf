@@ -30,6 +30,9 @@ Returns:
         ciwsBurstPause - seconds a CIWS gun pauses between bursts <NUMBER>
         ciwsMinElevation - degrees; a CIWS gun never engages a target below,
             or fires with its barrel below, this elevation <NUMBER>
+        ciwsOpenFireChance - percent; a CIWS gun only fires inside the range
+            where its own config hit probability reaches this (aegism_
+            intercept_fnc_openFireRange); 0 = its full config reach <NUMBER>
         engageFriendlyThreats - also engage friendly/neutral munitions that
             are predicted to hit the Site <BOOLEAN>
         engageOnlyThreats - a hostile artillery round or rocket is only
@@ -60,6 +63,7 @@ createHashMapFromArray [
     ["ciwsBurstMax", 5],
     ["ciwsBurstPause", 1],
     ["ciwsMinElevation", 5],
+    ["ciwsOpenFireChance", 50],
     ["engageFriendlyThreats", true],
     ["engageOnlyThreats", true],
     ["friendlyThreatRadius", 0],

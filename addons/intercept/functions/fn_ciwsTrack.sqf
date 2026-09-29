@@ -37,8 +37,8 @@ Parameters:
     _turretPath - its gun's turret path <ARRAY>
 
 Returns:
-    [aligned, angle, tolerance, aimPoint, feasible] -- the gun's current aim
-    at its track target <ARRAY>
+    [aligned, angle, tolerance, aimPoint, feasible, inRange] -- the gun's
+    current aim at its track target <ARRAY>
 
 Examples:
     [_praetorian, [0]] call aegism_intercept_fnc_ciwsTrack;
@@ -67,7 +67,7 @@ private _fnTrack = {
     };
 
     PERF_INC(PERF_STEER_FRAMES);
-    _solve params ["_solvedAt", "_solvedAim", "_aimVelocity", "_cameraOffset", "_origin", "_tolerance", "_feasible", "", "", "_targetClass"];
+    _solve params ["_solvedAt", "_solvedAim", "_aimVelocity", "_cameraOffset", "_origin", "_tolerance", "_feasible", "_interceptDistance", "", "_targetClass", "_openFireRange"];
     private _aimPoint = _solvedAim vectorAdd (_aimVelocity vectorMultiply (time - _solvedAt));
     if (_system turretLocal _turretPath) then {
         _system lockCameraTo [_aimPoint vectorAdd _cameraOffset, _turretPath, false];
@@ -77,8 +77,8 @@ private _fnTrack = {
 
     private _barrel = [_system, _turretPath, _weaponInfo select 1] call aegism_intercept_fnc_barrelDirection;
     private _angle = acos (((_barrel vectorCos (_origin vectorFromTo _aimPoint)) min 1) max -1);
-    private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint] call aegism_intercept_fnc_ciwsGate;
-    [_aligned, _angle, _tolerance, _aimPoint, _feasible]
+    private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint, _interceptDistance, _openFireRange] call aegism_intercept_fnc_ciwsGate;
+    [_aligned, _angle, _tolerance, _aimPoint, _feasible, _interceptDistance <= _openFireRange]
 };
 
 if !(_ts getOrDefault ["tracking", false]) then {
@@ -108,7 +108,7 @@ if !(_ts getOrDefault ["tracking", false]) then {
 private _target = (_ts getOrDefault ["trackTarget", [objNull]]) select 0;
 private _aim = _ts getOrDefault ["aim_ciws", []];
 if (_aim isNotEqualTo [] && {(_aim select 3) == _target} && {(_aim select 2) == time}) exitWith {
-    _aim params ["_angle", "_tolerance", "", "", "_feasible", "_aligned", "_aimPoint"];
-    [_aligned, _angle, _tolerance, _aimPoint, _feasible]
+    _aim params ["_angle", "_tolerance", "", "", "_feasible", "_aligned", "_aimPoint", ["_inRange", true]];
+    [_aligned, _angle, _tolerance, _aimPoint, _feasible, _inRange]
 };
 [_system, _turretPath, _ts] call _fnTrack

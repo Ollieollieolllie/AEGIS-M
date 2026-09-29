@@ -4,14 +4,17 @@ Function: aegism_intercept_fnc_ciwsGate
 Description:
     A CIWS gun's fire gate for one aim: whether a round fired now would pass
     close enough to hit, recorded as the turret's "aim_ciws" [angle,
-    tolerance, time, target, feasible, aligned, aimPoint] -- what its burst
-    (aegism_intercept_fnc_ciwsBurst) checks every frame. Run on every full
-    solve (aegism_intercept_fnc_aimWeapon) and every steered frame in
-    between (aegism_intercept_fnc_ciwsTrack).
+    tolerance, time, target, feasible, aligned, aimPoint, inRange] -- what
+    its burst (aegism_intercept_fnc_ciwsBurst) checks every frame. Run on
+    every full solve (aegism_intercept_fnc_aimWeapon) and every steered
+    frame in between (aegism_intercept_fnc_ciwsTrack).
 
-        aligned - a feasible intercept and the barrel within tolerance: the
-            target's half-size plus the gun's dispersion, as an angle at the
-            intercept distance
+        in range - the intercept inside the gun's open-fire range
+            (aegism_intercept_fnc_openFireRange). Beyond it the gun keeps
+            tracking but never fires, last-ditch or not.
+        aligned - in range, a feasible intercept and the barrel within
+            tolerance: the target's half-size plus the gun's dispersion, as
+            an angle at the intercept distance
         LAST-DITCH - once the target is due to impact within the gun's own
             longest burst (doctrine ciwsBurstMax), it also fires as soon as
             the turret has settled -- stopped closing on the aim point for
@@ -33,12 +36,14 @@ Parameters:
     _tolerance - the gate, degrees <NUMBER>
     _feasible - an intercept exists <BOOLEAN>
     _aimPoint - the aim point, ASL <ARRAY>
+    _interceptDistance - metres to the intercept <NUMBER>
+    _openFireRange - the gun's open-fire range, metres <NUMBER>
 
 Returns:
     Aligned <BOOLEAN>
 
 Examples:
-    [_praetorian, _ts, _shell, "artilleryShell", 0.4, 0.28, true, _aimPoint] call aegism_intercept_fnc_ciwsGate;
+    [_praetorian, _ts, _shell, "artilleryShell", 0.4, 0.28, true, _aimPoint, 1650, 2143] call aegism_intercept_fnc_ciwsGate;
 
 Author:
     Snow(Dryden)
@@ -50,9 +55,10 @@ Author:
 #define AEGISM_ENGAGEMENT_TICK 0.1
 #define AEGISM_LAST_DITCH_MAX_GATES 5
 
-params ["_system", "_ts", "_target", "_targetClass", "_angle", "_tolerance", "_feasible", "_aimPoint"];
+params ["_system", "_ts", "_target", "_targetClass", "_angle", "_tolerance", "_feasible", "_aimPoint", ["_interceptDistance", 0], ["_openFireRange", 1e10]];
 
-private _aligned = _feasible && {_angle <= _tolerance};
+private _inRange = _interceptDistance <= _openFireRange;
+private _aligned = _feasible && {_inRange} && {_angle <= _tolerance};
 
 // Settled: the angle hasn't set a new best for AEGISM_AIM_SETTLE_TICKS
 // engagement ticks -- the turret is as close as it's going to get.
@@ -60,7 +66,7 @@ private _aligned = _feasible && {_angle <= _tolerance};
 if (_settleTarget != _target || {_angle < _bestAngle}) then { _settleTarget = _target; _bestAngle = _angle; _improvedAt = time; };
 _ts set ["settle", [_settleTarget, _bestAngle, _improvedAt]];
 
-if (_feasible && {!_aligned} && {time - _improvedAt >= AEGISM_AIM_SETTLE_TICKS * AEGISM_ENGAGEMENT_TICK}) then {
+if (_feasible && {_inRange} && {!_aligned} && {time - _improvedAt >= AEGISM_AIM_SETTLE_TICKS * AEGISM_ENGAGEMENT_TICK}) then {
     private _settings = _system getVariable "AEGISM_resolvedEngagementSettings";
     if (isNil "_settings") then { _settings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
     private _timeToImpact = [_target, _targetClass, [getPosASL _system]] call aegism_intercept_fnc_timeToImpact;
@@ -82,5 +88,5 @@ if (_feasible && {!_aligned} && {time - _improvedAt >= AEGISM_AIM_SETTLE_TICKS *
     };
 };
 
-_ts set ["aim_ciws", [_angle, _tolerance, time, _target, _feasible, _aligned, _aimPoint]];
+_ts set ["aim_ciws", [_angle, _tolerance, time, _target, _feasible, _aligned, _aimPoint, _inRange]];
 _aligned

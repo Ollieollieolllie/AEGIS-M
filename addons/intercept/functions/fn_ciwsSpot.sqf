@@ -17,15 +17,20 @@ Description:
     helicopter's escape looked like a gun error and was fed back into the
     aim.
 
-    The miss is split square to the gun's line of sight:
+    The miss is split on two axes square to the gun's line of sight and to
+    each other:
         ahead - along the predicted target's crossing motion (+ ahead of it,
             - behind). A lead error of dt seconds misses by crossing speed x
             dt, so the round's needed lead correction is (its correction at
             firing) - ahead / crossing speed. Only measurable when the target
             crossed further than its own size during the round's flight (one
             coming straight down the barrel needs no lead).
-        high - square to the line of sight, upward (+ high). Needed elevation
-            correction = (its correction at firing) - high / range.
+        high - the part of "up" square to that crossing motion (+ high).
+            Needed elevation correction = (its correction at firing) - high /
+            range; aegism_intercept_fnc_aimWeapon applies it on the same
+            axis. A target whose crossing motion is itself up/down leaves no
+            separate "high" to measure (its weight goes to 0): any error on
+            that axis is the lead's.
 
     Estimate: a weighted mean of each round's needed correction, one per
     TARGET CLASS (a lead learned on falling shells isn't a helicopter's),
@@ -33,8 +38,8 @@ Description:
     precisely it measures: a round's own scatter is the gun's dispersion
     (an angle), so a lead sample's uncertainty grows with range / crossing
     speed (weight (crossing speed / range)^2), and "high" only exists in
-    proportion to how far the line of sight is from vertical (weight cos^2
-    of its elevation). Older rounds fade by AEGISM_SPOT_DECAY per new round
+    proportion to how much of the vertical its axis carries (weight: the
+    square of that). Older rounds fade by AEGISM_SPOT_DECAY per new round
     (about the last few hundred count), so the correction follows a change
     -- the vehicle moving, a different engagement geometry -- instead of
     being outvoted by the whole mission's history. It used to be recomputed
@@ -87,13 +92,23 @@ if (_range <= 0) exitWith {};
 
 private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 
+// Two axes square to the line of sight, and square to EACH OTHER: "ahead"
+// along the target's crossing motion, and "high" along the part of up that
+// isn't along that motion. (High used to be all of up: for a shell coming
+// down in the gun's own vertical plane, whose crossing motion IS up/down,
+// one miss was counted on both axes -- "3.7m behind and 3.7m low" -- and
+// both corrections moved the aim for it, together overshooting.)
 private _los = _gunPos vectorFromTo _ghostPos;
 private _crossVelocity = _ghostVelocity vectorDiff (_los vectorMultiply (_ghostVelocity vectorDotProduct _los));
 private _crossSpeed = vectorMagnitude _crossVelocity;
-private _ahead = if (_crossSpeed > 0) then { _miss vectorDotProduct (_crossVelocity vectorMultiply (1 / _crossSpeed)) } else { 0 };
+private _along = if (_crossSpeed > 0) then { _crossVelocity vectorMultiply (1 / _crossSpeed) } else { [0, 0, 0] };
+private _ahead = _miss vectorDotProduct _along;
 private _upSquare = [0, 0, 1] vectorDiff (_los vectorMultiply (_los select 2));
+_upSquare = _upSquare vectorDiff (_along vectorMultiply (_upSquare vectorDotProduct _along));
+// How much of the vertical this axis still carries: 1 looking level at a
+// target crossing sideways, 0 looking straight up, or at one moving up/down.
 private _cosElevation = vectorMagnitude _upSquare;
-private _high = if (_cosElevation > 0) then { _miss vectorDotProduct (_upSquare vectorMultiply (1 / _cosElevation)) } else { 0 };
+private _high = if (_cosElevation > 0.001) then { _miss vectorDotProduct (_upSquare vectorMultiply (1 / _cosElevation)) } else { 0 };
 
 // --- This burst's stats (SPOTTING line) ---------------------------------------
 private _allStats = _ts get "spotStats";
@@ -130,7 +145,7 @@ if (_crossSpeed * _flightTime > _targetRadius) then {
     _leadWeight = _leadWeight + _weight;
     _weightedLead = _weightedLead + _weight * (_leadAtFire - _ahead / _crossSpeed);
 };
-if (_cosElevation > 0) then {
+if (_cosElevation > 0.001) then {
     private _weight = _cosElevation ^ 2;
     _elevationWeight = _elevationWeight + _weight;
     _weightedElevation = _weightedElevation + _weight * (_elevationAtFire - _high / _range);

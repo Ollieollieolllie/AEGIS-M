@@ -41,7 +41,8 @@ Parameters:
 
 Returns:
     [canEngage <BOOLEAN>, reason if not <STRING>, flight time to the
-     intercept in seconds, if it can (0 if unknown) <NUMBER>]
+     intercept in seconds, if it can (0 if unknown) <NUMBER>, and for a gun
+     that can: distance to the intercept, m <NUMBER>]
 
 Examples:
     [_cheetah, "ciws", _weaponInfo, _jet, _settings] call aegism_intercept_fnc_canEngage;
@@ -96,14 +97,14 @@ if (!_isCiws) then {
     _origin = ([_system, _weaponInfo select 0, _role] call aegism_intercept_fnc_turretPoints) select 0;
     private _corrections = ([_system, _weaponInfo select 0] call aegism_intercept_fnc_turretState) get "corrections";
     private _leadCorrection = if (isNil "_corrections") then { 0 } else { (_corrections getOrDefault [_targetClass, [0, 0]]) select 0 };
-    ([_system, _origin, _target, _weaponInfo, _role, false, 0, _ballistic, _leadCorrection] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "_flightTime", "_interceptDistance"];
+    ([_system, _origin, _target, _weaponInfo, _role, false, 0, _ballistic, _leadCorrection] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "_flightTime", "_interceptDistance", "", "_interceptPoint"];
     if (!_feasible) exitWith {
         [false, format ["no intercept solution (%1m, receding faster than the rounds close, or beyond reach)", round _currentDistance]]
     };
-    // The target's height where the rounds meet it (the aim point less the
-    // rounds' drop) -- not where it is now: a shell diving through a
-    // minimum height is below it by the time it's hit.
-    private _interceptHeight = (ASLToAGL (_aimPoint vectorDiff [0, 0, 0.5 * AEGISM_GRAVITY * _flightTime * _flightTime])) select 2;
+    // The target's height where the rounds meet it -- not where it is now:
+    // a shell diving through a minimum height is below it by the time it's
+    // hit.
+    private _interceptHeight = (ASLToAGL _interceptPoint) select 2;
     private _elevation = [_origin, _aimPoint] call aegism_intercept_fnc_elevationAngle;
     if !([_settings, _weaponInfo, _interceptDistance, _interceptHeight, _role, _elevation] call aegism_intercept_fnc_inEnvelope) exitWith {
         [false, [_interceptDistance, _interceptHeight, _elevation] call _fnEnvelopeReason]
@@ -114,5 +115,5 @@ if (!_isCiws) then {
     if (!_canPoint) exitWith {
         [false, format ["beyond the turret's elevation limits (aim %1 deg, turret %2 to %3 deg)", round _aimElevation, _minElevation, _maxElevation]]
     };
-    [true, "", _flightTime max 0]
+    [true, "", _flightTime max 0, _interceptDistance]
 }

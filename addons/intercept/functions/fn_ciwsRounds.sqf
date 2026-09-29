@@ -8,10 +8,11 @@ Description:
     "rounds"); it used to be one per-frame handler per ROUND -- a Phalanx
     firing ~53 rounds a second had 20-100 of them running at once.
 
-    A round is only examined while it can be near the target: from half its
-    predicted flight time to the intercept (the aim solve's own, turret state
-    "trackTof") onward. Before that it's still on its way out and nothing is
-    done with it.
+    A round is only examined while it can be near the target: from 80% of
+    its predicted flight time to the intercept (the aim solve's own, turret
+    state "trackTof") onward. Before that it's still on its way out and
+    nothing is done with it. (From half the flight time, a round was
+    examined ~100 frames on average: most of the round tracker's cost.)
 
     Fuse (munition targets): the engine has no projectile-vs-projectile
     collision, so a round passing through an incoming shell does nothing
@@ -60,7 +61,7 @@ Author:
 #include "..\..\main\perf.hpp"
 
 // Rounds are examined from this fraction of their predicted flight time on.
-#define AEGISM_ROUND_WINDOW_FRACTION 0.5
+#define AEGISM_ROUND_WINDOW_FRACTION 0.8
 
 params ["_system", "_turretPath", "_ts", "_projectile", "_target", "_targetIsMunition", "_spot"];
 

@@ -88,10 +88,24 @@ from their rounds (closed-loop spotting, as a real Phalanx does).** A gun
 tracks its target every frame from the moment it has one -- not just while a
 burst is running, so it is already on the intercept point when the first
 burst can open: the full intercept is solved 20 times a second, and every
-frame in between the turret follows the aim point's own motion. It fires
-only while the barrel's error at the intercept is within the target's own
-size plus the gun's own spread there (its fire mode's `dispersion`) --
-about 0.3 degrees for a Phalanx at a shell 2 km out. In the last-ditch
+frame in between the turret follows the aim point's own motion. The
+intercept is solved from the round's real flight: muzzle velocity, drag
+(`airFriction`) and gravity, with the drop damped by the same drag that
+slows the round -- checked against a step-by-step simulation of the
+engine's own bullet physics, the round passes within 5 cm of the aim point
+out to 2.4 km, and arrives within 4 ms of the predicted time out to 2 km.
+The gun
+tracks a target from as far as it can reach, but only opens fire once the
+intercept is inside its **open-fire range**: where its own config hit
+probability (its fire modes' `minRangeProbab`/`midRangeProbab`/
+`maxRangeProbab`, what the game's AI uses) still reaches the Site's "Open
+Fire at Hit Chance" -- 50 % by default, about 2.1 km for a Phalanx whose
+config reach is 3 km at 10 % (`OPEN-FIRE-RANGE` once per gun, `RANGE-HOLD`
+while it waits). Given a choice, it takes a target it can open fire on now
+over one it can only track. It fires only while the barrel's error at the
+intercept is within the target's own size plus the gun's own spread there
+(its fire mode's `dispersion`) -- about 0.3 degrees for a Phalanx at a shell
+2 km out. In the last-ditch
 window (the target due to impact within the gun's own longest burst,
 `Burst Length Max`) it also fires once its turret has settled as close as it
 can get, as long as that's within 5 times that gate: there is no better
@@ -99,7 +113,9 @@ shot coming (`LAST-DITCH` in the RPT); further off than that, a hit is out
 of the question and it holds its ammunition (`LAST-DITCH-HOLD`). Every
 third round it fires is measured as it passes the track the target was
 *predicted* to fly: how far ahead of or behind the crossing motion, and how
-far high or low. That miss is the gun's own error alone (turret lag,
+far high or low square to that motion (a shell coming down in the gun's own
+vertical plane crosses up/down, so all its miss is "ahead/behind"). That
+miss is the gun's own error alone (turret lag,
 flight-time estimate, drop, zeroing), kept apart from the target's evasion,
 so a jinking helicopter can't drag the aim around. The gun keeps a running
 estimate of the lead-time and elevation correction it needs for each kind
@@ -328,6 +344,7 @@ envelope, and all threat classes are engaged.
 |---|---|---|
 | Max Range (m) | 0 | 0 = the gun's own reach (Cheetah 35 mm: 2500 m). |
 | Min Elevation (deg) | 5 | Never engages below it; holds fire while the barrel is below it. |
+| Open Fire at Hit Chance (%) | 50 | Tracks from its full reach, but only fires inside the range where the gun's own config hit probability reaches this (Phalanx: about 2.1 km of 3 km). Lower = earlier, farther, more rounds per hit. 0 = its full reach. |
 | Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
 | Pause Between Bursts (s) | 1 | Gap after a burst before firing again at the same target. After a kill the gun goes straight on to its next target. |
 | Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |

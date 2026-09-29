@@ -24,9 +24,12 @@ Description:
     the turret tracks the target itself and the weapon is not aligned.
 
     Alignment:
-        ciws - aegism_intercept_fnc_ciwsGate: the barrel's error at the
-            intercept within the target's own half-size (aegism_intercept_
-            fnc_targetHitRadius) plus the gun's own spread there (the current
+        ciws - aegism_intercept_fnc_ciwsGate: the intercept inside the gun's
+            open-fire range (aegism_intercept_fnc_openFireRange: where its
+            own config hit probability still reaches doctrine
+            ciwsOpenFireChance), and the barrel's error at the intercept
+            within the target's own half-size (aegism_intercept_fnc_
+            targetHitRadius) plus the gun's own spread there (the current
             fire mode's CfgWeapons dispersion), with the last-ditch rule.
             An unguided munition's path is projected on gravity alone --
             exact for artillery (no drag), and the same projection aegism_
@@ -66,7 +69,8 @@ Parameters:
 
 Returns:
     [aligned <BOOLEAN>, angle <NUMBER>, tolerance <NUMBER>, aimPoint <ARRAY, ASL>,
-     feasible <BOOLEAN>]
+     feasible <BOOLEAN>, inRange <BOOLEAN> -- a gun's intercept is inside its
+     open-fire range (always true for a launcher)]
 
 Examples:
     [_cheetah, _heli, _weaponInfo, "ciws"] call aegism_intercept_fnc_aimWeapon;
@@ -119,10 +123,24 @@ if (_isCiws) then {
     _ts set ["trackTof", _tof];
 };
 
+// The elevation correction goes square to the line of sight, upward -- but
+// only the part of "up" square to the target's own crossing motion: along
+// that motion is the lead correction's job (aegism_intercept_fnc_ciwsSpot
+// measures them on the same two axes). A shell coming down in the gun's own
+// vertical plane crosses along "up", so both used to act on the same axis.
 if (_elevationCorrection != 0) then {
     private _los = _origin vectorFromTo _aimPoint;
-    private _up = vectorNormalized ([0, 0, 1] vectorDiff (_los vectorMultiply (_los select 2)));
-    _aimPoint = _aimPoint vectorAdd (_up vectorMultiply (_elevationCorrection * _interceptDistance));
+    private _up = [0, 0, 1] vectorDiff (_los vectorMultiply (_los select 2));
+    private _targetVelocity = (_track select 1) vectorAdd ((_track select 2) vectorMultiply (_tof max 0));
+    private _cross = _targetVelocity vectorDiff (_los vectorMultiply (_targetVelocity vectorDotProduct _los));
+    private _crossSpeed = vectorMagnitude _cross;
+    if (_crossSpeed > 0) then {
+        private _along = _cross vectorMultiply (1 / _crossSpeed);
+        _up = _up vectorDiff (_along vectorMultiply (_up vectorDotProduct _along));
+    };
+    if ((vectorMagnitude _up) > 0.001) then {
+        _aimPoint = _aimPoint vectorAdd ((vectorNormalized _up) vectorMultiply (_elevationCorrection * _interceptDistance));
+    };
 };
 
 if (_isCiws) then { _ts set ["ciwsAimAt", time]; };
@@ -156,10 +174,16 @@ if (_isCiws) exitWith {
         };
         if (_dt == 0) then { _aimVelocity = _previous select 2; };
     };
-    _ts set ["solve", [time, _aimPoint, _aimVelocity, _cameraOffset, _origin, _tolerance, _feasible, _interceptDistance, _target, _targetClass]];
+    // How far out this gun opens fire (aegism_intercept_fnc_openFireRange):
+    // its own config hit probability, against doctrine ciwsOpenFireChance.
+    private _settings = _system getVariable "AEGISM_resolvedEngagementSettings";
+    if (isNil "_settings") then { _settings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
+    private _openFireRange = [_weaponClass, (_settings getOrDefault ["ciwsOpenFireChance", 50]) / 100] call aegism_intercept_fnc_openFireRange;
 
-    private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint] call aegism_intercept_fnc_ciwsGate;
-    [_aligned, _angle, _tolerance, _aimPoint, _feasible]
+    _ts set ["solve", [time, _aimPoint, _aimVelocity, _cameraOffset, _origin, _tolerance, _feasible, _interceptDistance, _target, _targetClass, _openFireRange]];
+
+    private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint, _interceptDistance, _openFireRange] call aegism_intercept_fnc_ciwsGate;
+    [_aligned, _angle, _tolerance, _aimPoint, _feasible, _interceptDistance <= _openFireRange]
 };
 
 // --- Launcher ---
@@ -172,4 +196,4 @@ private _aligned = _feasible && {_angle <= _lockCone} && {_angle <= AEGISM_AIM_O
 
 _ts set ["aim_launcher", [_angle, AEGISM_AIM_ON_TARGET, time, _target, _feasible, _aligned, _aimPoint]];
 
-[_aligned, _angle, AEGISM_AIM_ON_TARGET, _aimPoint, _feasible]
+[_aligned, _angle, AEGISM_AIM_ON_TARGET, _aimPoint, _feasible, true]

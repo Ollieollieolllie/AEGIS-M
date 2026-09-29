@@ -402,6 +402,16 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "5";
             };
+            class CiwsOpenFireChance
+            {
+                displayName = "Open Fire at Hit Chance (%)";
+                tooltip = "A CIWS gun tracks a target from as far as it can reach, but only fires once the intercept is inside the range where the gun's OWN config hit probability (its fire modes' minRangeProbab/midRangeProbab/maxRangeProbab, what the game's AI uses) is at least this. 50 (default): the Phalanx opens fire inside about 2.1 km of its 3 km reach, where its config puts the odds at 10 percent. Lower = fires earlier and farther, spending more rounds for fewer hits. 0 = its full config reach. The range used is logged once per gun (OPEN-FIRE-RANGE), and a gun waiting for a target to close logs RANGE-HOLD.";
+                property = "ciwsOpenFireChance";
+                control = "Edit";
+                expression = "_this setVariable ['ciwsOpenFireChance', _value];";
+                typeName = "NUMBER";
+                defaultValue = "50";
+            };
             class CiwsBurstMin
             {
                 displayName = "Burst Length Min (s)";
