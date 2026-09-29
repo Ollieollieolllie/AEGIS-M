@@ -20,7 +20,7 @@ Description:
     onto the Site logic itself), and initializes this Site's own pooled-
     contact list ("AEGISM_pooledContacts", populated by radar-capable member
     Systems' own native sensors, see aegism_detect_fnc_confidenceLoop),
-    engagement-assignment ledger ("AEGISM_claims", HashMap of contact netId
+    engagement-assignment ledger ("AEGISM_claims", HashMap of contact key
     -> array of per-role assignment records, written once per tick by
     aegism_intercept_fnc_assignEngagements -- see that function's own doc
     comment for the record shape and scoring -- and read/executed by every
@@ -48,10 +48,9 @@ Description:
     recognition owns its own, narrower suppression and shouldn't be undone
     by a Site-level unsync).
 
-    Also registers a server-only per-tick call into aegism_intercept_fnc_
-    assignEngagements for this Site (below), at the same cadence as
-    engagementLoop so a member System's own tick always sees a fresh
-    assignment.
+    Also registers a server-only 0.5s call into aegism_intercept_fnc_
+    assignEngagements for this Site (below), which publishes each member's
+    assignments for its own 0.1s engagement loop.
 
     A vehicle's own Radar/Launcher/CIWS setup (aegism_system_fnc_moduleInit)
     is intentionally NOT triggered from here -- it's driven independently by
@@ -131,6 +130,7 @@ private _engagementData = createHashMapFromArray [
     ["ciwsBurstPause", _logic getVariable ["ciwsBurstPause", 1]],
     ["ciwsMinElevation", _logic getVariable ["ciwsMinElevation", 5]],
     ["engageFriendlyThreats", _logic getVariable ["engageFriendlyThreats", true]],
+    ["engageOnlyThreats", _logic getVariable ["engageOnlyThreats", true]],
     ["friendlyThreatRadius", _logic getVariable ["friendlyThreatRadius", 0]],
     ["targetClassAllowlist", _allowlist],
     ["ciwsLastResort", _logic getVariable ["ciwsLastResort", false]]
@@ -219,6 +219,7 @@ private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_syst
         _object setVariable ["AEGISM_network", nil, false];
         _object setVariable ["AEGISM_engagement", nil, false];
         _object setVariable ["AEGISM_crew", nil, false];
+        _object setVariable ["AEGISM_assigned", nil, false];
         // Restore full native AI only if this vehicle isn't ALSO a
         // recognized System in its own right (aegism_system_fnc_moduleInit
         // applies its own, narrower suppression independently of the Site
@@ -262,10 +263,9 @@ private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_syst
 // Server-only, same reasoning as aegism_system_fnc_moduleInit's own
 // detection/engagement loops: this mutates AEGISM_claims (shared, Site-
 // wide state), so registering it on every client would have each one
-// independently compute and stomp on the same assignments. Runs at the
-// same 0.5s cadence as aegism_intercept_fnc_engagementLoop so a member
-// System's own tick always sees a fresh assignment rather than one already
-// a full interval stale.
+// independently compute and stomp on the same assignments. Every 0.5s;
+// member engagement loops tick at 0.1s and work the published assignments
+// in between.
 if (isServer) then {
     [{
         params ["_args", "_pfhHandle"];

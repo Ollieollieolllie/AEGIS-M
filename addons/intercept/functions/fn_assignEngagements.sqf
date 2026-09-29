@@ -76,11 +76,19 @@ Description:
     override adds, "AEGISM_contactAllowlist", read by aegism_detect_fnc_
     addContact).
 
-    Writes AEGISM_claims: contact netId -> array of assignment records
-    (HashMap: target, system, role, weaponInfo, assignedAt, lastShotAt,
-    roundsFired, interceptors), and AEGISM_withheldCiws (diagnostic, for
-    debugDraw). Consumers use the record's own "target" object rather than
-    resolving the key back through objectFromNetId.
+    Writes AEGISM_claims: contact key (aegism_fnc_contactKey) -> array of
+    assignment records (HashMap: target, system, role, weaponInfo,
+    assignedAt, lastShotAt, roundsFired, interceptors), and
+    AEGISM_withheldCiws (diagnostic, for debugDraw). Publishes each member's
+    own records on the member itself ("AEGISM_assigned", role -> records,
+    soonest impact first), so its engagement loop never scans or sorts the
+    Site's claims. Consumers use the record's own "target" object.
+
+    Cost: the layered-reserve plan's per-munition, per-launcher scan (when
+    can this launcher first make a shot that lands in time) is cached
+    ("AEGISM_planCache") while the munition keeps to its predicted path, and
+    skipped entirely while every munition already has a launcher. Each run's
+    time is counted for the PERF line (aegism_fnc_perfLog).
 
 Parameters:
     _logic - the Site logic <OBJECT>
@@ -95,6 +103,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\perf.hpp"
+
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
 #define AEGISM_CIWS_IDLE_GRACE 8
 #define AEGISM_NEVER_FIRED_TIMEOUT 15
@@ -106,11 +116,24 @@ Author:
 // Layered-reserve plan: seconds between the projected positions checked
 // while waiting for a munition to enter a launcher's envelope.
 #define AEGISM_RESERVE_PLAN_STEP 1
+// A cached plan scan is reused while the munition stays within this many
+// metres of the path it was scanned on, for at most this many seconds.
+#define AEGISM_PLAN_CACHE_TOLERANCE 25
+#define AEGISM_PLAN_CACHE_MAX_AGE 10
 #define AEGISM_GRAVITY 9.80665
 
 params ["_logic"];
 
 if (isNull _logic) exitWith {};
+
+private _startedAt = diag_tickTime;
+// Counts this run for the PERF line.
+private _fnPerf = {
+    private _ms = (diag_tickTime - _startedAt) * 1000;
+    PERF_INC(PERF_COORD_RUNS);
+    PERF_ADD(PERF_COORD_MS,_ms);
+    AEGISM_perfCounts set [PERF_COORD_MAX_MS, (AEGISM_perfCounts select PERF_COORD_MAX_MS) max _ms];
+};
 
 private _engagementSettings = _logic getVariable "AEGISM_engagement";
 if (isNil "_engagementSettings") exitWith {
@@ -184,7 +207,7 @@ private _busyTurrets = [];
                 case (_unfiredLauncher && {_record getOrDefault ["crewFailed", false]}): {
                     // Keep this launcher off the contact until its lost fire
                     // cycle is over, so another weapon gets the next try.
-                    private _holdUntil = _system getVariable [format ["AEGISM_turretHoldUntil_%1", _weaponInfo select 0], time];
+                    private _holdUntil = ([_system, _weaponInfo select 0] call aegism_intercept_fnc_turretState) getOrDefault ["holdUntil", time];
                     _entry set ["avoid", ((_entry getOrDefault ["avoid", []]) select { (_x select 2) > time }) + [[_system, _weaponInfo select 0, _holdUntil]]];
                     "crew failed to fire (reliability roll) -- re-tasking it to the rest of the Site"
                 };
@@ -243,6 +266,7 @@ if (_allWeapons isEqualTo []) exitWith {
         diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " WARNING: Site %1 has %2 member(s) but no live launcher/CIWS weapon (none adopted, dead, or out of ammo).", _logic, count _members];
     };
     _logic setVariable ["AEGISM_claims", _claims, false];
+    { if (!isNull _x) then { _x setVariable ["AEGISM_assigned", nil, false]; }; } forEach _members;
 };
 _logic setVariable ["AEGISM_lastAssignWarning", "", false];
 
@@ -292,25 +316,28 @@ if (_memberPositions isNotEqualTo [] && {count _orderedKeys > 1}) then {
 // s until it may fire again, shot spacing s, missiles left, missiles per
 // target]. Reaction is none for an automated/UAV system. Cooldown is its
 // shot interval since its last missile, or a crew's lost fire cycle
-// ("AEGISM_turretHoldUntil_<path>"), whichever ends later. Shot spacing is
-// the launcher's own MEASURED time per missile ("AEGISM_turretSpacing_
-// <path>", aegism_intercept_fnc_engagementLoop), which includes lost
-// reliability rolls and re-aiming between targets; before its first
-// back-to-back shots it's estimated as its shot interval (aegism_intercept_
-// fnc_launcherInterval) / crew reliability. (Planning on the bare interval
+// (turret state "holdUntil"), whichever ends later. Shot spacing is
+// the launcher's own MEASURED time per missile (turret state "spacing",
+// aegism_intercept_fnc_engagementLoop), which includes lost reliability
+// rolls and re-aiming between targets; before its first back-to-back shots
+// it's estimated as its shot interval (aegism_intercept_fnc_
+// launcherInterval) / crew reliability. (Planning on the bare interval
 // queued RAM launchers ~2x deeper than they could fire, so the back of a
 // salvo was left to them until too late.)
 private _fnLauncherTiming = {
     params ["_candSystem", "_weaponInfo"];
     _weaponInfo params ["_turretPath", "", "_magClass"];
     private _settings = _candSystem call _fnSettings;
-    private _crew = _candSystem getVariable "AEGISM_resolvedCrew";
-    if (isNil "_crew") then { _crew = [_candSystem] call aegism_system_fnc_resolveCrew; };
-    private _mods = [_crew, _candSystem] call aegism_intercept_fnc_applyCrewModulation;
+    private _mods = _candSystem getVariable "AEGISM_resolvedCrewMods";
+    if (isNil "_mods") then {
+        private _crew = _candSystem getVariable "AEGISM_resolvedCrew";
+        if (isNil "_crew") then { _crew = [_candSystem] call aegism_system_fnc_resolveCrew; };
+        _mods = [_crew, _candSystem] call aegism_intercept_fnc_applyCrewModulation;
+    };
+    private _ts = [_candSystem, _turretPath] call aegism_intercept_fnc_turretState;
     private _interval = ([_candSystem, _weaponInfo, _settings] call aegism_intercept_fnc_launcherInterval) * (_mods get "shotIntervalMult");
-    private _spacing = _candSystem getVariable [format ["AEGISM_turretSpacing_%1", _turretPath], _interval / ((_mods get "reliability") max 0.05)];
-    private _readyAt = ((_candSystem getVariable [format ["AEGISM_turretShotAt_%1", _turretPath], -1e9]) + _interval)
-        max (_candSystem getVariable [format ["AEGISM_turretHoldUntil_%1", _turretPath], -1e9]);
+    private _spacing = _ts getOrDefault ["spacing", _interval / ((_mods get "reliability") max 0.05)];
+    private _readyAt = ((_ts getOrDefault ["shotAt", -1e9]) + _interval) max (_ts getOrDefault ["holdUntil", -1e9]);
     [_mods get "reactionTime", (_readyAt - time) max 0, _spacing, _candSystem magazineTurretAmmo [_magClass, _turretPath], (_settings getOrDefault ["salvoSize", 1]) max 1]
 };
 
@@ -356,29 +383,56 @@ private _fnLauncherEta = {
 
 // [fireTime, interceptTime] (seconds from now) of the earliest shot from
 // _start on that meets the munition before _tti, or [] if there's none.
+//
+// The scan behind it -- every AEGISM_RESERVE_PLAN_STEP s from now to
+// impact: inside the envelope, a feasible intercept, landing before impact
+// -- is done once per munition and launcher and kept in game time
+// ("AEGISM_planCache": [scanned at, position, velocity, [[fire at, intercept
+// at], ...]]). A ballistic path is fixed, and so is a parked launcher's
+// envelope; the scan is redone if the munition strays AEGISM_PLAN_CACHE_
+// TOLERANCE m from the path it was scanned on (a rocket still burning, a
+// missile turning), or after AEGISM_PLAN_CACHE_MAX_AGE s.
+private _planCache = _logic getVariable "AEGISM_planCache";
+if (isNil "_planCache") then { _planCache = createHashMap; _logic setVariable ["AEGISM_planCache", _planCache, false]; };
 private _fnPlanShot = {
-    params ["_candSystem", "_weaponInfo", "_bounds", "_object", "_ballistic", "_start", "_tti"];
-    _bounds params ["_minRange", "_maxRange", "_minAltitude", "_maxAltitude"];
-    private _origin = eyePos _candSystem;
-    private _p0 = getPosASL _object;
-    private _v = velocity _object;
+    params ["_candSystem", "_weaponInfo", "_bounds", "_object", "_ballistic", "_start", "_tti", "_key"];
     private _drop = [0, 0.5 * AEGISM_GRAVITY] select _ballistic;
-    private _shot = [];
-    for "_t" from _start to _tti step AEGISM_RESERVE_PLAN_STEP do {
-        private _p = (_p0 vectorAdd (_v vectorMultiply _t)) vectorDiff [0, 0, _drop * _t * _t];
-        private _distance = _origin distance _p;
-        private _height = (ASLToAGL _p) select 2;
-        private _found = false;
-        if (_distance >= _minRange && {_distance <= _maxRange} && {_height >= _minAltitude} && {_maxAltitude <= 0 || {_height <= _maxAltitude}}) then {
-            ([_candSystem, _origin, _object, _weaponInfo, "launcher", false, _t, _ballistic] call aegism_intercept_fnc_computeLeadPoint) params ["", "_feasible", "_flightTime"];
-            if (_feasible && {_t + (_flightTime max 0) < _tti}) then {
-                _shot = [_t, _t + (_flightTime max 0)];
-                _found = true;
+    private _cacheKey = [_key, netId _candSystem, _weaponInfo select 0];
+    private _entry = _planCache getOrDefault [_cacheKey, []];
+    private _valid = _entry isNotEqualTo [] && {
+        _entry params ["_scannedAt", "_p0", "_v0"];
+        private _dt = time - _scannedAt;
+        _dt <= AEGISM_PLAN_CACHE_MAX_AGE
+            && {((_p0 vectorAdd (_v0 vectorMultiply _dt) vectorDiff [0, 0, _drop * _dt * _dt]) distance (getPosASL _object)) <= AEGISM_PLAN_CACHE_TOLERANCE}
+    };
+    if (_valid) then {
+        PERF_INC(PERF_PLAN_HITS);
+    } else {
+        PERF_INC(PERF_PLAN_BUILDS);
+        _bounds params ["_minRange", "_maxRange", "_minAltitude", "_maxAltitude"];
+        private _origin = eyePos _candSystem;
+        private _p0 = getPosASL _object;
+        private _v = velocity _object;
+        private _shots = [];
+        for "_t" from 0 to _tti step AEGISM_RESERVE_PLAN_STEP do {
+            private _p = (_p0 vectorAdd (_v vectorMultiply _t)) vectorDiff [0, 0, _drop * _t * _t];
+            private _distance = _origin distance _p;
+            private _height = (ASLToAGL _p) select 2;
+            if (_distance >= _minRange && {_distance <= _maxRange} && {_height >= _minAltitude} && {_maxAltitude <= 0 || {_height <= _maxAltitude}}) then {
+                ([_candSystem, _origin, _object, _weaponInfo, "launcher", false, _t, _ballistic] call aegism_intercept_fnc_computeLeadPoint) params ["", "_feasible", "_flightTime"];
+                if (_feasible && {_t + (_flightTime max 0) < _tti}) then {
+                    _shots pushBack [time + _t, time + _t + (_flightTime max 0)];
+                };
             };
         };
-        if (_found) exitWith {};
+        _entry = [time, _p0, _v, _shots];
+        _planCache set [_cacheKey, _entry];
     };
-    _shot
+    private _earliest = time + _start;
+    private _index = (_entry select 3) findIf { (_x select 0) >= _earliest };
+    if (_index == -1) exitWith { [] };
+    ((_entry select 3) select _index) params ["_fireAt", "_interceptAt"];
+    [_fireAt - time, _interceptAt - time]
 };
 
 // Picks one weapon from the eligible list ([index in _allWeapons, flight
@@ -440,11 +494,16 @@ private _launcherEntries = _allWeapons select { (_x select 1) == "launcher" };
 private _tierReaches = [];
 { _tierReaches pushBackUnique ((_x select 2) select 5); } forEach _launcherEntries;
 _tierReaches sort true;
-if (count _tierReaches > 1) then {
-    private _planKeys = (keys _ttiByKey) select {
-        private _planEntry = _pool get _x;
-        (_planEntry getOrDefault ["isMunition", false]) && {(_ttiByKey get _x) < 1e9} && {(_planEntry get "class") in _allowlist}
-    };
+// Plan scans for munitions that are gone.
+{ if !((_x select 0) in _ttiByKey) then { _planCache deleteAt _x; }; } forEach (keys _planCache);
+private _planKeys = (keys _ttiByKey) select {
+    private _planEntry = _pool get _x;
+    (_planEntry getOrDefault ["isMunition", false]) && {(_ttiByKey get _x) < 1e9} && {(_planEntry get "class") in _allowlist}
+};
+// The plan only decides which launchers may take a FREE munition: with none
+// free, there's nothing to plan.
+private _anyFree = (_planKeys findIf { ((_claims getOrDefault [_x, []]) findIf { (_x get "role") == "launcher" }) == -1 }) != -1;
+if (count _tierReaches > 1 && {_anyFree}) then {
     _planKeys = _planKeys apply { [_ttiByKey get _x, _x] };
     _planKeys sort true;
     _planKeys = _planKeys apply { _x select 1 };
@@ -491,7 +550,7 @@ if (count _tierReaches > 1) then {
                     if (_rounds > 0
                         && {(_planEntry get "class") in (_candSettings getOrDefault ["targetClassAllowlist", []])}
                         && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) == -1}) then {
-                        private _shot = [_candSystem, _candInfo, _bounds, _object, _ballistic, _nextFree max _reaction, _tti] call _fnPlanShot;
+                        private _shot = [_candSystem, _candInfo, _bounds, _object, _ballistic, _nextFree max _reaction, _tti, _key] call _fnPlanShot;
                         if (_shot isNotEqualTo [] && {_best isEqualTo [] || {(_shot select 1) < (_best select 1)}}) then {
                             _best = [_forEachIndex, _shot select 0, _shot select 1];
                         };
@@ -724,3 +783,32 @@ if (count _tierReaches > 1) then {
 
 _logic setVariable ["AEGISM_claims", _claims, false];
 _logic setVariable ["AEGISM_withheldCiws", _withheldCiws, false];
+
+// Each member's own records, per role, soonest impact first (the order its
+// engagement loop works a launcher's queue in). Sorted as [time to impact,
+// index into _records] pairs, so sort only ever compares numbers.
+private _records = [];
+private _buckets = _members apply { [[], []] };
+{
+    private _tti = _ttiByKey getOrDefault [_x, 1e10];
+    {
+        private _index = _members find (_x get "system");
+        if (_index != -1) then {
+            ((_buckets select _index) select (parseNumber ((_x get "role") == "ciws"))) pushBack [_tti, count _records];
+            _records pushBack _x;
+        };
+    } forEach _y;
+} forEach _claims;
+{
+    if (!isNull _x) then {
+        (_buckets select _forEachIndex) params ["_launcherOrder", "_ciwsOrder"];
+        _launcherOrder sort true;
+        _ciwsOrder sort true;
+        _x setVariable ["AEGISM_assigned", createHashMapFromArray [
+            ["launcher", _launcherOrder apply { _records select (_x select 1) }],
+            ["ciws", _ciwsOrder apply { _records select (_x select 1) }]
+        ], false];
+    };
+} forEach _members;
+
+call _fnPerf;

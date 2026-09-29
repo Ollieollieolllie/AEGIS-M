@@ -302,10 +302,20 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "true";
             };
+            class EngageOnlyThreats
+            {
+                displayName = "Only Engage Munitions Threatening the Site";
+                tooltip = "On (default): a hostile artillery, mortar or MLRS round (or unguided rocket) is only engaged while its predicted impact falls within the Threat Radius of a Site vehicle -- a shell landing well clear of the Site doesn't cost a single round, and is logged once as IGNORED. Guided missiles and bombs are always engaged (they steer or glide, so a ballistic prediction says nothing). Off: every hostile munition in reach is engaged, wherever it will land.";
+                property = "engageOnlyThreats";
+                control = "Checkbox";
+                expression = "_this setVariable ['engageOnlyThreats', _value];";
+                typeName = "BOOL";
+                defaultValue = "true";
+            };
             class FriendlyThreatRadius
             {
-                displayName = "Friendly Threat Radius (m)";
-                tooltip = "How close to a Site vehicle a friendly munition's predicted impact must be to count as a threat. 0 (default) = that munition's own config danger radius (CfgAmmo dangerRadiusHit, the radius the game's AI keeps friendlies out of: 750m for 155mm, 1250m for MLRS, 1000m for bombs), or its blast radius (indirectHitRange) when that isn't set.";
+                displayName = "Threat Radius (m)";
+                tooltip = "How close to a Site vehicle a munition's predicted impact must be to count as a threat -- for a friendly munition (Engage Friendly Munitions Threatening the Site), and for a hostile artillery round or rocket (Only Engage Munitions Threatening the Site). 0 (default) = that munition's own config danger radius (CfgAmmo dangerRadiusHit, the radius the game's AI keeps friendlies out of: 750m for 155mm, 1250m for MLRS, 1000m for bombs), or its blast radius (indirectHitRange) when that isn't set.";
                 property = "friendlyThreatRadius";
                 control = "Edit";
                 expression = "_this setVariable ['friendlyThreatRadius', _value];";
@@ -415,7 +425,7 @@ class CfgVehicles
             class CiwsBurstPause
             {
                 displayName = "Pause Between Bursts (s)";
-                tooltip = "Seconds a gun pauses after one burst ends before starting the next (scaled by Crew Temperament).";
+                tooltip = "Seconds a gun pauses after one burst ends before firing again at the SAME target (scaled by Crew Temperament). After a kill, or once its target is released, it goes straight on to the next one.";
                 property = "ciwsBurstPause";
                 control = "Edit";
                 expression = "_this setVariable ['ciwsBurstPause', _value];";

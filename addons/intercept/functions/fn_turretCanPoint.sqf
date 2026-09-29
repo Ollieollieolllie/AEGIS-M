@@ -5,9 +5,10 @@ Description:
     Whether a turret can physically elevate to a world direction: the
     direction taken into the vehicle's own model space (so a vehicle on a
     slope is handled) and checked against the turret config's own elevation
-    limits, minElev/maxElev. (Traverse limits, minTurn/maxTurn, aren't
-    checked: their reference direction and sign aren't verified here, and a
-    wrong guess would reject targets the turret can reach.)
+    limits, minElev/maxElev (cached, aegism_intercept_fnc_turretConfig).
+    (Traverse limits, minTurn/maxTurn, aren't checked: their reference
+    direction and sign aren't verified here, and a wrong guess would reject
+    targets the turret can reach.)
 
     Why: a CIWS whose aim point was beyond its travel could never get its
     barrel within tolerance, so it held fire on that target until the target
@@ -34,11 +35,8 @@ Author:
 
 params ["_system", "_turretPath", "_direction"];
 
-private _turretCfg = [_system, _turretPath] call CBA_fnc_getTurret;
+([_system, _turretPath] call aegism_intercept_fnc_turretConfig) params ["", "", "", "_minElevation", "_maxElevation"];
 private _local = vectorNormalized (_system vectorWorldToModelVisual _direction);
 private _elevation = asin (((_local select 2) max -1) min 1);
-
-private _minElevation = getNumber (_turretCfg >> "minElev");
-private _maxElevation = getNumber (_turretCfg >> "maxElev");
 
 [_elevation >= _minElevation && {_elevation <= _maxElevation}, _elevation, _minElevation, _maxElevation]

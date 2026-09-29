@@ -245,7 +245,14 @@ class Cfg3DEN
                         property = "AEGISM_ovr_engageFriendlyThreats";
                         expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_engageFriendlyThreats', _value == 'on']};";
                     };
-                    AEGISM_OVR_NUMBER(AEGISM_ovr_friendlyThreatRadius,"AEGISM_ovr_friendlyThreatRadius","if (_value != '') then {_this setVariable ['AEGISM_ovr_friendlyThreatRadius', parseNumber _value]};","Friendly Threat Radius (m)","0 = the munition's own config danger radius. Blank = Site setting.");
+                    class AEGISM_ovr_engageOnlyThreats: AEGISM_ovr_costValueJudgment
+                    {
+                        displayName = "Only Engage Munitions Threatening the Site";
+                        tooltip = "For a radar: whether a hostile artillery round or rocket it sees is only reported while predicted to land within the Threat Radius of a Site vehicle.";
+                        property = "AEGISM_ovr_engageOnlyThreats";
+                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_engageOnlyThreats', _value == 'on']};";
+                    };
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_friendlyThreatRadius,"AEGISM_ovr_friendlyThreatRadius","if (_value != '') then {_this setVariable ['AEGISM_ovr_friendlyThreatRadius', parseNumber _value]};","Threat Radius (m)","0 = the munition's own config danger radius. Blank = Site setting.");
 
                     // ---------------------------------------------- Launchers
                     class AEGISM_ovr_section_launchers

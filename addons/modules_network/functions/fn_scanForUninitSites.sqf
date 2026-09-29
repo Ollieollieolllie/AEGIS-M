@@ -5,42 +5,26 @@ Description:
     One tick of a periodic fallback scan (registered in XEH_postInit.sqf)
     that manually runs aegism_network_fnc_moduleInit on any placed
     AEGISM_Module_Site object whose own module activation never fired --
-    working around a real, observed Eden Preview limitation where a
-    Module_F-derived module's own "function"/isTriggerActivated=0 auto-run
-    does not reliably invoke in Preview mode, even though the exact same
-    placement/sync setup runs correctly once the mission is actually
-    exported and launched as a real scenario. Confirmed directly against an
-    RPT where every launcher logged contactSource=[] (never synced to
-    anything) despite the Site module being genuinely placed and synced in
-    Eden, with zero trace anywhere in the RPT of aegism_network_fnc_
-    moduleInit, or any error, ever running at all -- config.cpp's own
-    function/isGlobal/isTriggerActivated setup is entirely standard and
-    correct, so there was nothing for AEGIS-M's own code to have caught;
-    this scan exists purely to route around the engine's own Preview-mode
-    gap rather than to fix a bug in this codebase.
+    working around an observed Eden Preview limitation where a Module_F-
+    derived module's own "function"/isTriggerActivated=0 auto-run does not
+    reliably invoke in Preview mode, even though the exact same setup runs
+    correctly once the mission is exported and launched as a real scenario.
 
-    Finds every placed instance via allMissionObjects "AEGISM_Module_Site"
-    (the CfgVehicles classname itself, not a scan of `vehicles` -- a module
-    logic object is not a vehicle and would never appear there). A Site is
-    considered already initialized if it has "AEGISM_networkMembers" set
-    (written by aegism_network_fnc_moduleInit itself, see that function's
-    own doc comment) -- so a Site whose real Eden activation DID fire
-    (Preview working correctly, or an exported mission) is left alone and
-    never double-initialized by this fallback; only a Site that's been
-    sitting uninitialized is picked up.
+    Finds every placed Site with `entities` (indexed by type) -- it used to
+    be allMissionObjects every 2s on every machine, which walks every object
+    in the mission. The first pass checks the two agree and logs which one
+    this scan uses; if `entities` ever misses a Site that allMissionObjects
+    finds, the scan keeps using allMissionObjects.
 
-    Synced units are recovered via synchronizedObjects _site directly --
-    this is the same real sync-line data Eden's own module activation would
-    have passed as moduleInit's own "_units" parameter, read straight off
-    the object rather than depending on the module's own activation
-    pipeline having run at all, so this works identically regardless of
-    WHY the real activation didn't fire.
+    A Site is considered already initialized if it has "AEGISM_network
+    Members" set (written by aegism_network_fnc_moduleInit itself), so a Site
+    whose real activation DID fire is left alone. Synced units are recovered
+    via synchronizedObjects -- the same sync-line data the module's own
+    activation would have passed.
 
-    Runs on every machine (not isServer-gated), matching aegism_system_fnc_
-    scanForRoles' own reasoning -- aegism_network_fnc_moduleInit itself
-    internally gates its own loop registrations to isServer, so calling it
-    unconditionally here is exactly as safe as the module's own real
-    isGlobal=1 activation would have been.
+    Runs on every machine, matching the module's own isGlobal=1 activation
+    -- aegism_network_fnc_moduleInit gates its own loop registrations to the
+    server.
 
 Parameters:
     None
@@ -55,6 +39,16 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+private _useEntities = missionNamespace getVariable "AEGISM_siteScanUsesEntities";
+if (isNil "_useEntities") then {
+    private _byEntities = count (entities "AEGISM_Module_Site");
+    private _byMission = count (allMissionObjects "AEGISM_Module_Site");
+    _useEntities = _byEntities >= _byMission;
+    missionNamespace setVariable ["AEGISM_siteScanUsesEntities", _useEntities];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SITE-SCAN: entities finds %1 Site(s), allMissionObjects %2 -- the fallback Site scan uses %3.",
+        _byEntities, _byMission, ["allMissionObjects (entities missed some)", "entities"] select _useEntities];
+};
+
 {
     private _site = _x;
     if (isNil { _site getVariable "AEGISM_networkMembers" }) then {
@@ -62,4 +56,4 @@ Author:
         diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FALLBACK-INIT: %1 never received its own Eden/Preview module activation (a known Preview-mode limitation, not an AEGIS-M bug) -- manually running aegism_network_fnc_moduleInit with %2 synced unit(s) found via synchronizedObjects.", _site, count _units];
         [_site, _units, true] call aegism_network_fnc_moduleInit;
     };
-} forEach (allMissionObjects "AEGISM_Module_Site");
+} forEach (if (_useEntities) then { entities "AEGISM_Module_Site" } else { allMissionObjects "AEGISM_Module_Site" });

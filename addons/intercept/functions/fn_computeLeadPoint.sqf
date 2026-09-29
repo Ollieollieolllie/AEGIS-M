@@ -8,7 +8,8 @@ Description:
 
     The target is projected forward by the weapon's time of flight to the
     projected point (velocity plus measured acceleration, zero-effort-miss
-    style), iterated to convergence. All kinematics come from real config:
+    style), iterated to convergence. All kinematics come from real config,
+    read once per weapon + magazine (aegism_intercept_fnc_weaponKinematics):
 
         gun (ciws) - muzzle velocity from CfgMagazines initSpeed (overridden
             per engine rules by CfgWeapons initSpeed: > 0 replaces, < 0
@@ -84,26 +85,13 @@ _weaponInfo params ["", "_weaponClass", "_magazineClass", "", "", ["_maxRange", 
 private _targetPos = getPosASLVisual _target;
 private _currentDistance = _origin distance _targetPos;
 
-private _ammoCfg = configFile >> "CfgAmmo" >> getText (configFile >> "CfgMagazines" >> _magazineClass >> "ammo");
-private _maxTime = getNumber (_ammoCfg >> "timeToLive");
-
-private _v0 = getNumber (configFile >> "CfgMagazines" >> _magazineClass >> "initSpeed");
-private _weaponSpeed = getNumber (configFile >> "CfgWeapons" >> _weaponClass >> "initSpeed");
-if (_weaponSpeed > 0) then { _v0 = _weaponSpeed; };
-if (_weaponSpeed < 0) then { _v0 = _v0 * (abs _weaponSpeed); };
-
 private _isGun = _role == "ciws";
 
 // Kinematics, declared at this scope: the time-of-flight code below is
 // called later from here, and SQF code only sees variables that still exist
 // in the scope it's called from.
-private _k = abs ((getNumber (_ammoCfg >> "airFriction")) min 0);
-private _thrust = getNumber (_ammoCfg >> "thrust");
-private _maxSpeed = getNumber (_ammoCfg >> "maxSpeed");
-private _burnSpeed = if (_thrust > 0) then { _v0 + _thrust * getNumber (_ammoCfg >> "thrustTime") } else { _v0 };
-if (_maxSpeed > 0) then { _burnSpeed = _burnSpeed min _maxSpeed; };
-private _accelTime = if (_thrust > 0) then { (_burnSpeed - _v0) / _thrust } else { 0 };
-private _accelDist = _v0 * _accelTime + 0.5 * _thrust * _accelTime * _accelTime;
+([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics)
+    params ["", "_v0", "_k", "_thrust", "_burnSpeed", "_accelTime", "_accelDist", "_maxTime"];
 
 // Time for the round/missile to cover a distance; -1 = it can't.
 private _fnTimeOfFlight = if (_isGun) then {
@@ -132,7 +120,11 @@ if ((_isGun && {_v0 <= 0}) || {!_isGun && {_burnSpeed <= 0}}) exitWith { [_targe
 private _targetVelocity = velocity _target;
 private _targetAcceleration = [0, 0, 0];
 if (_useAcceleration) then {
-    private _sampleKey = format ["AEGISM_leadSample_%1", netId _system];
+    private _sampleKey = _system getVariable "AEGISM_leadSampleKey";
+    if (isNil "_sampleKey") then {
+        _sampleKey = format ["AEGISM_leadSample_%1", netId _system];
+        _system setVariable ["AEGISM_leadSampleKey", _sampleKey, false];
+    };
     private _sample = _target getVariable [_sampleKey, []];
     if (_sample isNotEqualTo []) then {
         _sample params ["_prevVelocity", "_prevTime", "_prevAccel"];

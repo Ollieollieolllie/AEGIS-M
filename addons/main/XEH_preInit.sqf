@@ -1,3 +1,5 @@
+#include "perf.hpp"
+
 [
     "aegism_main_scaleMode",
     "LIST",
@@ -39,6 +41,21 @@
     false,
     0
 ] call CBA_fnc_addSetting;
+
+// Server-side RPT summary of AEGIS-M's own work, see aegism_fnc_perfLog.
+[
+    "aegism_main_perfLog",
+    "CHECKBOX",
+    ["RPT Performance Summary", "Every 10s, while AEGIS-M is doing anything, the server writes one PERF line to its RPT: coordinator time, aim solves, CIWS rounds tracked, munition tracker work and server FPS. Silent while idle."],
+    ["AEGIS-M", "Debug"],
+    true,
+    1
+] call CBA_fnc_addSetting;
+
+// Counters behind the PERF line (perf.hpp). Created everywhere so an
+// increment on any machine never hits nil; only the server logs them.
+AEGISM_perfCounts = [];
+AEGISM_perfCounts resize [PERF_COUNT, 0];
 
 // Client-side, like the 3D draw. See aegism_fnc_debugHint.
 [

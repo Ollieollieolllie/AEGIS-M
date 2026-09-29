@@ -1,15 +1,17 @@
-// "All" (not "AllVehicles") is required to also catch infantry-fired
-// small arms/launchers, not just vehicle-mounted weapons -- confirmed via
-// CBA's own addClassEventHandler documentation.
+// The munition half of AEGIS-M's hybrid detection model: a fired CfgAmmo
+// projectile is not itself a valid getSensorTargets result (it has none of
+// the radarTargetSize/irTargetSize/visualTargetSize properties that make a
+// CfgVehicles object sensor-visible), so incoming missiles/rockets/shells/
+// bombs are picked up from the Fired event instead (see aegism_detect_fnc_
+// firedEventHandler).
 //
-// This is the munition half of AEGIS-M's hybrid detection model: a fired
-// CfgAmmo projectile is not itself a valid getSensorTargets result (it has
-// none of the radarTargetSize/irTargetSize/visualTargetSize properties
-// that make a CfgVehicles object sensor-visible -- confirmed against
-// vanilla CfgAmmo, which never defines them either), so incoming
-// missiles/rockets/shells/bombs need
-// this dedicated Fired-event pipeline instead of the platform pipeline's
-// getSensorTargets call (see aegism_detect_fnc_confidenceLoop).
-["All", "Fired", {
-    _this call aegism_detect_fnc_firedEventHandler;
-}] call CBA_fnc_addClassEventHandler;
+// "All" (not "AllVehicles") also catches infantry-fired launchers. Server
+// only: every other machine would call it for every bullet fired in the
+// mission just to return -- the pools and engagement loops it feeds exist
+// only on the server. (Fired is a global event: the server sees shots fired
+// on every machine.)
+if (isServer) then {
+    ["All", "Fired", {
+        _this call aegism_detect_fnc_firedEventHandler;
+    }] call CBA_fnc_addClassEventHandler;
+};

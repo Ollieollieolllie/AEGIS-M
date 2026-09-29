@@ -30,9 +30,9 @@ Description:
     disableAI's disabled state is tied to the UNIT object, not the turret/
     vehicle context (confirmed against BIKI) -- it follows that crewman if
     they change seats or eject, and is NOT automatically cleared by vehicle
-    destruction. Callers are responsible for calling this with _suppress
-    false on cleanup (e.g. aegism_system_fnc_moduleInit's own PFH removal
-    path, or a live unsync) rather than assuming it resets itself.
+    destruction. It's restored only when a vehicle is unsynced from a Site
+    and isn't a System in its own right (aegism_network_fnc_moduleInit); a
+    destroyed System's crew stays suppressed.
 
 Parameters:
     _vehicle - the vehicle whose turret crewman to affect <OBJECT>

@@ -32,6 +32,9 @@ Returns:
             or fires with its barrel below, this elevation <NUMBER>
         engageFriendlyThreats - also engage friendly/neutral munitions that
             are predicted to hit the Site <BOOLEAN>
+        engageOnlyThreats - a hostile artillery round or rocket is only
+            engaged while predicted to land within the threat radius of a
+            Site vehicle (aegism_detect_fnc_munitionCheck) <BOOLEAN>
         friendlyThreatRadius - metres from a Site member a friendly
             munition's predicted impact must fall within to count as a
             threat; 0 = the munition's own config dangerRadiusHit <NUMBER>
@@ -58,6 +61,7 @@ createHashMapFromArray [
     ["ciwsBurstPause", 1],
     ["ciwsMinElevation", 5],
     ["engageFriendlyThreats", true],
+    ["engageOnlyThreats", true],
     ["friendlyThreatRadius", 0],
     ["targetClassAllowlist", ["missile", "rocket", "bomb", "artilleryShell", "fixedWing", "helicopter", "drone"]],
     ["ciwsLastResort", false]

@@ -85,8 +85,9 @@ private _fnSystemStatus = {
         private _role = _record get "role";
         private _target = _record getOrDefault ["target", objNull];
         (_record get "weaponInfo") params ["_turretPath"];
-        private _burstEnds = (_system getVariable [format ["AEGISM_ciwsBurst_%1", _turretPath], [-1]]) select 0;
-        (_system getVariable [format ["AEGISM_aim_%1", _role], []]) params [["_angle", 0], ["_tolerance", 180], ["_aimAt", -1e9], ["_aimTarget", objNull], ["_feasible", true]];
+        private _turretState = (_system getVariable ["AEGISM_turrets", createHashMap]) getOrDefault [_turretPath, createHashMap];
+        private _burstEnds = (_turretState getOrDefault ["burst", [-1]]) select 0;
+        (_turretState getOrDefault ["aim_" + _role, []]) params [["_angle", 0], ["_tolerance", 180], ["_aimAt", -1e9], ["_aimTarget", objNull], ["_feasible", true]];
         private _aimFresh = time - _aimAt < 1 && {_aimTarget == _target};
         private _targetText = format ["%1 %2", [_target] call _fnShortName, [_system distance _target] call _fnRange];
         private _roleTag = ["L", "C"] select (_role == "ciws");
@@ -114,7 +115,9 @@ private _fnSystemStatus = {
     private _anyAmmo = (_weapons findIf { _x params ["_turretPath", "", "_magClass"]; (_system magazineTurretAmmo [_magClass, _turretPath]) > 0 }) != -1;
     if (_weapons isNotEqualTo [] && {!_anyAmmo}) exitWith { ["NO AMMO", COL_EMPTY] };
 
-    private _contacts = count (_system getVariable ["AEGISM_pooledContacts", createHashMap]);
+    // A networked radar feeds its Site's pool (it keeps no munitions of its own).
+    private _network = _system getVariable ["AEGISM_network", objNull];
+    private _contacts = count (([_network, _system] select (isNull _network)) getVariable ["AEGISM_pooledContacts", createHashMap]);
     if ((_systemData getOrDefault ["hasRadar", false]) && {_contacts > 0}) exitWith { [format ["TRACKING %1 contact(s)", _contacts], COL_TRACK] };
 
     ["READY", COL_READY]
@@ -141,7 +144,9 @@ private _fnRolesAndAmmo = {
 };
 
 private _sites = (missionNamespace getVariable ["AEGISM_allPoolOwners", []]) select { !isNull _x && {!isNil {_x getVariable "AEGISM_networkMembers"}} };
-private _standalone = (missionNamespace getVariable ["AEGISM_allSystems", []]) select { !isNull _x && {isNull (_x getVariable ["AEGISM_network", objNull])} };
+private _allSystems = (missionNamespace getVariable ["AEGISM_allSystems", []]) select { !isNull _x && {alive _x} };
+missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
+private _standalone = _allSystems select { isNull (_x getVariable ["AEGISM_network", objNull]) };
 private _camera = positionCameraToWorld [0, 0, 0];
 
 private _fnSiteName = {
@@ -186,22 +191,25 @@ if (_sites isNotEqualTo []) then {
     // Contacts, nearest first, with the weapons on each.
     if (count _pool > 0) then {
         _lines pushBack format ["<br/><t align='left' size='0.8' font='PuristaSemibold' color='%1'>Contacts</t><br/>", COL_HEAD];
-        private _entries = (values _pool) select { !isNull (_x getOrDefault ["object", objNull]) };
+        // [key, entry] of every live contact.
+        private _entries = [];
+        { if (!isNull (_y getOrDefault ["object", objNull])) then { _entries pushBack [_x, _y]; }; } forEach _pool;
         private _sorted = [_entries, [], {
-            private _object = _x get "object";
+            private _object = (_x select 1) get "object";
             private _nearest = 1e10;
             { _nearest = _nearest min (_x distance _object); } forEach _members;
             _nearest
         }, "ASCEND"] call BIS_fnc_sortBy;
         {
             if (_forEachIndex < AEGISM_HINT_MAX_CONTACTS) then {
-                private _object = _x get "object";
+                _x params ["_key", "_entry"];
+                private _object = _entry get "object";
                 private _nearest = 1e10;
                 { _nearest = _nearest min (_x distance _object); } forEach _members;
-                private _onIt = (_claims getOrDefault [netId _object, []]) apply { format ["%1 %2", ["L", "C"] select ((_x get "role") == "ciws"), [_x get "system"] call _fnShortName] };
+                private _onIt = (_claims getOrDefault [_key, []]) apply { format ["%1 %2", ["L", "C"] select ((_x get "role") == "ciws"), [_x get "system"] call _fnShortName] };
                 _lines pushBack format ["<t align='left' size='0.75'>  %1 %2 <t color='%3'>%4 %5</t>%6</t><br/>",
                     [[COL_TRACK, COL_ENGAGE] select (_onIt isNotEqualTo []), "●"] call _fnColour,
-                    [_object] call _fnShortName, COL_DIM, _x get "class", [_nearest] call _fnRange,
+                    [_object] call _fnShortName, COL_DIM, _entry get "class", [_nearest] call _fnRange,
                     ["", format [" <t color='%1'>&lt;- %2</t>", COL_ENGAGE, _onIt joinString ", "]] select (_onIt isNotEqualTo [])];
             };
         } forEach _sorted;
@@ -230,17 +238,21 @@ if (_standalone isNotEqualTo []) then {
     _lines pushBack format ["<br/><t align='left' size='0.8' font='PuristaSemibold' color='%1'>Standalone</t><br/>", COL_HEAD];
     {
         private _system = _x;
+        // Each weapon turret's own engagement, in the shape of a Site record.
         private _records = [];
         {
-            private _state = _system getVariable [format ["AEGISM_engagementState_%1", _x], createHashMap];
-            if (!isNull (_state getOrDefault ["target", objNull]) && {(_state getOrDefault ["targetNetId", ""]) != ""}) then {
-                private _record = +_state;
-                _record set ["role", _x];
-                private _weapons = (_system getVariable ["AEGISM_system", createHashMap]) getOrDefault [["launcherWeapons", "ciwsWeapons"] select (_x == "ciws"), []];
-                _record set ["weaponInfo", _weapons param [0, [[]]]];
-                _records pushBack _record;
-            };
-        } forEach ["launcher", "ciws"];
+            private _turretPath = _x;
+            private _turretState = _y;
+            {
+                private _state = _turretState getOrDefault ["standalone_" + _x, createHashMap];
+                if (!isNull (_state getOrDefault ["target", objNull])) then {
+                    private _record = +_state;
+                    _record set ["role", _x];
+                    _record set ["weaponInfo", [_turretPath]];
+                    _records pushBack _record;
+                };
+            } forEach ["launcher", "ciws"];
+        } forEach (_system getVariable ["AEGISM_turrets", createHashMap]);
         ([_system] call _fnRolesAndAmmo) params ["_tags", "_ammoText"];
         ([_system, _records] call _fnSystemStatus) params ["_statusText", "_colour"];
         _lines pushBack format ["<t align='left' size='0.8'>%1 %2 <t color='%3'>%4</t></t><br/><t align='left' size='0.75'>    %5 <t color='%3'>(%6)</t></t><br/>",

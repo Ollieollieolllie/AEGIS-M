@@ -10,22 +10,13 @@ Description:
     assignEngagements can match one against the other without a mission
     designer hand-tuning a "small/medium/large" tier per class.
 
-    indirectHitRange is engine-mandatory for anything meant to actually
-    explode (the engine uses it directly for splash damage, so it's
-    populated consistently across vanilla and modded ammo alike rather
-    than being an optional/author-forgotten field), and scales monotonically
-    with real-world warhead scale: near-zero for small arms/unguided AT
-    rockets, moderate for a MANPAD/Titan-class missile, large for an anti-
-    ship missile or aircraft bomb. hit (direct-hit damage) is NOT used here
-    -- it's noisy across ammo roles (some launchers front-load direct hit
-    and leave indirectHit/indirectHitRange comparatively small), where
-    indirectHitRange stays a consistent physical-scale signal regardless of
-    how a given mod's author balanced direct vs. splash damage.
+    indirectHitRange is what the engine uses for splash damage, so it's set
+    consistently across vanilla and modded explosive ammo, and scales with
+    warhead size. hit (direct-hit damage) is NOT used here -- it's noisy
+    across ammo roles. Plain (non-explosive) gun ammo returns 0.
 
-    Plain (non-explosive) gun ammo, e.g. a CIWS autocannon's own rounds,
-    correctly returns 0 -- it has no blast radius, and 0 is the right
-    "size" for a weapon whose actual lethality against an incoming munition
-    comes from raw rate of fire and hit probability, not warhead energy.
+    Cached per ammo class ("AEGISM_cacheMunitionSize"): the coordinator
+    sizes every contact every cycle.
 
 Parameters:
     _ammoClassName - a CfgAmmo classname <STRING>
@@ -43,7 +34,15 @@ Author:
 
 params ["_ammoClassName"];
 
-private _ammoConfig = configFile >> "CfgAmmo" >> _ammoClassName;
-if (!isClass _ammoConfig) exitWith { 0 };
+private _cache = missionNamespace getVariable "AEGISM_cacheMunitionSize";
+if (isNil "_cache") then {
+    _cache = createHashMap;
+    missionNamespace setVariable ["AEGISM_cacheMunitionSize", _cache];
+};
+private _cached = _cache get _ammoClassName;
+if (!isNil "_cached") exitWith { _cached };
 
-getNumber (_ammoConfig >> "indirectHitRange")
+private _ammoConfig = configFile >> "CfgAmmo" >> _ammoClassName;
+_cached = if (isClass _ammoConfig) then { getNumber (_ammoConfig >> "indirectHitRange") } else { 0 };
+_cache set [_ammoClassName, _cached];
+_cached

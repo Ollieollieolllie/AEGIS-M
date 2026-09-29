@@ -63,6 +63,11 @@ private _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", [
 private _network = _poolOwner getVariable ["AEGISM_network", objNull];
 
 private _ownSide = side _poolOwner;
+// DETECT-REJECT, logged once per contact while it stays in sensor range:
+// this tick's rejects replace the last tick's, so one that leaves and comes
+// back is logged again, and the list never outgrows what the radar sees.
+private _lastRejects = _poolOwner getVariable ["AEGISM_lastDetectReject", createHashMap];
+private _rejects = createHashMap;
 
 {
     _x params ["_target", "", "_relationship"];
@@ -79,30 +84,19 @@ private _ownSide = side _poolOwner;
                 [_network, _target, _class, 1] call aegism_detect_fnc_addContact;
             };
         } else {
-            // Change-only per [poolOwner, target] pair (a HashMap on the
-            // pool owner itself, cleared when the contact eventually leaves
-            // sensor range entirely) -- a real sensor detection that never
-            // makes it into the pool at all is otherwise completely
-            // invisible: nothing else ever logs "saw something, didn't pool
-            // it", so a class that SHOULD be allowlisted (e.g. fixedWing,
-            // on by default) silently classifying as something else, or
-            // the allowlist itself being wrong, would look identical to
-            // "never detected at all" with no way to tell them apart from
-            // the RPT alone. Logged once per contact rather than every
-            // tick it's rejected, since a lingering non-allowlisted
-            // contact (e.g. a friendly plane briefly misread as hostile by
-            // getSensorTargets) would otherwise spam the RPT for as long
-            // as it stays in sensor range.
+            // A real sensor detection that never makes it into the pool is
+            // otherwise invisible: a class that SHOULD be allowlisted
+            // silently classifying as something else would look identical
+            // to "never detected at all" in the RPT.
             private _rejectKey = netId _target;
-            private _rejectLog = _poolOwner getVariable ["AEGISM_lastDetectReject", createHashMap];
-            if (!(_rejectKey in _rejectLog)) then {
-                _rejectLog set [_rejectKey, true];
-                _poolOwner setVariable ["AEGISM_lastDetectReject", _rejectLog, false];
+            _rejects set [_rejectKey, true];
+            if (!(_rejectKey in _lastRejects)) then {
                 diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
             };
         };
     };
 } forEach (getSensorTargets _poolOwner);
+_poolOwner setVariable ["AEGISM_lastDetectReject", _rejects, false];
 
 // Only this System's OWN pool is pruned here, and only by expiry. The Site
 // pool is never touched: another radar may still hold a contact this one

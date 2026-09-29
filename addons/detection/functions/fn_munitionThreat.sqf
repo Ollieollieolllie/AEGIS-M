@@ -2,9 +2,11 @@
 Function: aegism_detect_fnc_munitionThreat
 
 Description:
-    Whether a munition that IFF would otherwise ignore (fired by a friendly
-    or neutral side) is predicted to hit what a pool owner protects: every
-    live member of its Site, or just itself if standalone.
+    Whether a munition is predicted to hit what a pool owner protects: every
+    live member of its Site, or just itself if standalone. Asked of a
+    friendly or neutral munition (engaged only if so), and of a hostile
+    artillery round or rocket when the Site only engages threats
+    (aegism_detect_fnc_munitionCheck).
 
         guided missile - its own seeker target (missileTarget) is one of the
             protected vehicles
@@ -66,25 +68,36 @@ private _fnRadius = {
     _r
 };
 
-private _ammoCfg = configOf _projectile;
+// The config radius, cached per ammo type ("AEGISM_cacheThreatRadius"): this
+// runs every tracker check for every munition that needs a threat verdict.
 private _radius = _radiusSetting;
 if (_radius <= 0) then {
-    _radius = [_ammoCfg] call _fnRadius;
-    if ((toLower getText (_ammoCfg >> "simulation")) == "shotsubmunitions") then {
-        private _payload = if (isArray (_ammoCfg >> "submunitionAmmo")) then {
-            // [class, weight, class, weight, ...] -> heaviest weight
-            private _list = getArray (_ammoCfg >> "submunitionAmmo");
-            private _best = "";
-            private _bestWeight = -1;
-            for "_i" from 0 to (count _list - 2) step 2 do {
-                if ((_list select (_i + 1)) > _bestWeight) then { _best = _list select _i; _bestWeight = _list select (_i + 1); };
+    private _cache = missionNamespace getVariable "AEGISM_cacheThreatRadius";
+    if (isNil "_cache") then {
+        _cache = createHashMap;
+        missionNamespace setVariable ["AEGISM_cacheThreatRadius", _cache];
+    };
+    _radius = _cache get (typeOf _projectile);
+    if (isNil "_radius") then {
+        private _ammoCfg = configOf _projectile;
+        _radius = [_ammoCfg] call _fnRadius;
+        if ((toLower getText (_ammoCfg >> "simulation")) == "shotsubmunitions") then {
+            private _payload = if (isArray (_ammoCfg >> "submunitionAmmo")) then {
+                // [class, weight, class, weight, ...] -> heaviest weight
+                private _list = getArray (_ammoCfg >> "submunitionAmmo");
+                private _best = "";
+                private _bestWeight = -1;
+                for "_i" from 0 to (count _list - 2) step 2 do {
+                    if ((_list select (_i + 1)) > _bestWeight) then { _best = _list select _i; _bestWeight = _list select (_i + 1); };
+                };
+                _best
+            } else {
+                getText (_ammoCfg >> "submunitionAmmo")
             };
-            _best
-        } else {
-            getText (_ammoCfg >> "submunitionAmmo")
+            private _payloadCfg = configFile >> "CfgAmmo" >> _payload;
+            if (isClass _payloadCfg) then { _radius = _radius max ([_payloadCfg] call _fnRadius); };
         };
-        private _payloadCfg = configFile >> "CfgAmmo" >> _payload;
-        if (isClass _payloadCfg) then { _radius = _radius max ([_payloadCfg] call _fnRadius); };
+        _cache set [typeOf _projectile, _radius];
     };
 };
 

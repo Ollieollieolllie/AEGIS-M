@@ -44,7 +44,7 @@ if !(_vehicle getVariable ["AEGISM_ovr_enabled", false]) exitWith { _settings };
 private _keys = if (_kind == "crew") then {
     ["skillTier", "temperament", "costValueJudgment", "crewOnAutomated"]
 } else {
-    ["targetPriority", "minAltitude", "maxAltitude", "engageFriendlyThreats", "friendlyThreatRadius",
+    ["targetPriority", "minAltitude", "maxAltitude", "engageFriendlyThreats", "engageOnlyThreats", "friendlyThreatRadius",
      "minRange", "maxRange", "salvoSize", "minShotInterval",
      "ciwsMaxRange", "ciwsMinElevation", "ciwsBurstMin", "ciwsBurstMax", "ciwsBurstPause", "ciwsLastResort"]
 };

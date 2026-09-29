@@ -2,20 +2,18 @@
 Function: aegism_detect_fnc_firedEventHandler
 
 Description:
-    CBA_fnc_addClassEventHandler "Fired" callback, registered globally
-    (see XEH_preInit.sqf) rather than per-System: a single mission may fire
-    many munitions per second, and per-System registration of the same
-    class-EH repeatedly would multiply callbacks. Classifies the fired
-    projectile and, if it's a real munition class (missile/rocket/bomb/
-    artillery shell -- classifyTarget returns "" for anything else, e.g.
-    plain bullets), spawns a per-munition tracker (aegism_detect_fnc_
-    trackMunition) via CBA_fnc_addPerFrameHandler. The tracker itself is
-    what actually pushes the contact into each nearby pool.
+    CBA_fnc_addClassEventHandler "Fired" callback, registered once on the
+    server for every unit and vehicle (see XEH_preInit.sqf). Hands every
+    threat-class munition (missile/rocket/bomb/artillery shell) or carrier
+    to aegism_detect_fnc_watchProjectile, which starts tracking it.
 
-    Server-only (isServer): the tracker mutates AEGISM_pooledContacts,
-    which only the server's engagement loop ever reads (see aegism_system_
-    fnc_moduleInit) -- running this pipeline on clients too would waste
-    CPU tracking munitions no local loop will ever act on.
+    This runs for every round fired in the mission, so the first thing it
+    does is the cached ammo lookup (aegism_detect_fnc_ammoThreatInfo): a
+    bullet returns after that one lookup. It also returns straight away in
+    a mission with no AEGIS-M radar or Site at all.
+
+    An AEGIS-M System's own interceptors are tagged "AEGISM_fromSystem"
+    (never friendly threats; a HOSTILE side's radars still track them).
 
 Parameters:
     _unit - the firing unit or vehicle <OBJECT>
@@ -24,7 +22,7 @@ Parameters:
     _mode - fired weapon mode <STRING>
     _ammo - fired ammo classname <STRING>
     _magazine - fired magazine classname <STRING>
-    _projectile - the spawned projectile object <OBJECT>
+    _projectile - the spawned projectile <OBJECT>
 
 Returns:
     Nothing
@@ -36,20 +34,23 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\perf.hpp"
+
 #define AEGISM_MUNITION_LOG_INTERVAL 10
 
 params ["_unit", "", "", "", "_ammo", "", "_projectile"];
 
-if (!isServer) exitWith {};
-if (isNull _projectile) exitWith {};
+PERF_INC(PERF_FIRED_EH);
 
-// An AEGIS-M System's own interceptors are never friendly threats (the
-// friendly-munition check would otherwise evaluate every outgoing SAM). They
-// stay trackable by a HOSTILE side's radars (e.g. an opposing AEGIS-M
-// battery), so they're only tagged, not skipped.
-if (_unit in (missionNamespace getVariable ["AEGISM_allSystems", []])) then {
-    _projectile setVariable ["AEGISM_fromSystem", true];
-};
+([_ammo] call aegism_detect_fnc_ammoThreatInfo) params ["_class", "_isCarrier"];
+if (_class == "" && {!_isCarrier}) exitWith {};
+if (isNull _projectile) exitWith {};
+if ((missionNamespace getVariable ["AEGISM_allPoolOwners", []]) isEqualTo []) exitWith {};
+
+PERF_INC(PERF_FIRED_THREATS);
+
+private _fromSystem = !isNil { _unit getVariable "AEGISM_system" };
+if (_fromSystem) then { _projectile setVariable ["AEGISM_fromSystem", true]; };
 
 // Side captured now, while the shooter certainly exists: the tracker uses it
 // for IFF -- a hostile side's munitions are tracked outright, a friendly or
@@ -57,13 +58,13 @@ if (_unit in (missionNamespace getVariable ["AEGISM_allSystems", []])) then {
 // engageFriendlyThreats). aegism_detect_fnc_watchProjectile also follows
 // submunition handoffs (e.g. an MLRS rocket's carrier releasing the rocket).
 private _shooterSide = side _unit;
-private _class = [_projectile, _shooterSide] call aegism_detect_fnc_watchProjectile;
+[_projectile, _shooterSide, _class, _isCarrier] call aegism_detect_fnc_watchProjectile;
 if (_class == "") exitWith {};
 
 // One line per shooter per AEGISM_MUNITION_LOG_INTERVAL (a barrage would
 // otherwise log every round), stating the IFF outcome. Not for AEGIS-M's own
 // interceptors -- their FIRE lines already cover them.
-if (!(_projectile getVariable ["AEGISM_fromSystem", false]) && {time > (_unit getVariable ["AEGISM_munitionLogAt", -1e9]) + AEGISM_MUNITION_LOG_INTERVAL}) then {
+if (!_fromSystem && {time > (_unit getVariable ["AEGISM_munitionLogAt", -1e9]) + AEGISM_MUNITION_LOG_INTERVAL}) then {
     _unit setVariable ["AEGISM_munitionLogAt", time];
     private _hostileRadars = {
         private _system = _x getVariable "AEGISM_system";

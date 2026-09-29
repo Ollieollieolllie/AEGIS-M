@@ -8,20 +8,29 @@ Description:
     ballistics, guidance and damage are the game's own.
 
     The caller (aegism_intercept_fnc_engagementLoop) has already aimed the
-    turret and confirmed alignment via aegism_intercept_fnc_aimWeapon; this
-    function only rolls crew reliability and fires, via BIS_fnc_fire (a
-    real single fire command -- fireAtTarget hands the decision to AI
-    judgement and was observed firing several missiles per call).
+    turret and confirmed alignment; this function only rolls crew
+    reliability and fires, via BIS_fnc_fire (a real single fire command --
+    fireAtTarget hands the decision to AI judgement and was observed firing
+    several missiles per call).
 
     Crew reliability is rolled here, once per missile or per CIWS burst. A
     failed roll returns 0, which the engagement loop treats as a lost fire
     cycle (it waits one shot interval / burst pause before trying again).
 
-    Before firing it writes a capture context for this weapon ("AEGISM_
-    capture_<weapon>") and makes sure the vehicle has AEGIS-M's persistent
-    Fired handler; aegism_intercept_fnc_onSystemFired then hands a launched
-    missile its target (setMissileTarget), records it as an in-flight
-    interceptor, and starts its proximity fuse.
+    Before firing it writes a capture context on the turret ("capture" in
+    aegism_intercept_fnc_turretState, naming the weapon) and makes sure the
+    vehicle has AEGIS-M's persistent Fired handler; aegism_intercept_fnc_
+    onSystemFired then hands a launched missile its target
+    (setMissileTarget), records it as an in-flight interceptor, and starts
+    its proximity fuse.
+
+    Crew locality: the engagement pipeline runs on the server, and a
+    missile can only be given its target where it's simulated -- where the
+    crew is local. An AI crew simulated on another machine (a headless
+    client, or a player's AI group) is moved to the server (setGroupOwner)
+    and this fire cycle skipped; a PLAYER in the turret can't be, so its
+    missiles fly without AEGIS-M's target. Logged once per turret
+    (NONLOCAL).
 
     Third-party scripted missile guidance: if that mod is loaded and the
     ammo declares its guidance class explicitly with enabled=1, the target
@@ -42,7 +51,7 @@ Parameters:
 
 Returns:
     1 fired, 0 crew hesitated (reliability roll failed), -1 could not fire
-    (hold, dead target, no ammo) <NUMBER>
+    (hold, dead target, no ammo, crew being moved to the server) <NUMBER>
 
 Examples:
     [_samSite, _heli, _weaponInfo, 0.85, "launcher", _interceptors] call aegism_intercept_fnc_fireWeapon;
@@ -56,25 +65,40 @@ params ["_system", "_target", "_weaponInfo", "_reliability", "_role", ["_interce
 _weaponInfo params ["_turretPath", "_weaponClass", "_magazineClass"];
 
 private _isCiws = _role == "ciws";
+private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 
 // Debug circuit breaker (aegism_intercept_fnc_debugSetFireHold): the single
 // choke point every AEGIS-M fire command passes through.
-if (_system getVariable [format ["AEGISM_fireHold_%1", _turretPath], false]) exitWith { -1 };
+if (_ts getOrDefault ["fireHold", false]) exitWith { -1 };
 if (isNull _target || {!alive _target}) exitWith { -1 };
 
 private _ammoBefore = _system magazineTurretAmmo [_magazineClass, _turretPath];
 if (_ammoBefore <= 0) exitWith { -1 };
+
+// Crew simulated elsewhere: bring an AI crew to the server (see header).
+private _gunner = _system turretUnit _turretPath;
+private _crewElsewhere = !isNull _gunner && {!local _gunner};
+private _playerCrew = _crewElsewhere && {((units group _gunner) findIf { isPlayer _x }) != -1};
+if (_crewElsewhere) then {
+    if ((_ts getOrDefault ["nonLocalLogged", -1]) != owner _gunner) then {
+        _ts set ["nonLocalLogged", owner _gunner];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " NONLOCAL: %1 turret %2 crew (%3) is simulated on machine %4, not the server -- %5",
+            _system, _turretPath, _gunner, owner _gunner,
+            ["its AI group is being moved to the server so AEGIS-M can guide its missiles.", "a player is in that group, so it can't be moved: missiles fired from it won't get AEGIS-M's target."] select _playerCrew];
+    };
+    if (!_playerCrew) then { (group _gunner) setGroupOwner clientOwner; };
+};
+if (_crewElsewhere && {!_playerCrew}) exitWith { -1 };
 
 if (random 1 > _reliability) exitWith {
     diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-SKIP: %1 (%2) at %3 -- crew reliability roll failed (reliability=%4), losing this fire cycle.", _system, _role, _target, _reliability];
     0
 };
 
-private _ammoClassName = getText (configFile >> "CfgMagazines" >> _magazineClass >> "ammo");
-private _gunner = _system turretUnit _turretPath;
+private _kinematics = [_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics;
 
 if (!isNil "ace_missileguidance_fnc_onFired") then {
-    private _guidanceCfg = configFile >> "CfgAmmo" >> _ammoClassName >> "ace_missileguidance";
+    private _guidanceCfg = configFile >> "CfgAmmo" >> (_kinematics select 0) >> "ace_missileguidance";
     // configName check: an INHERITED guidance block doesn't count -- that
     // mod's own Fired handler requires it declared on the ammo itself.
     if (isClass _guidanceCfg && {(configName _guidanceCfg) == "ace_missileguidance"} && {(getNumber (_guidanceCfg >> "enabled")) == 1}) then {
@@ -86,8 +110,8 @@ if (!isNil "ace_missileguidance_fnc_onFired") then {
 if !(_system getVariable ["AEGISM_firedEhAdded", false]) then {
     _system setVariable ["AEGISM_firedEhAdded", true, false];
     _system addEventHandler ["Fired", {
-        params ["_vehicle", "_weapon", "", "", "", "", "_projectile"];
-        [_vehicle, _weapon, _projectile] call aegism_intercept_fnc_onSystemFired;
+        params ["_vehicle", "_weapon", "", "", "", "", "_projectile", "_gunner"];
+        [_vehicle, _weapon, _projectile, _gunner] call aegism_intercept_fnc_onSystemFired;
     }];
 };
 
@@ -95,7 +119,7 @@ if !(_system getVariable ["AEGISM_firedEhAdded", false]) then {
 // command; a CIWS burst lasts its own duration.
 private _targetIsMunition = ([_target] call aegism_detect_fnc_classifyTarget) in ["missile", "rocket", "bomb", "artilleryShell"];
 private _contextLifetime = [2, _burstDuration + 0.5] select _isCiws;
-_system setVariable [format ["AEGISM_capture_%1", _weaponClass], [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition, _turretPath], false];
+_ts set ["capture", [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition, _turretPath, _weaponClass]];
 
 if (_isCiws) then {
     diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
@@ -103,31 +127,29 @@ if (_isCiws) then {
 } else {
     // Launch angle: barrel vs aim point at the alignment check this shot
     // passed (aegism_intercept_fnc_aimWeapon's record).
-    private _launchAngle = (_system getVariable ["AEGISM_aim_launcher", [-1]]) select 0;
+    private _launchAngle = (_ts getOrDefault ["aim_launcher", [-1]]) select 0;
     diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) fires %3 (%4, %5 rounds left) at %6 (%7) -- %8, barrel %9 deg off aim point.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _role, round (_launchAngle * 10) / 10];
     [_system, _weaponClass, _turretPath] call BIS_fnc_fire;
 };
 
 // Each launcher fire command should consume exactly one missile; more means
 // the engine fired a ripple. Counted against the fire commands actually
-// issued to this turret in the meantime ("AEGISM_turretShots_<path>") -- a
+// issued to this turret in the meantime (turret state "shots") -- a
 // launcher on a 1s interval legitimately fires its NEXT missile inside the
-// 1s check window, which used to be reported as an anomaly. (A CIWS burst
-// reports its own count, BURST-END.)
+// 1s check window. (A CIWS burst reports its own count, BURST-END.)
 if (!_isCiws) then {
-    private _shotsKey = format ["AEGISM_turretShots_%1", _turretPath];
-    private _shotsBefore = _system getVariable [_shotsKey, 0];
-    _system setVariable [_shotsKey, _shotsBefore + 1, false];
+    private _shotsBefore = _ts getOrDefault ["shots", 0];
+    _ts set ["shots", _shotsBefore + 1];
     [{
-        params ["_system", "_magazineClass", "_turretPath", "_ammoBefore", "_shotsKey", "_shotsBefore"];
+        params ["_system", "_magazineClass", "_turretPath", "_ammoBefore", "_ts", "_shotsBefore"];
         if (isNull _system) exitWith {};
         private _consumed = _ammoBefore - (_system magazineTurretAmmo [_magazineClass, _turretPath]);
-        private _commanded = (_system getVariable [_shotsKey, 0]) - _shotsBefore;
+        private _commanded = (_ts getOrDefault ["shots", 0]) - _shotsBefore;
         // A reload in the window refills the count; only an excess is an anomaly.
         if (_consumed > _commanded) then {
             diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-ANOMALY: %1 -- %2 fire command(s) consumed %3 missiles.", _system, _commanded, _consumed];
         };
-    }, [_system, _magazineClass, _turretPath, _ammoBefore, _shotsKey, _shotsBefore], 1] call CBA_fnc_waitAndExecute;
+    }, [_system, _magazineClass, _turretPath, _ammoBefore, _ts, _shotsBefore], 1] call CBA_fnc_waitAndExecute;
 };
 
 1

@@ -23,8 +23,11 @@ Description:
     way around, so this file must stay a pure reader of the variable
     contract those addons already publish (AEGISM_allPoolOwners, AEGISM_
     allSystems, AEGISM_system, AEGISM_pooledContacts, AEGISM_claims,
-    AEGISM_withheldCiws, AEGISM_engagementState_ROLE) rather than a
-    dependent of them.
+    AEGISM_assigned, AEGISM_withheldCiws, and each System's AEGISM_turrets:
+    per turret, its aim records "aim_<role>" and a standalone System's
+    engagement states "standalone_<role>") rather than a dependent of them.
+    Only draws where the engagement pipeline runs (singleplayer, Eden
+    Preview, a hosted game's host).
 
     Two separate top-level loops, over two separate lists, NOT one: every
     recognized System (AEGISM_allSystems, aegism_system_fnc_moduleInit) gets
@@ -130,23 +133,21 @@ private _fnDrawSystemLabel = {
         private _liveRounds = 0;
         { _x params ["_turretPath", "", "_magClass"]; _liveRounds = _liveRounds + (_vehicle magazineTurretAmmo [_magClass, _turretPath]); } forEach _weapons;
 
-        private _assigned = false;
-        if (isNull _network) then {
-            private _state = _vehicle getVariable format ["AEGISM_engagementState_%1", _role];
-            if (!isNil "_state") then { _assigned = (_state getOrDefault ["targetNetId", ""]) != ""; };
+        private _turrets = _vehicle getVariable ["AEGISM_turrets", createHashMap];
+        private _assigned = if (isNull _network) then {
+            (_weapons findIf {
+                !isNull (((_turrets getOrDefault [_x select 0, createHashMap]) getOrDefault ["standalone_" + _role, createHashMap]) getOrDefault ["target", objNull])
+            }) != -1
         } else {
-            private _claims = _network getVariable ["AEGISM_claims", createHashMap];
-            _assigned = ((values _claims) findIf {
-                (_x findIf { ((_x get "system") == _vehicle) && {(_x get "role") == _role} }) != -1
-            }) != -1;
+            ((_vehicle getVariable ["AEGISM_assigned", createHashMap]) getOrDefault [_role, []]) isNotEqualTo []
         };
 
-        // Live barrel alignment from aegism_intercept_fnc_aimWeapon, shown
-        // only while fresh (the loop is actually aiming this role).
+        // Live barrel alignment (the first weapon turret's aim record),
+        // shown only while fresh (the loop is actually aiming this role).
         private _aimText = "";
-        private _aim = _vehicle getVariable format ["AEGISM_aim_%1", _role];
-        if (!isNil "_aim" && {_assigned} && {time - (_aim select 2) < 1}) then {
-            _aimText = format [",aim %1/%2", round ((_aim select 0) * 10) / 10, _aim select 1];
+        private _aim = (_turrets getOrDefault [(_weapons select 0) select 0, createHashMap]) getOrDefault ["aim_" + _role, []];
+        if (_aim isNotEqualTo [] && {_assigned} && {time - (_aim select 2) < 1}) then {
+            _aimText = format [",aim %1/%2", round ((_aim select 0) * 10) / 10, round ((_aim select 1) * 100) / 100];
         };
 
         format [" %1x%2(%3rnd%4%5)", count _weapons, _role, _liveRounds, ["", ",ASSIGNED"] select _assigned, _aimText]
@@ -205,10 +206,10 @@ private _fnDrawPoolOwner = {
     private _claims = _poolOwner getVariable ["AEGISM_claims", createHashMap];
     private _pool = _poolOwner getVariable ["AEGISM_pooledContacts", createHashMap];
     {
-        private _entry = _x;
+        private _entry = _y;
         private _object = _entry get "object";
         if (!isNull _object) then {
-            private _claimRecords = _claims getOrDefault [netId _object, []];
+            private _claimRecords = _claims getOrDefault [_x, []];
             private _claimed = count _claimRecords > 0;
             private _color = if (_claimed) then { [1, 0.2, 0.2, 1] } else { [1, 1, 1, 0.9] };
 
@@ -219,37 +220,36 @@ private _fnDrawPoolOwner = {
                 1, 0.035, "TahomaB"
             ];
         };
-    } forEach (values _pool);
+    } forEach _pool;
 
     // --- Active engagements, per role ---
     if (_isSystem) then {
-        // Standalone: this System's own local acquisition state (it can
-        // never appear as a claims assignee, having no Network).
+        // Standalone: each weapon turret's own engagement state (it can
+        // never appear as a claims assignee, having no Network). LOS is the
+        // engagement loop's own last check.
+        private _weaponPos = eyePos _poolOwner; // already ASL
         {
-            private _role = _x;
-            private _stateKey = format ["AEGISM_engagementState_%1", _role];
-            private _state = _poolOwner getVariable _stateKey;
-            if (!isNil "_state") then {
-                if ((_state getOrDefault ["targetNetId", ""]) != "") then {
-                    private _target = _state getOrDefault ["target", objNull];
-                    if (!isNull _target) then {
-                        private _weaponPos = eyePos _poolOwner; // already ASL
-                        private _targetPos = getPosASL _target;
-                        private _roundsFired = _state getOrDefault ["roundsFired", 0];
-                        private _losClear = (lineIntersectsSurfaces [_weaponPos, _targetPos, _poolOwner, _target, true, 1]) isEqualTo [];
-                        private _color = if (!_losClear) then { [0.5, 0.5, 0.5, 1] } else { if (_roundsFired > 0) then { [1, 0.8, 0, 1] } else { [0.2, 1, 0.2, 1] } };
+            private _turretState = _y;
+            {
+                private _role = _x;
+                private _state = _turretState getOrDefault ["standalone_" + _role, createHashMap];
+                private _target = _state getOrDefault ["target", objNull];
+                if (!isNull _target) then {
+                    private _targetPos = getPosASL _target;
+                    private _roundsFired = _state getOrDefault ["roundsFired", 0];
+                    private _losClear = _state getOrDefault ["losClear", true];
+                    private _color = if (!_losClear) then { [0.5, 0.5, 0.5, 1] } else { if (_roundsFired > 0) then { [1, 0.8, 0, 1] } else { [0.2, 1, 0.2, 1] } };
 
-                        drawLine3D [ASLToAGL _weaponPos, ASLToAGL _targetPos, _color];
-                        drawIcon3D [
-                            "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
-                            _color, ASLToAGL _targetPos, 1, 1, 0,
-                            format ["%1: %2 shot(s)%3", _role, _roundsFired, ["", " [NO LOS]"] select !_losClear],
-                            1, 0.035, "TahomaB"
-                        ];
-                    };
+                    drawLine3D [ASLToAGL _weaponPos, ASLToAGL _targetPos, _color];
+                    drawIcon3D [
+                        "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
+                        _color, ASLToAGL _targetPos, 1, 1, 0,
+                        format ["%1: %2 shot(s)%3", _role, _roundsFired, ["", " [NO LOS]"] select !_losClear],
+                        1, 0.035, "TahomaB"
+                    ];
                 };
-            };
-        } forEach ["launcher", "ciws"];
+            } forEach ["launcher", "ciws"];
+        } forEach (_poolOwner getVariable ["AEGISM_turrets", createHashMap]);
     } else {
         // Networked (Site): every current assignment record across the
         // whole battery, from aegism_intercept_fnc_assignEngagements.
@@ -309,12 +309,11 @@ private _fnDrawPoolOwner = {
 // Separate list, separate loop -- see _fnDrawSystemLabel's own comment for
 // why this can't just reuse AEGISM_allPoolOwners above (that list excludes
 // any System with no radar of its own, launchers included).
+private _allSystems = (missionNamespace getVariable ["AEGISM_allSystems", []]) select { !isNull _x && {alive _x} };
+missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
 {
-    private _vehicle = _x;
-    if (!isNull _vehicle) then {
-        private _system = _vehicle getVariable "AEGISM_system";
-        if (!isNil "_system") then {
-            [_vehicle, _system] call _fnDrawSystemLabel;
-        };
+    private _system = _x getVariable "AEGISM_system";
+    if (!isNil "_system") then {
+        [_x, _system] call _fnDrawSystemLabel;
     };
-} forEach (missionNamespace getVariable ["AEGISM_allSystems", []]);
+} forEach _allSystems;

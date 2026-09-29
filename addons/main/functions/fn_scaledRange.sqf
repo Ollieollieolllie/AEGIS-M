@@ -9,6 +9,10 @@ Description:
     configured base value directly, so the scale setting stays a single
     global multiplier applied in one place.
 
+    Reads the settings' own global variables (CBA keeps every setting's
+    value in the missionNamespace variable of the same name) rather than
+    CBA_settings_fnc_get: this runs inside every envelope check.
+
 Parameters:
     _baseRange - the real-world-sourced base range value (metres) <NUMBER>
 
@@ -24,12 +28,12 @@ Author:
 
 params ["_baseRange"];
 
-private _mode = "aegism_main_scaleMode" call CBA_settings_fnc_get;
-private _multiplier = switch (_mode) do {
-    case 0: { 0.5 };   // Arma Scale
+if (_baseRange == 0) exitWith { 0 };
+
+private _multiplier = switch (missionNamespace getVariable ["aegism_main_scaleMode", 0]) do {
     case 1: { 1 };     // Real World Scale
-    case 2: { "aegism_main_scaleCustomMultiplier" call CBA_settings_fnc_get }; // Custom Multiplier
-    default { 0.5 };
+    case 2: { missionNamespace getVariable ["aegism_main_scaleCustomMultiplier", 1] }; // Custom Multiplier
+    default { 0.5 };   // Arma Scale
 };
 
 _baseRange * _multiplier

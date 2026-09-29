@@ -4,7 +4,8 @@ Function: aegism_intercept_fnc_turretPoints
 Description:
     World positions of a turret's muzzle (where rounds/missiles leave) and
     of its aiming camera (what lockCameraTo points), from the turret's own
-    config memory points.
+    config memory points (resolved once per vehicle type, aegism_intercept_
+    fnc_turretConfig).
 
         muzzle - gunBeg for a gun, missileBeg for a launcher (falling back
             to the other if one is missing)
@@ -19,8 +20,7 @@ Description:
     pass through the aim point.
 
     Missing memory points fall back to the turret crewman's eye position
-    (or the vehicle's position if the turret is empty), which is what was
-    used before.
+    (or the vehicle's position if the turret is empty).
 
 Parameters:
     _system - the vehicle <OBJECT>
@@ -39,25 +39,15 @@ Author:
 
 params ["_system", "_turretPath", "_role"];
 
-private _gunner = _system turretUnit _turretPath;
-private _fallback = if (isNull _gunner) then { getPosASLVisual _system } else { eyePos _gunner };
-private _turretCfg = [_system, _turretPath] call CBA_fnc_getTurret;
+([_system, _turretPath] call aegism_intercept_fnc_turretConfig) params ["_muzzleGun", "_muzzleLauncher", "_cameraPoint"];
+private _muzzlePoint = [_muzzleGun, _muzzleLauncher] select (_role == "launcher");
 
-// World (ASL) position of the first named memory point that exists.
-private _fnPoint = {
-    params ["_keys"];
-    private _result = [];
-    {
-        private _name = getText (_turretCfg >> _x);
-        if (_result isEqualTo [] && {_name != ""}) then {
-            private _modelPos = _system selectionPosition [_name, "Memory"];
-            if (_modelPos isNotEqualTo [0, 0, 0]) then { _result = _system modelToWorldVisualWorld _modelPos; };
-        };
-    } forEach _keys;
-    _result
+private _fnFallback = {
+    private _gunner = _system turretUnit _turretPath;
+    if (isNull _gunner) then { getPosASLVisual _system } else { eyePos _gunner }
 };
 
-private _muzzle = [[["gunBeg", "missileBeg"], ["missileBeg", "gunBeg"]] select (_role == "launcher")] call _fnPoint;
-private _camera = [[["memoryPointGunnerOptics"], ["uavCameraGunnerPos", "memoryPointGunnerOptics"]] select (unitIsUAV _system)] call _fnPoint;
-
-[[_muzzle, _fallback] select (_muzzle isEqualTo []), [_camera, _fallback] select (_camera isEqualTo [])]
+[
+    if (_muzzlePoint != "") then { _system modelToWorldVisualWorld (_system selectionPosition [_muzzlePoint, "Memory"]) } else { call _fnFallback },
+    if (_cameraPoint != "") then { _system modelToWorldVisualWorld (_system selectionPosition [_cameraPoint, "Memory"]) } else { call _fnFallback }
+]

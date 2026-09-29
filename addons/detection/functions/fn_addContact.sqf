@@ -5,41 +5,29 @@ Description:
     Adds a candidate contact to a System's or Network's tracked-contact
     list, gated by that object's resolved Doctrine target-class allowlist
     (aegism_system_fnc_resolveEngagementSettings). A contact whose class is
-    not on the allowlist is never added, per the AEGIS-M architecture plan
-    (section 2) target-class filter requirement.
+    not on the allowlist is never added.
 
-    Contacts are stored as a HashMap keyed by the contact object's netId
-    (stable across the object's lifetime, safe as a HashMap key), with
-    value ["confidence" -> Number, "class" -> String, "object" -> Object,
-    "firstSeen" -> Number (time)]. Stored on the pool owner (System or
-    Network) as "AEGISM_pooledContacts". "confidence" is always 1 now that
-    detection is sourced from getSensorTargets (see aegism_detect_fnc_
-    confidenceLoop) -- the engine already decided detected-or-not using its
-    own sensor simulation, so there's no gradient left for AEGIS-M to
-    layer a probabilistic score on top of; the field is kept only so
-    callers that pattern-match a contact entry's shape don't need to change.
+    Contacts are stored as a HashMap keyed by the contact's key (aegism_fnc_
+    contactKey: a munition's own tracker id, an aircraft's netId), with value
+    ["confidence" -> Number, "class" -> String, "object" -> Object,
+    "firstSeen" -> Number (time), "lastSeen" -> Number, "isMunition" ->
+    Boolean]. Stored on the pool owner (System or Network) as
+    "AEGISM_pooledContacts". "confidence" is always 1 (the engine's own
+    sensors decide detected-or-not); the field is kept for the entry's shape.
 
-    Re-adding an already-pooled contact (e.g. the confidence loop
-    refreshing a platform's presence every tick) updates its class in
-    place rather than replacing the whole entry, so "firstSeen" stays
-    accurate across refreshes.
-
-    Every add/refresh stamps "lastSeen" (time). Pools are pruned by EXPIRY
-    (aegism_detect_fnc_pruneStaleContacts), not by any single sensor
-    deciding it can no longer see something -- a Site pool is fed by
-    several radars plus the munition tracker, and one radar losing sight of
-    a contact another radar still holds must not delete it (that used to
-    delete the contact's engagement assignment every second, restarting the
-    crew reaction timer so the launcher never fired). "isMunition" marks
-    Fired-pipeline contacts, which a radar's getSensorTargets never reports.
+    Re-adding an already-pooled contact updates it in place, so "firstSeen"
+    stays accurate across refreshes. Every add/refresh stamps "lastSeen".
+    Pools are pruned by EXPIRY (aegism_detect_fnc_pruneStaleContacts), not by
+    any single sensor deciding it can no longer see something -- one radar
+    losing sight of a contact another radar still holds must not delete it.
+    "isMunition" marks Fired-pipeline contacts.
 
 Parameters:
     _poolOwner - the System vehicle or Network logic holding the pool <OBJECT>
     _contactObject - the munition or platform to add <OBJECT>
     _contactClass - pre-classified target class, from aegism_detect_fnc_
         classifyTarget <STRING>
-    _confidence - always 1 in current callers (kept for the pool entry's
-        shape, see above) <NUMBER>
+    _confidence - always 1 in current callers <NUMBER>
 
 Returns:
     True if the contact was added (class was allowlisted), false if it was
@@ -68,17 +56,15 @@ if (isNil "_allowlist") then {
 };
 if !(_contactClass in _allowlist) exitWith { false };
 
-private _pool = _poolOwner getVariable ["AEGISM_pooledContacts", createHashMap];
-// netId is already a string -- wrapping it in str would add literal quote
-// characters, and objectFromNetId on such a key returns objNull.
-private _key = netId _contactObject;
+private _pool = _poolOwner getVariable "AEGISM_pooledContacts";
+if (isNil "_pool") then {
+    _pool = createHashMap;
+    _poolOwner setVariable ["AEGISM_pooledContacts", _pool, false];
+};
+private _key = [_contactObject] call aegism_fnc_contactKey;
 
-if (_key in _pool) then {
-    private _existing = _pool get _key;
-    _existing set ["class", _contactClass];
-    _existing set ["confidence", _confidence];
-    _existing set ["lastSeen", time];
-} else {
+private _existing = _pool get _key;
+if (isNil "_existing") then {
     _pool set [_key, createHashMapFromArray [
         ["object", _contactObject],
         ["class", _contactClass],
@@ -87,8 +73,10 @@ if (_key in _pool) then {
         ["lastSeen", time],
         ["isMunition", _contactClass in ["missile", "rocket", "bomb", "artilleryShell"]]
     ]];
+} else {
+    _existing set ["class", _contactClass];
+    _existing set ["confidence", _confidence];
+    _existing set ["lastSeen", time];
 };
-
-_poolOwner setVariable ["AEGISM_pooledContacts", _pool, false];
 
 true

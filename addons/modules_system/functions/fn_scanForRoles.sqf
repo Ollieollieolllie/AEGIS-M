@@ -12,11 +12,12 @@ Description:
     what makes "just take an existing radar/launcher/CIWS vehicle, no setup
     needed" actually work.
 
-    Runs on every machine (not isServer-gated) so every client also gets
-    the non-server parts of aegism_system_fnc_moduleInit (AEGISM_system,
-    resolved caches) -- that function's own internal isServer gates still
-    correctly limit the actual detection/engagement loop registrations to
-    the server.
+    Runs on every machine: a machine that simulates a vehicle's crew (a
+    headless client, a player's AI group) has to suppress that crew's own
+    targeting itself (disableAI is local). Everything else in aegism_
+    system_fnc_moduleInit is server only. Off the server, only vehicles
+    local to this machine are scanned -- the rest are nothing to do with it
+    (and are picked up if they become local later).
 
 Parameters:
     None
@@ -35,8 +36,9 @@ Author:
 // moduleInit) are skipped here -- discovery is config-heavy, and they're
 // re-evaluated directly by aegism_network_fnc_moduleInit when synced.
 private _newlyScanned = 0;
+private _server = isServer;
 {
-    if (!(_x getVariable ["AEGISM_systemInitialized", false]) && {!(_x getVariable ["AEGISM_systemDeferred", false])}) then {
+    if ((_server || {local _x}) && {!(_x getVariable ["AEGISM_systemInitialized", false])} && {!(_x getVariable ["AEGISM_systemDeferred", false])}) then {
         _newlyScanned = _newlyScanned + 1;
         [_x] call aegism_system_fnc_moduleInit;
     };

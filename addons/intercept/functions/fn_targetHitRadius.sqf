@@ -2,32 +2,23 @@
 Function: aegism_intercept_fnc_targetHitRadius
 
 Description:
-    Reads a munition target's real physical half-size from its own model
-    bounding box (boundingBoxReal), for aegism_intercept_fnc_interceptorPFH
-    to widen its effective hit radius beyond a plain point-to-center-point
-    check -- a real missile/rocket/bomb has actual model geometry, not a
-    single point, so an interceptor that geometrically clips its body should
-    count as a hit even if that point lies outside the interceptor's own
-    (possibly small or zero) blast radius measured from the target's bare
-    center.
+    A target's physical half-size from its own model bounding box
+    (boundingBoxReal): half the diagonal, i.e. a sphere that contains the
+    whole model.
 
-    boundingBoxReal returns [[minX,minY,minZ],[maxX,maxY,maxZ]] in the
-    object's own model space -- half the length of the diagonal between
-    those two corners is used as a single representative "radius" (a sphere
-    that fully contains the model's own bounding box), simpler and more
-    conservative than trying to reason about which axis the interceptor
-    actually approached from.
+    For a MUNITION target it widens an interceptor's effective hit radius
+    (aegism_intercept_fnc_ciwsRounds, aegism_intercept_fnc_interceptorPFH) --
+    a round that clips the missile's body is a hit even if its blast radius
+    measured from the target's centre wouldn't reach. Never used to widen
+    the hit radius for an aircraft (the engine's own collision decides
+    those). For every target it sizes the CIWS fire gate (aegism_intercept_
+    fnc_aimWeapon) and tells CIWS spotting (aegism_intercept_fnc_ciwsSpot) a
+    round that passed through the target from one that missed.
 
-    Never used to widen the hit radius for a platform target (helicopter/
-    plane/drone) -- see aegism_intercept_fnc_interceptorPFH's own doc comment
-    for why: those already have real hitpoints/collision, so widening their
-    effective radius here would credit a near-miss the engine itself never
-    registered as a hit. For those it only measures size: CIWS spotting
-    (aegism_intercept_fnc_ciwsSpot) uses it to tell a round that went
-    through the target's body from one that missed.
+    Cached per type ("AEGISM_cacheHitRadius"): it's read every frame.
 
 Parameters:
-    _target - the munition target object to measure <OBJECT>
+    _target - the target object to measure <OBJECT>
 
 Returns:
     Half-diagonal of the target's own real bounding box, metres <NUMBER>
@@ -43,5 +34,16 @@ params ["_target"];
 
 if (isNull _target) exitWith { 0 };
 
+private _type = typeOf _target;
+private _cache = missionNamespace getVariable "AEGISM_cacheHitRadius";
+if (isNil "_cache") then {
+    _cache = createHashMap;
+    missionNamespace setVariable ["AEGISM_cacheHitRadius", _cache];
+};
+private _cached = _cache get _type;
+if (!isNil "_cached") exitWith { _cached };
+
 (boundingBoxReal _target) params ["_min", "_max"];
-(_min distance _max) / 2
+_cached = (_min distance _max) / 2;
+_cache set [_type, _cached];
+_cached

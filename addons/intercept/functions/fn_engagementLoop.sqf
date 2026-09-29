@@ -3,24 +3,32 @@ Function: aegism_intercept_fnc_engagementLoop
 
 Description:
     One engagement tick for one role ("launcher" or "ciws") of one System,
-    run on the server by a per-frame handler registered in aegism_system_
-    fnc_moduleInit (every 0.5s for launchers, 0.1s for CIWS). Ammo is read
-    live from the vehicle's real magazines; AEGIS-M counts nothing itself.
+    run on the server every 0.1s by a per-frame handler registered in
+    aegism_system_fnc_moduleInit. Ammo is read live from the vehicle's real
+    magazines; AEGIS-M counts nothing itself.
 
-    NETWORKED (synced to a Site): executes every assignment the Site's
-    coordinator (aegism_intercept_fnc_assignEngagements) currently holds for
-    this System+role. It never picks targets itself.
+    NETWORKED (synced to a Site): executes the assignments the Site's
+    coordinator (aegism_intercept_fnc_assignEngagements) published for this
+    System and role ("AEGISM_assigned", soonest impact first). It never
+    picks targets itself. Nothing assigned: returns straight away.
 
-    STANDALONE: picks its own target and weapon from its own pool
-    (aegism_intercept_fnc_selectTarget) and keeps its own engagement state
-    in "AEGISM_engagementState_<role>".
+    STANDALONE: each of its weapon turrets picks its own target from the
+    System's own pool (aegism_intercept_fnc_selectTarget) -- a target another
+    of its turrets in this role is already on is left to that turret -- and
+    keeps its own engagement state in its turret state ("standalone_<role>",
+    aegism_intercept_fnc_turretState). A launcher turret whose salvo is away
+    moves on to its next target while the missiles fly ("inFlight_launcher");
+    if they all miss, the target is back on its list (MISSED). Nothing in
+    the pool: returns straight away.
 
     Both paths run the same per-engagement sequence on an engagement state
     HashMap (a Site assignment record, or the standalone state) with keys
     assignedAt, lastShotAt, roundsFired, nextAttemptAt, interceptors:
-        1. Aim (aegism_intercept_fnc_aimWeapon) -- every tick from the
-           moment of assignment, so the turret is already on target when
-           the crew finishes reacting.
+        1. Aim -- a launcher solves here (aegism_intercept_fnc_aimWeapon); a
+           CIWS gun's per-frame tracker (aegism_intercept_fnc_ciwsTrack) is
+           handed the target and its current aim used. Every tick from the
+           moment of assignment, so the turret is already on target when the
+           crew finishes reacting.
         2. Crew reaction time since assignment (CIWS capped at
            AEGISM_CIWS_REACTION_CAP: automated fire control).
         3. Fire cadence:
@@ -29,29 +37,25 @@ Description:
                  launcherInterval; both crew-modulated)
              ciws - sustained bursts (aegism_intercept_fnc_ciwsBurst) of a
                  random doctrine ciwsBurstMin..ciwsBurstMax seconds at the
-                 gun's own rate of fire, ciwsBurstPause (crew-modulated)
-                 between them, no salvo cap: point defence keeps firing
-                 while it has a target. A running burst is cut short if the
-                 target changes or LOS is lost. (It used to be one
-                 BIS_fnc_fire per tick -- a 2-round pull in the gun's
-                 "manual" mode -- about once a second.)
+                 gun's own rate of fire, and ciwsBurstPause (crew-modulated)
+                 before firing again at the SAME target. A gun whose last
+                 target is gone goes straight on to the next: the pause
+                 after every kill cost ~1s per shell in a salvo. A running
+                 burst is cut short if the target changes or LOS is lost.
         4. LOS from this System (a Site contact may have been detected by a
-           sibling with a different view).
+           sibling with a different view), re-checked every
+           AEGISM_LOS_REUSE s.
         5. Alignment from step 1.
         6. Fire (aegism_intercept_fnc_fireWeapon). A failed crew
            reliability roll costs one fire cycle (nextAttemptAt). A Site
-           launcher's lost cycle holds the whole turret ("AEGISM_turret
-           HoldUntil_<path>") and flags the assignment "crewFailed": the
-           coordinator re-tasks the contact to another weapon rather than
-           leaving it with a crew that just failed to shoot.
+           launcher's lost cycle holds the whole turret ("holdUntil") and
+           flags the assignment "crewFailed": the coordinator re-tasks the
+           contact to another weapon rather than leaving it with a crew that
+           just failed to shoot.
 
     Every silent wait is logged once per engagement (REACTING, SLEWING
     every AEGISM_SLEW_LOG_INTERVAL s, LOS-BLOCKED on change), so an assigned
     weapon that isn't firing always says why in the RPT.
-
-    Standalone re-engagement: once a launcher salvo is spent and every
-    interceptor from it is gone while the target lives, the salvo is reset
-    (the Site coordinator does the equivalent by re-assigning).
 
     Optional Cost/Value Judgment (standalone): the crew holds fire on a
     contact if firing would leave fewer rounds than there are pooled
@@ -71,47 +75,81 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\perf.hpp"
+
 #define AEGISM_CIWS_REACTION_CAP 1
 #define AEGISM_SLEW_LOG_INTERVAL 5
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
 #define AEGISM_TURRET_RELEASE 1.5
 // Weight of each new sample in a launcher's measured shot spacing.
 #define AEGISM_SPACING_SMOOTHING 0.3
+// A line-of-sight check stays good this long.
+#define AEGISM_LOS_REUSE 0.2
+// Standalone: a launcher's target pick is reused this long; an empty pick
+// (nothing engageable) is retried after this long.
+#define AEGISM_SELECT_REUSE 0.5
+#define AEGISM_SELECT_EMPTY_RETRY 0.25
 
 params ["_system", "_role"];
 
 if (isNull _system || {!alive _system}) exitWith {};
 
 private _isCiws = _role == "ciws";
-private _systemData = _system getVariable ["AEGISM_system", createHashMap];
+private _systemData = _system getVariable "AEGISM_system";
+if (isNil "_systemData") exitWith {};
+private _weaponPool = _systemData getOrDefault [["launcherWeapons", "ciwsWeapons"] select _isCiws, []];
+private _network = _system getVariable ["AEGISM_network", objNull];
+private _stateKey = "standalone_" + _role;
+
+// Hand a turret back to its crew once nothing has aimed it for
+// AEGISM_TURRET_RELEASE s.
+{
+    private _ts = [_system, _x select 0] call aegism_intercept_fnc_turretState;
+    private _lockedAt = _ts getOrDefault ["lockAt", -1];
+    if (_lockedAt >= 0 && {time - _lockedAt > AEGISM_TURRET_RELEASE}) then {
+        _ts set ["lockAt", -1];
+        [_system, _x select 0, objNull] call aegism_intercept_fnc_lockTurret;
+    };
+} forEach _weaponPool;
+
+// --- Nothing to do: return before any real work --------------------------------
+private _assigned = [];
+if (!isNull _network) then {
+    private _byRole = _system getVariable "AEGISM_assigned";
+    if (!isNil "_byRole") then { _assigned = _byRole getOrDefault [_role, []]; };
+};
+if (!isNull _network && {_assigned isEqualTo []}) exitWith {};
+
+private _pool = _system getVariable "AEGISM_pooledContacts";
+if (isNull _network && {isNil "_pool" || {count _pool == 0}}) exitWith {
+    // Clear what each turret was on (the debug overlays show it).
+    {
+        private _state = ([_system, _x select 0] call aegism_intercept_fnc_turretState) get _stateKey;
+        if (!isNil "_state" && {!isNull (_state getOrDefault ["target", objNull])}) then {
+            ([_system, _x select 0] call aegism_intercept_fnc_turretState) set [_stateKey, createHashMap];
+        };
+    } forEach _weaponPool;
+};
+
+PERF_INC(PERF_ENGAGE_TICKS);
+
 private _engagementSettings = _system getVariable "AEGISM_resolvedEngagementSettings";
 if (isNil "_engagementSettings") then { _engagementSettings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
-private _crew = _system getVariable "AEGISM_resolvedCrew";
-if (isNil "_crew") then { _crew = [_system] call aegism_system_fnc_resolveCrew; };
-private _crewMods = [_crew, _system] call aegism_intercept_fnc_applyCrewModulation;
+// Crew modifiers are resolved with the crew (aegism_system_fnc_moduleInit's
+// 5s refresh) rather than rebuilt every tick.
+private _crewMods = _system getVariable "AEGISM_resolvedCrewMods";
+if (isNil "_crewMods") then {
+    private _crew = _system getVariable "AEGISM_resolvedCrew";
+    if (isNil "_crew") then { _crew = [_system] call aegism_system_fnc_resolveCrew; };
+    _crewMods = [_crew, _system] call aegism_intercept_fnc_applyCrewModulation;
+};
 
-private _weaponPool = _systemData getOrDefault [["launcherWeapons", "ciwsWeapons"] select _isCiws, []];
-// eyePos is already ASL (it used to be wrapped in AGLToASL, which raised the
-// LOS origin by the ground height under the vehicle).
+// eyePos is already ASL.
 private _weaponPos = eyePos _system;
-private _network = _system getVariable ["AEGISM_network", objNull];
 
 private _reactionTime = _crewMods get "reactionTime";
 if (_isCiws) then { _reactionTime = _reactionTime min AEGISM_CIWS_REACTION_CAP; };
 private _salvoSize = _engagementSettings getOrDefault ["salvoSize", 1];
-
-// Hand a turret back to its crew once nothing has aimed it for
-// AEGISM_TURRET_RELEASE s. While engaged, aegism_intercept_fnc_aimWeapon
-// re-locks it every tick (0.1s).
-{
-    private _turretPath = _x select 0;
-    private _lockKey = format ["AEGISM_turretLockAt_%1", _turretPath];
-    private _lockedAt = _system getVariable [_lockKey, -1];
-    if (_lockedAt >= 0 && {time - _lockedAt > AEGISM_TURRET_RELEASE}) then {
-        _system setVariable [_lockKey, -1, false];
-        [_system, _turretPath, objNull] call aegism_intercept_fnc_lockTurret;
-    };
-} forEach _weaponPool;
 
 // Runs the aim/gate/fire sequence for one engagement (see header).
 private _fnExecute = {
@@ -122,20 +160,22 @@ private _fnExecute = {
 
     // A launcher whose salvo is away has nothing left to do for this target
     // (its missiles guide themselves): it no longer aims at it, so the
-    // turret is free for its next assignment while they fly. It used to keep
-    // aiming at it until the kill/miss was known, holding the launcher idle.
+    // turret is free for its next assignment while they fly.
     if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) exitWith {};
 
-    ([_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon) params ["_aligned", "_angle", "_tolerance", "_aimPoint", "_feasible"];
-    // A running CIWS burst (aegism_intercept_fnc_ciwsBurst) stops once this
-    // goes stale: the assignment is no longer being worked. The gun's
-    // per-frame tracker (aegism_intercept_fnc_ciwsTrack) keeps the turret on
-    // this target between ticks, bursts or not.
-    if (_isCiws) then {
-        _system setVariable [format ["AEGISM_ciwsTickAt_%1", _turretPath], time, false];
-        _system setVariable [format ["AEGISM_ciwsTrackTarget_%1", _turretPath], [_target, _weaponInfo, time], false];
-        [_system, _turretPath] call aegism_intercept_fnc_ciwsTrack;
+    private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
+
+    // A gun's per-frame tracker keeps the turret on this target between
+    // ticks, bursts or not; a running burst stops once the turret's "tickAt"
+    // goes stale (the assignment is no longer being worked).
+    private _aim = if (_isCiws) then {
+        _ts set ["tickAt", time];
+        _ts set ["trackTarget", [_target, _weaponInfo, time]];
+        [_system, _turretPath] call aegism_intercept_fnc_ciwsTrack
+    } else {
+        [_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon
     };
+    _aim params ["_aligned", "_angle", "_tolerance", "_aimPoint", "_feasible"];
 
     if (time < (_state get "assignedAt") + _reactionTime) exitWith {
         if !(_state getOrDefault ["reactionLogged", false]) then {
@@ -144,16 +184,18 @@ private _fnExecute = {
         };
     };
 
-    private _losClear = (lineIntersectsSurfaces [_weaponPos, getPosASL _target, _system, _target, true, 1]) isEqualTo [];
+    if (time - (_state getOrDefault ["losAt", -1e9]) >= AEGISM_LOS_REUSE) then {
+        _state set ["losAt", time];
+        _state set ["losClear", (lineIntersectsSurfaces [_weaponPos, getPosASL _target, _system, _target, true, 1]) isEqualTo []];
+    };
+    private _losClear = _state get "losClear";
 
-    // CIWS burst in progress: aegism_intercept_fnc_ciwsBurst fires it; this
-    // tick (the aim above) keeps the turret on the lead point, and cuts the
-    // burst short if it's on another target (re-assigned) or LOS is lost.
-    private _burstKey = format ["AEGISM_ciwsBurst_%1", _turretPath];
-    (_system getVariable [_burstKey, [-1, objNull, 0]]) params ["_burstEndsAt", "_burstTarget", "_burstId"];
+    // CIWS burst in progress: aegism_intercept_fnc_ciwsBurst fires it; cut
+    // it short if it's on another target (re-assigned) or LOS is lost.
+    (_ts getOrDefault ["burst", [-1, objNull, 0]]) params ["_burstEndsAt", "_burstTarget", "_burstId"];
     if (_isCiws && {time < _burstEndsAt}) exitWith {
         if (_burstTarget != _target || {!_losClear}) then {
-            _system setVariable [_burstKey, [time, _burstTarget, _burstId], false];
+            _ts set ["burst", [time, _burstTarget, _burstId]];
         } else {
             _state set ["lastShotAt", time];
         };
@@ -161,24 +203,21 @@ private _fnExecute = {
 
     // Launcher: its shot interval (aegism_intercept_fnc_launcherInterval --
     // the setting, or Auto: the launcher's own config fire rate) since this
-    // LAUNCHER's last missile, whatever it was fired at ("AEGISM_turretShotAt_
-    // <turretPath>"). CIWS: the burst pause, counted from when the last burst
-    // ENDED (aegism_intercept_fnc_ciwsBurst rewrites endsAt to the actual end
-    // time).
+    // LAUNCHER's last missile, whatever it was fired at (turret "shotAt").
+    // CIWS: the burst pause, counted from when the last burst ENDED
+    // (aegism_intercept_fnc_ciwsBurst rewrites endsAt to the actual end
+    // time) -- only between bursts at the SAME target.
     private _baseInterval = if (_isCiws) then {
         _engagementSettings getOrDefault ["ciwsBurstPause", 1]
     } else {
         [_system, _weaponInfo, _engagementSettings] call aegism_intercept_fnc_launcherInterval
     };
     private _interval = _baseInterval * (_crewMods get "shotIntervalMult");
-    private _turretShotKey = format ["AEGISM_turretShotAt_%1", _turretPath];
-    private _intervalFrom = [_system getVariable [_turretShotKey, -1], _burstEndsAt] select _isCiws;
-
-    private _turretHoldKey = format ["AEGISM_turretHoldUntil_%1", _turretPath];
+    private _intervalFrom = if (_isCiws) then { [-1, _burstEndsAt] select (_burstTarget == _target) } else { _ts getOrDefault ["shotAt", -1] };
 
     if (_intervalFrom >= 0 && {time < _intervalFrom + _interval}) exitWith {};
     if (time < (_state getOrDefault ["nextAttemptAt", -1])) exitWith {};
-    if (!_isCiws && {time < (_system getVariable [_turretHoldKey, -1])}) exitWith {};
+    if (!_isCiws && {time < (_ts getOrDefault ["holdUntil", -1])}) exitWith {};
 
     if (!_losClear) exitWith {
         if !(_state getOrDefault ["losBlocked", false]) then {
@@ -228,14 +267,13 @@ private _fnExecute = {
                 // the Site coordinator plans each launcher's queue with it.
                 // A gap longer than twice the estimate was idle time, not
                 // firing rate, and is ignored.
-                private _spacingKey = format ["AEGISM_turretSpacing_%1", _turretPath];
-                private _spacing = _system getVariable [_spacingKey, _interval / ((_crewMods get "reliability") max 0.05)];
-                private _gap = time - (_system getVariable [_turretShotKey, -1e9]);
+                private _spacing = _ts getOrDefault ["spacing", _interval / ((_crewMods get "reliability") max 0.05)];
+                private _gap = time - (_ts getOrDefault ["shotAt", -1e9]);
                 if (_gap <= 2 * _spacing) then {
-                    _system setVariable [_spacingKey, (1 - AEGISM_SPACING_SMOOTHING) * _spacing + AEGISM_SPACING_SMOOTHING * _gap, false];
+                    _ts set ["spacing", (1 - AEGISM_SPACING_SMOOTHING) * _spacing + AEGISM_SPACING_SMOOTHING * _gap];
                 };
             };
-            _system setVariable [_turretShotKey, time, false];
+            _ts set ["shotAt", time];
         };
         case 0: {
             _state set ["nextAttemptAt", time + _interval];
@@ -244,7 +282,7 @@ private _fnExecute = {
             // contact to another weapon (aegism_intercept_fnc_assign
             // Engagements, "crew failed to fire").
             if (!_isCiws && {!isNull _network} && {(_state get "roundsFired") == 0}) then {
-                _system setVariable [_turretHoldKey, time + _interval, false];
+                _ts set ["holdUntil", time + _interval];
                 _state set ["crewFailed", true];
             };
         };
@@ -252,92 +290,124 @@ private _fnExecute = {
 };
 
 if (!isNull _network) exitWith {
-    // --- NETWORKED: execute every Site assignment for this System+role ---
-    // Uses each record's own "target" object. The previous version resolved
-    // the claims KEY through objectFromNetId, but keys were built with
-    // str(netId), which adds literal quote characters -- objectFromNetId
-    // returned objNull for every one, so no networked System ever executed
-    // a single assignment.
-    private _claims = _network getVariable ["AEGISM_claims", createHashMap];
-    private _mine = [];
-    {
-        {
-            private _target = _x getOrDefault ["target", objNull];
-            if ((_x get "system") == _system && {(_x get "role") == _role} && {!isNull _target} && {alive _target}) then {
-                _mine pushBack _x;
-            };
-        } forEach _y;
-    } forEach _claims;
-
-    // A launcher can hold a queue of targets (aegism_intercept_fnc_
-    // assignEngagements): per turret, only the assignment whose target
-    // IMPACTS SOONEST (and whose salvo isn't away yet) is worked this tick --
-    // front to back through a salvo -- while the rest wait their turn
-    // instead of fighting over the turret's aim.
-    private _memberPositions = ((_network getVariable ["AEGISM_networkMembers", []]) select { !isNull _x && {alive _x} }) apply { getPosASL _x };
-    _mine = [_mine, [_memberPositions], {
-        private _target = _x get "target";
-        [_target, _x getOrDefault ["class", [_target] call aegism_detect_fnc_classifyTarget], _input0] call aegism_intercept_fnc_timeToImpact
-    }, "ASCEND"] call BIS_fnc_sortBy;
+    // --- NETWORKED: execute this System's Site assignments ---
+    // Soonest impact first (the coordinator's order): per launcher turret,
+    // only the first assignment whose salvo isn't away yet is worked this
+    // tick -- front to back through a salvo -- while the rest wait their
+    // turn instead of fighting over the turret's aim.
     private _workingTurrets = [];
     {
-        (_x get "weaponInfo") params ["_turretPath"];
-        private _salvoAway = !_isCiws && {(_x get "roundsFired") >= _salvoSize};
-        if (_isCiws || _salvoAway || {!(_turretPath in _workingTurrets)}) then {
-            if (!_isCiws && {!_salvoAway}) then { _workingTurrets pushBack _turretPath; };
-            [_x get "target", _x get "weaponInfo", _x] call _fnExecute;
+        private _target = _x getOrDefault ["target", objNull];
+        if (!isNull _target && {alive _target}) then {
+            (_x get "weaponInfo") params ["_turretPath"];
+            private _salvoAway = !_isCiws && {(_x get "roundsFired") >= _salvoSize};
+            if (_isCiws || _salvoAway || {!(_turretPath in _workingTurrets)}) then {
+                if (!_isCiws && {!_salvoAway}) then { _workingTurrets pushBack _turretPath; };
+                [_target, _x get "weaponInfo", _x] call _fnExecute;
+            };
         };
-    } forEach _mine;
+    } forEach _assigned;
 };
 
-// --- STANDALONE ---
-private _stateKey = format ["AEGISM_engagementState_%1", _role];
-
+// --- STANDALONE: each turret on its own target ---------------------------------
 private _readyWeapons = _weaponPool select {
     _x params ["_turretPath", "", "_magClass"];
     (_system magazineTurretAmmo [_magClass, _turretPath]) > 0
 };
 if (_readyWeapons isEqualTo []) exitWith {};
 
-private _pool = _system getVariable ["AEGISM_pooledContacts", createHashMap];
-private _candidates = (values _pool) apply { [_x get "object", _x get "class"] };
+private _candidates = [];
+{
+    private _object = _y getOrDefault ["object", objNull];
+    if (!isNull _object && {alive _object}) then { _candidates pushBack [_object, _y get "class"]; };
+} forEach _pool;
 
-private _state = _system getVariable [_stateKey, createHashMap];
+private _byTurret = createHashMap;
+{
+    private _list = _byTurret get (_x select 0);
+    if (isNil "_list") then { _list = []; _byTurret set [_x select 0, _list]; };
+    _list pushBack _x;
+} forEach _readyWeapons;
 
-([_weaponPos, _candidates, _engagementSettings, _readyWeapons, _role, _system, _state getOrDefault ["target", objNull]] call aegism_intercept_fnc_selectTarget) params ["_target", "_weaponInfo"];
-if (isNull _target) exitWith {
-    _state set ["targetNetId", ""];
-    _system setVariable [_stateKey, _state, false];
-};
+private _crew = _system getVariable "AEGISM_resolvedCrew";
+if (isNil "_crew") then { _crew = [_system] call aegism_system_fnc_resolveCrew; };
+private _selectKey = "select_" + _role;
+private _taken = [];
 
-private _targetNetId = netId _target;
-if (_targetNetId != (_state getOrDefault ["targetNetId", ""])) then {
-    _state = createHashMapFromArray [
-        ["targetNetId", _targetNetId],
-        ["target", _target],
-        ["assignedAt", time],
-        ["lastShotAt", -1],
-        ["roundsFired", 0],
-        ["interceptors", []]
-    ];
-};
-_system setVariable [_stateKey, _state, false];
+{
+    private _turretPath = _x;
+    private _weapons = _y;
+    private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
+    private _state = _ts getOrDefault [_stateKey, createHashMap];
 
-// Salvo spent, every interceptor gone, target alive: it missed -- re-engage.
-if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}
-    && {time > (_state get "lastShotAt") + AEGISM_INTERCEPTOR_SETTLE}
-    && {((_state get "interceptors") findIf { !isNull _x && {alive _x} }) == -1}) then {
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSED: %1 (%2) salvo at %3 failed -- re-engaging.", _system, _role, _target];
-    _state set ["roundsFired", 0];
-    _state set ["interceptors", []];
-};
+    // Launcher salvos still flying: those targets wait. All missiles gone
+    // and the target alive: it missed, and the target is back on the list.
+    private _exclude = +_taken;
+    if (!_isCiws) then {
+        private _inFlight = (_ts getOrDefault ["inFlight_launcher", []]) select {
+            _x params ["_flightTarget", "_interceptors", "_lastShotAt"];
+            private _alive = !isNull _flightTarget && {alive _flightTarget};
+            private _flying = time <= _lastShotAt + AEGISM_INTERCEPTOR_SETTLE || {(_interceptors findIf { !isNull _x && {alive _x} }) != -1};
+            if (_alive && {!_flying}) then {
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSED: %1 (%2) salvo at %3 failed -- re-engaging.", _system, _role, _flightTarget];
+            };
+            _alive && _flying
+        };
+        _ts set ["inFlight_launcher", _inFlight];
+        { _exclude pushBack (_x select 0); } forEach _inFlight;
+    };
+    private _turretCandidates = _candidates select { !((_x select 0) in _exclude) };
 
-if (_crew getOrDefault ["costValueJudgment", false]) then {
-    private _targetValue = [[_target] call aegism_detect_fnc_classifyTarget] call aegism_intercept_fnc_threatValue;
-    private _moreValuable = { ([_x select 1] call aegism_intercept_fnc_threatValue) > _targetValue } count _candidates;
-    private _totalAmmo = 0;
-    { _x params ["_turretPath", "", "_magClass"]; _totalAmmo = _totalAmmo + (_system magazineTurretAmmo [_magClass, _turretPath]); } forEach _readyWeapons;
-    if (_moreValuable >= _totalAmmo) then { _state set ["nextAttemptAt", time + 1]; };
-};
+    // Target pick: a launcher reuses its pick for AEGISM_SELECT_REUSE s; an
+    // empty pick is retried after AEGISM_SELECT_EMPTY_RETRY s; a gun checks
+    // its current target first (aegism_intercept_fnc_selectTarget).
+    private _current = _state getOrDefault ["target", objNull];
+    (_ts getOrDefault [_selectKey, [-1e9, objNull, []]]) params ["_selectedAt", "_selectedTarget", "_selectedWeapon"];
+    private _selection = switch (true) do {
+        case (!_isCiws && {time - _selectedAt < AEGISM_SELECT_REUSE} && {!isNull _selectedTarget} && {alive _selectedTarget}
+            && {!(_selectedTarget in _exclude)} && {_selectedWeapon in _weapons}): { [_selectedTarget, _selectedWeapon] };
+        case (isNull _selectedTarget && {isNull _current} && {time - _selectedAt < AEGISM_SELECT_EMPTY_RETRY}): { [objNull, []] };
+        default {
+            private _picked = [_weaponPos, _turretCandidates, _engagementSettings, _weapons, _role, _system, _current, _turretPath] call aegism_intercept_fnc_selectTarget;
+            _ts set [_selectKey, [time, _picked select 0, _picked select 1]];
+            _picked
+        };
+    };
+    _selection params ["_target", "_weaponInfo"];
 
-[_target, _weaponInfo, _state] call _fnExecute;
+    if (isNull _target) then {
+        if (!isNull _current) then { _ts set [_stateKey, createHashMap]; };
+    } else {
+        _taken pushBack _target;
+        private _targetKey = [_target] call aegism_fnc_contactKey;
+        if (_targetKey != (_state getOrDefault ["targetKey", ""])) then {
+            _state = createHashMapFromArray [
+                ["targetKey", _targetKey],
+                ["target", _target],
+                ["assignedAt", time],
+                ["lastShotAt", -1],
+                ["roundsFired", 0],
+                ["interceptors", []]
+            ];
+        };
+        _ts set [_stateKey, _state];
+
+        if (_crew getOrDefault ["costValueJudgment", false]) then {
+            private _targetValue = [[_target] call aegism_detect_fnc_classifyTarget] call aegism_intercept_fnc_threatValue;
+            private _moreValuable = { ([_x select 1] call aegism_intercept_fnc_threatValue) > _targetValue } count _candidates;
+            private _totalAmmo = 0;
+            { _x params ["_weaponTurret", "", "_magClass"]; _totalAmmo = _totalAmmo + (_system magazineTurretAmmo [_magClass, _weaponTurret]); } forEach _readyWeapons;
+            if (_moreValuable >= _totalAmmo) then { _state set ["nextAttemptAt", time + 1]; };
+        };
+
+        [_target, _weaponInfo, _state] call _fnExecute;
+
+        // Salvo away: the missiles guide themselves and this launcher moves
+        // on to its next target (re-picked next tick).
+        if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) then {
+            (_ts get "inFlight_launcher") pushBack [_target, _state get "interceptors", _state get "lastShotAt"];
+            _ts set [_stateKey, createHashMap];
+            _ts set [_selectKey, [-1e9, objNull, []]];
+        };
+    };
+} forEach _byTurret;

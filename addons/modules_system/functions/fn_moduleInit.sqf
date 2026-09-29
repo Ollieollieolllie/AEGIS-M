@@ -15,61 +15,35 @@ Description:
     once and never re-scanned, and a repeat call for one that does qualify
     is a harmless no-op.
 
-    Stores the discovered capabilities on the vehicle ("AEGISM_system"),
-    then resolves and caches its Doctrine and Personality (link validation
-    rules in the AEGIS-M architecture plan, section 1), caching them as
-    "AEGISM_resolvedEngagementSettings" / "AEGISM_resolvedCrew" -- these two
-    are what aegism_intercept_fnc_engagementLoop actually reads every tick.
-    "AEGISM_resolvedContactSource" is also cached (aegism_system_fnc_
-    resolveContactSource), but it exists purely for that function's own
-    diag_log warning ("this System has no contact source and will never
-    detect anything") -- nothing currently reads the cached value itself, so
-    don't add a real dependency on it without checking that function's own
-    doc comment first. If it has radar, also initializes "AEGISM_
-    pooledContacts" (HashMap, see aegism_detect_fnc_addContact) so the
-    detection loop has somewhere to store this System's own sensor contacts.
+    Stores the discovered capabilities on the vehicle ("AEGISM_system") and
+    suppresses the crew's own independent AI targeting/engagement on every
+    discovered launcher/CIWS turret (aegism_fnc_setWeaponAiSuppressed), so
+    that weapon only ever fires via aegism_intercept_fnc_fireWeapon. That
+    much runs on every machine: disableAI is local, and has to happen
+    wherever the crew is simulated (a headless client, a player's AI group).
+    A vehicle synced to a Site gets a broader version of the same
+    suppression at sync time (aegism_network_fnc_moduleInit).
 
-    The capability discovery above only ever happens once, at this one-time
-    init -- a vehicle's turrets/sensors are fixed for its lifetime (a
-    magazine swap mid-mission changing which specific weapon fires doesn't
-    change WHETHER it's a launcher/CIWS at all, since launcherWeapons/
-    ciwsWeapons are re-checked for live ammo at fire time anyway, see
-    aegism_intercept_fnc_engagementLoop). The three AEGISM_resolvedX caches
-    are different: they depend on "AEGISM_engagement"/"AEGISM_crew"/
-    "AEGISM_network", which CAN change later (AEGISM_Module_Site runs its
-    own live-resync poll, see aegism_fnc_pollSyncedObjects), so this System
-    also registers a server-only, 5-second re-resolution poll (below) that
-    re-derives and overwrites all three caches from whatever those inputs
-    currently are. This is what makes a Zeus operator syncing a new Site
-    onto an already-running System actually take effect, instead of being
-    silently ignored for the rest of the mission.
+    The rest is the engagement pipeline, and runs on the server only (the
+    single source of truth in singleplayer, hosted and dedicated games):
+        - resolves and caches its Doctrine and Personality
+          ("AEGISM_resolvedEngagementSettings", "AEGISM_resolvedCrew", and the
+          crew's modifiers, "AEGISM_resolvedCrewMods" -- what the engagement
+          loop and the coordinator read every tick), and its contact source
+          ("AEGISM_resolvedContactSource", for aegism_system_fnc_
+          resolveContactSource's own warning). These depend on
+          "AEGISM_engagement"/"AEGISM_crew"/"AEGISM_network", which CAN
+          change later (a Zeus operator syncing a Site), so a 5-second poll
+          re-resolves them.
+        - with its own radar: its own pool ("AEGISM_pooledContacts") and a
+          1-second detection loop (aegism_detect_fnc_confidenceLoop).
+        - one 0.1-second engagement loop per weapon role (aegism_intercept_
+          fnc_engagementLoop).
+    Registering the loops on every machine would make every client detect
+    the same contact and fire its own redundant shot.
 
-    Since this now runs from a periodic scan rather than an isGlobal=1
-    module's guaranteed-everywhere activation, whichever machine's scan
-    reaches a given vehicle first runs this in full -- the scan itself is
-    deliberately not isServer-gated so it still reaches every client,
-    matching the old per-machine-identical module behavior. The actual
-    per-frame detection (aegism_detect_fnc_confidenceLoop) and engagement
-    (aegism_intercept_fnc_engagementLoop) loops are different: they mutate
-    shared pool/ammo state and command real weapons to fire, so registering
-    them on every machine would make every client independently detect the
-    same contact and fire its own redundant shot. Both loops are therefore
-    only ever registered on the server (isServer), the single source of
-    truth in both singleplayer (always isServer) and dedicated multiplayer.
-
-    Every discovered launcher/CIWS turret also has its crew's own
-    independent AI targeting/engagement suppressed (aegism_fnc_
-    setWeaponAiSuppressed) the moment this System is recognized -- so that
-    weapon can ONLY ever fire via AEGIS-M's own aegism_intercept_fnc_
-    fireWeapon call, never because the crew spotted and independently
-    decided to engage something themselves outside AEGIS-M's own
-    assignment/ammo/reaction-time/cooldown/LOS/reliability gates. Runs on
-    every machine (not isServer-gated), matching the rest of this
-    function's non-loop-registration setup, since disableAI is local AI
-    simulation state. A vehicle synced to a Site gets a broader, blunter
-    version of this same suppression applied immediately at sync time
-    (aegism_network_fnc_moduleInit), independent of whether discovery here
-    ever actually recognizes it -- see that function's own doc comment.
+    Capability discovery only ever happens once -- a vehicle's turrets and
+    sensors are fixed for its lifetime; ammo is re-checked at fire time.
 
 Parameters:
     _vehicle - the vehicle to set up as an AEGIS-M System <OBJECT>
@@ -124,38 +98,31 @@ _vehicle setVariable ["AEGISM_systemInitialized", true, false];
 _vehicle setVariable ["AEGISM_systemDeferred", false, false];
 _vehicle setVariable ["AEGISM_system", _capabilities, false];
 
+// Suppress the crew's own independent targeting/engagement on every
+// discovered launcher/CIWS turret (see aegism_fnc_setWeaponAiSuppressed's
+// own doc comment for why) -- on every machine, since disableAI affects
+// local AI simulation and needs to apply wherever this vehicle's crew is
+// actually simulated (a headless client, a player's AI group), not just the
+// server.
+private _weaponTurretPaths = ((_capabilities get "launcherWeapons") + (_capabilities get "ciwsWeapons")) apply { _x select 0 };
+if (_weaponTurretPaths isNotEqualTo []) then {
+    [_vehicle, _weaponTurretPaths, true] call aegism_fnc_setWeaponAiSuppressed;
+};
+
+// Everything below is the engagement pipeline: server only. A client has no
+// use for it (the pools, claims and loops only exist on the server; the
+// debug overlays only show data where the server runs), and used to carry
+// a cleanup handler per System for nothing.
+if (!isServer) exitWith {};
+
 // Every recognized System, radar or not -- distinct from AEGISM_allPoolOwners
 // below, which only ever gains a vehicle with real "ownRadar" capability
 // (that list exists purely so the detection loop knows which vehicles have
-// a pool worth scanning). A pure launcher/CIWS System with no radar of its
-// own never has anything to pool locally, so it correctly never joined that
-// list -- but aegism_fnc_debugDraw's own per-System state label (see its
-// doc comment) needs to reach EVERY System to show "why isn't this launcher
-// engaging" diagnostics, launchers included, so it walks this list instead.
-// Local-only (setVariable false), matching AEGISM_system/
-// AEGISM_systemInitialized above -- this whole function runs on every
-// machine (not isServer-gated, see this function's own doc comment), so
-// each machine builds its own list rather than depending on isServer/
-// isDedicated to have a global one meaningfully shared.
+// a pool worth scanning). Read by the debug overlays (aegism_fnc_debugDraw,
+// aegism_fnc_debugHint), which drop dead entries as they go.
 private _allSystems = missionNamespace getVariable ["AEGISM_allSystems", []];
 _allSystems pushBackUnique _vehicle;
 missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
-
-// Cleanup PFH, NOT isServer-gated (unlike AEGISM_allPoolOwners' own cleanup
-// below) -- AEGISM_allSystems is a per-machine local list read by aegism_
-// fnc_debugDraw, which is itself a client-side-only concern (drawIcon3D has
-// no meaning on a dedicated server), so every machine needs its own list
-// kept correctly pruned independently rather than relying on the server's
-// copy.
-[{
-    params ["_args", "_pfhHandle"];
-    _args params ["_vehicle"];
-    if (isNull _vehicle || {!alive _vehicle}) exitWith {
-        private _allSystems = missionNamespace getVariable ["AEGISM_allSystems", []];
-        missionNamespace setVariable ["AEGISM_allSystems", _allSystems - [_vehicle], false];
-        [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-    };
-}, 5, [_vehicle]] call CBA_fnc_addPerFrameHandler;
 
 private _contactSource = [_vehicle] call aegism_system_fnc_resolveContactSource;
 private _overrides = [];
@@ -168,72 +135,57 @@ if (_overrides isNotEqualTo []) then {
 _vehicle setVariable ["AEGISM_resolvedContactSource", _contactSource, false];
 _vehicle setVariable ["AEGISM_resolvedEngagementSettings", _engagementSettings, false];
 _vehicle setVariable ["AEGISM_resolvedCrew", _crew, false];
+// The crew's timing/reliability modifiers, resolved with the crew: the
+// engagement loop and the coordinator read these every tick.
+_vehicle setVariable ["AEGISM_resolvedCrewMods", [_crew, _vehicle] call aegism_intercept_fnc_applyCrewModulation, false];
 
-if (isServer) then {
-    [{
-        params ["_args", "_pfhHandle"];
-        _args params ["_vehicle"];
-        if (isNull _vehicle || {!alive _vehicle}) exitWith {
-            [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-        };
-        _vehicle setVariable ["AEGISM_resolvedContactSource", [_vehicle] call aegism_system_fnc_resolveContactSource, false];
-        _vehicle setVariable ["AEGISM_resolvedEngagementSettings", [_vehicle] call aegism_system_fnc_resolveEngagementSettings, false];
-        _vehicle setVariable ["AEGISM_resolvedCrew", [_vehicle] call aegism_system_fnc_resolveCrew, false];
-    }, 5, [_vehicle]] call CBA_fnc_addPerFrameHandler;
-};
+[{
+    params ["_args", "_pfhHandle"];
+    _args params ["_vehicle"];
+    if (isNull _vehicle || {!alive _vehicle}) exitWith {
+        [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+    };
+    private _crew = [_vehicle] call aegism_system_fnc_resolveCrew;
+    _vehicle setVariable ["AEGISM_resolvedContactSource", [_vehicle] call aegism_system_fnc_resolveContactSource, false];
+    _vehicle setVariable ["AEGISM_resolvedEngagementSettings", [_vehicle] call aegism_system_fnc_resolveEngagementSettings, false];
+    _vehicle setVariable ["AEGISM_resolvedCrew", _crew, false];
+    _vehicle setVariable ["AEGISM_resolvedCrewMods", [_crew, _vehicle] call aegism_intercept_fnc_applyCrewModulation, false];
+}, 5, [_vehicle]] call CBA_fnc_addPerFrameHandler;
 
 if ("ownRadar" in _contactSource) then {
     _vehicle setVariable ["AEGISM_pooledContacts", createHashMap, false];
 
-    if (isServer) then {
-        private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
-        _allOwners pushBackUnique _vehicle;
-        missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
+    private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
+    _allOwners pushBackUnique _vehicle;
+    missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
 
-        [{
-            params ["_args", "_pfhHandle"];
-            _args params ["_vehicle"];
-            if (isNull _vehicle || {!alive _vehicle}) exitWith {
-                private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
-                missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners - [_vehicle]];
-                [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-            };
-            [_vehicle] call aegism_detect_fnc_confidenceLoop;
-        }, 1, [_vehicle]] call CBA_fnc_addPerFrameHandler;
-    };
-};
-
-private _activeWeaponRoles = [];
-if ((_capabilities get "launcherWeapons") isNotEqualTo []) then { _activeWeaponRoles pushBack "launcher"; };
-if ((_capabilities get "ciwsWeapons") isNotEqualTo []) then { _activeWeaponRoles pushBack "ciws"; };
-
-// Suppress the crew's own independent targeting/engagement on every
-// discovered launcher/CIWS turret (see aegism_fnc_setWeaponAiSuppressed's
-// own doc comment for why) -- runs on every machine, same as the rest of
-// this function's non-loop-registration setup, since disableAI affects
-// local AI simulation and needs to apply wherever this vehicle's crew is
-// actually simulated, not just the server.
-private _weaponTurretPaths = ((_capabilities get "launcherWeapons") + (_capabilities get "ciwsWeapons")) apply { _x select 0 };
-if (_weaponTurretPaths isNotEqualTo []) then {
-    [_vehicle, _weaponTurretPaths, true] call aegism_fnc_setWeaponAiSuppressed;
+    [{
+        params ["_args", "_pfhHandle"];
+        _args params ["_vehicle"];
+        if (isNull _vehicle || {!alive _vehicle}) exitWith {
+            private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
+            missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners - [_vehicle]];
+            [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+        };
+        [_vehicle] call aegism_detect_fnc_confidenceLoop;
+    }, 1, [_vehicle]] call CBA_fnc_addPerFrameHandler;
 };
 
 // Every weapon ticks at 0.1s: its turret has to keep re-aiming at a moving
-// lead point, and a 0.5s cadence let a fast target move several degrees
-// between aim updates, so a 2-degree gate rarely passed. Launchers used to
-// tick at 0.5s behind a 20-degree gate, and fired while still slewing.
-if (isServer) then {
-    {
-        private _role = _x;
-        [{
-            params ["_args", "_pfhHandle"];
-            _args params ["_vehicle", "_role"];
-            if (isNull _vehicle || {!alive _vehicle}) exitWith {
-                [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-            };
-            [_vehicle, _role] call aegism_intercept_fnc_engagementLoop;
-        }, 0.1, [_vehicle, _role]] call CBA_fnc_addPerFrameHandler;
-    } forEach _activeWeaponRoles;
-};
+// lead point. A tick with nothing assigned (or nothing in a standalone
+// System's pool) returns before doing any real work.
+private _activeWeaponRoles = [];
+if ((_capabilities get "launcherWeapons") isNotEqualTo []) then { _activeWeaponRoles pushBack "launcher"; };
+if ((_capabilities get "ciwsWeapons") isNotEqualTo []) then { _activeWeaponRoles pushBack "ciws"; };
+{
+    [{
+        params ["_args", "_pfhHandle"];
+        _args params ["_vehicle", "_role"];
+        if (isNull _vehicle || {!alive _vehicle}) exitWith {
+            [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+        };
+        [_vehicle, _role] call aegism_intercept_fnc_engagementLoop;
+    }, 0.1, [_vehicle, _x]] call CBA_fnc_addPerFrameHandler;
+} forEach _activeWeaponRoles;
 
 diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " System initialized on %1 -- hasRadar=%2 launcherWeapons=%3 ciwsWeapons=%4 contactSource=%5", _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];

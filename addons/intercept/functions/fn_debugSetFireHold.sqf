@@ -9,19 +9,11 @@ Description:
 
     This is a genuine circuit breaker, not a Doctrine/salvo setting: it's
     checked in aegism_intercept_fnc_fireWeapon itself, the single narrowest
-    choke point every real fire command in the whole codebase passes
-    through, so it guarantees no shot from that turret regardless of what
-    upstream logic (assignEngagements/engagementLoop, working correctly or
-    not) tries to trigger -- useful specifically while tracking down a
-    suspected multi-shot bug, to isolate whether the problem is upstream
-    (assignment/engagementLoop deciding to fire more than intended) or
-    downstream (the engine/weapon itself firing more than commanded) of
-    fireWeapon's own single choke point.
+    choke point every real fire command passes through (turret state
+    "fireHold"), so it guarantees no shot from that turret regardless of
+    what upstream logic tries to trigger.
 
-    Not something a mission should ship with set permanently -- it's a
-    blunt debugging tool, not a Doctrine feature (see AEGISM_Module_Site's
-    own Attributes for the real, intended ways to shape engagement
-    behaviour).
+    Not something a mission should ship with set permanently.
 
 Parameters:
     _system - the System vehicle to hold/release <OBJECT>
@@ -61,8 +53,7 @@ private _turretPaths = if (_turretPath isEqualTo []) then {
 };
 
 {
-    private _holdKey = format ["AEGISM_fireHold_%1", _x];
-    _system setVariable [_holdKey, _hold, false];
+    ([_system, _x] call aegism_intercept_fnc_turretState) set ["fireHold", _hold];
 } forEach _turretPaths;
 
 private _msg = format ["[AEGIS-M] DEBUG FIRE HOLD: %1 turret(s) %2 on %3 -- %4.", count _turretPaths, _turretPaths, _system, ["RELEASED", "HELD"] select _hold];

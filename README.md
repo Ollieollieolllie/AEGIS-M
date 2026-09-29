@@ -38,13 +38,20 @@ Unsynced vehicles are only adopted if they are a self-contained AA platform
 are never adopted, so an attack helicopter or an IFV with ATGMs keeps its
 normal AI.
 
-**IFF.** Hostile contacts (mission side relations) are engaged, including
-munitions. A friendly or neutral munition is engaged only when it is
+**IFF and threats.** Hostile contacts (mission side relations) are engaged,
+including munitions -- but a hostile artillery, mortar or MLRS round (or
+unguided rocket) only while its predicted impact falls within the threat
+radius of a Site vehicle (Site setting "Only Engage Munitions Threatening
+the Site", on by default): a shell landing well clear of the Site doesn't
+cost a single round (`IGNORED` in the RPT). Guided missiles and bombs are
+always engaged -- they steer or glide, so a ballistic prediction says
+nothing. A friendly or neutral munition is engaged only when it is
 predicted to hit the Site (doctrine "Engage Friendly Munitions Threatening
 the Site", on by default): a guided missile whose own target is a Site
-member, or an unguided round whose predicted impact falls within its own
-config danger radius (`dangerRadiusHit`, e.g. 750 m for 155 mm artillery)
-of a Site member. A battery never engages its own interceptors. Only real
+member, or an unguided round whose predicted impact falls within the threat
+radius. The threat radius is the round's own config danger radius
+(`dangerRadiusHit`, e.g. 750 m for 155 mm artillery, 1250 m for MLRS) unless
+the Site sets one. A battery never engages its own interceptors. Only real
 artillery/mortar rounds (`artilleryLock`) count as artillery threats; tank
 main-gun rounds don't, and multi-stage rounds (e.g. MLRS rockets) stay
 tracked through their submunition handoff.
@@ -78,29 +85,38 @@ point) with the target inside the missile's own lock cone
 
 **CIWS guns fire only when a round could hit, and correct their own aim
 from their rounds (closed-loop spotting, as a real Phalanx does).** A gun
-re-aims every frame from the moment it has a target -- not just while a
+tracks its target every frame from the moment it has one -- not just while a
 burst is running, so it is already on the intercept point when the first
-burst can open -- and fires only while the barrel's error at
-the intercept is within the target's own size plus the gun's own spread
-there (its fire mode's `dispersion`) -- about 0.3 degrees for a Phalanx at
-a shell 2 km out. In the last-ditch window (the target due to impact within
-the gun's own longest burst, `Burst Length Max`) it also fires once its
-turret has settled as close as it can get, wherever that is: there is no
-better shot coming (`LAST-DITCH` in the RPT). Every round it fires is measured as it passes the track
-the target was *predicted* to fly: how far ahead of or behind the crossing
-motion, and how far high or low. That miss is the gun's own error alone
-(turret lag, flight-time estimate, drop, zeroing), kept apart from the
-target's evasion, so a jinking helicopter can't drag the aim around. The
-gun keeps a running estimate of the lead-time and elevation correction it
-needs, weighting each round by how precisely it measures it, and carries it
-across bursts until it changes ammunition. After each burst a `SPOTTING`
-line in the RPT gives the average miss against the predicted track, how far
-the target strayed from that track (evasion no fire control can foresee),
-and the correction in use. A gun never takes a target whose aim point is
+burst can open: the full intercept is solved 20 times a second, and every
+frame in between the turret follows the aim point's own motion. It fires
+only while the barrel's error at the intercept is within the target's own
+size plus the gun's own spread there (its fire mode's `dispersion`) --
+about 0.3 degrees for a Phalanx at a shell 2 km out. In the last-ditch
+window (the target due to impact within the gun's own longest burst,
+`Burst Length Max`) it also fires once its turret has settled as close as it
+can get, as long as that's within 5 times that gate: there is no better
+shot coming (`LAST-DITCH` in the RPT); further off than that, a hit is out
+of the question and it holds its ammunition (`LAST-DITCH-HOLD`). Every
+third round it fires is measured as it passes the track the target was
+*predicted* to fly: how far ahead of or behind the crossing motion, and how
+far high or low. That miss is the gun's own error alone (turret lag,
+flight-time estimate, drop, zeroing), kept apart from the target's evasion,
+so a jinking helicopter can't drag the aim around. The gun keeps a running
+estimate of the lead-time and elevation correction it needs for each kind
+of target (shells, rockets, helicopters, ...), weighting each round by how
+precisely it measures it and letting old rounds fade slowly, until it
+changes ammunition. After each burst a `SPOTTING` line in the RPT gives the
+average miss against the predicted track, how far the target strayed from
+that track (evasion no fire control can foresee), and the correction in
+use for that kind of target. Two guns on one vehicle each gate their own
+fire. A gun never takes a target whose aim point is
 beyond its turret's own elevation limits (`minElev`/`maxElev`) -- a shell
 diving steeply beside a Praetorian (max 85 degrees) is released rather than
 held with the barrel pinned short -- and a standalone gun keeps its target
-while it can still engage it instead of re-picking every tick. A target with **no
+while it can still engage it instead of re-picking every tick. A standalone
+System's weapon turrets each work their own target, and a standalone
+launcher moves on to its next target as soon as its missiles are away
+(`MISSED` if they all miss, and the target is back on its list). A target with **no
 feasible intercept** -- receding faster than the round can close, or
 meeting point beyond the weapon's reach or the round's lifetime -- is not
 engaged, and a weapon already on it is released (`NO-SOLUTION` /
@@ -192,6 +208,31 @@ Syncing or unsyncing a vehicle to a Site, or editing the Site's own
 Attributes, takes effect live -- nothing requires re-placing modules or
 restarting the mission.
 
+**Server load.** All of the detection and engagement work runs on the
+server; other machines only suppress the AI targeting of crews they
+simulate themselves, and nothing is broadcast. On the server:
+- An idle weapon (nothing assigned to it, or nothing in a standalone
+  System's pool) costs a quick check ten times a second.
+- Every round fired in the mission passes through one cached lookup; only
+  threat munitions go further.
+- Incoming munitions are tracked by one shared tracker, twice a second
+  each, spread over frames. A Site stops looking for a munition once one of
+  its radars has it, and each radar re-traces its line of sight to a
+  munition at most once a second.
+- A CIWS gun's rounds in flight are tracked by one handler per gun, and a
+  round is only examined once it's close to the target. The gun solves its
+  full aim 20 times a second and steers between solves.
+- The Site coordinator caches each munition's reserve-plan scan while the
+  munition keeps to its predicted path, and skips the plan while every
+  munition already has a launcher.
+- Config values are read once per class and cached.
+
+The `PERF` line (below) shows all of this. An AA crew that another machine
+simulates (a headless client, a player's AI group) is moved to the server
+the first time it has to fire (`NONLOCAL` in the RPT) -- a missile can only
+be given its target where it's simulated. A player gunner can't be moved:
+missiles fired from that turret fly without AEGIS-M's target.
+
 **A weapon under AEGIS-M control can only fire through AEGIS-M.** Every
 launcher/CIWS turret AEGIS-M recognizes has its crew's own independent
 targeting and engagement disabled, so a shot only ever happens because
@@ -224,6 +265,28 @@ ammo, then its contacts and which weapons are on each; other Sites and
 standalone Systems in summary. It shows data wherever AEGIS-M runs its
 engagement logic: singleplayer, Eden Preview, or a hosted game's host.
 
+**RPT performance summary** (CBA setting "AEGIS-M > Debug > RPT Performance
+Summary", on by default) -- every 10 s, while AEGIS-M is doing anything, the
+server writes one `PERF` line: coordinator runs and time (total and worst),
+engagement ticks with work, aim solves and per-frame steers, CIWS rounds
+tracked / checked near the target / skipped in flight / time, engageability
+checks, standalone target re-evaluations, Fired events seen / threats among
+them / munitions ignored as landing clear, munition tracker checks / line-
+of-sight rays / time, reserve-plan cache hits and rebuilds, and server FPS.
+Idle, it writes nothing. The timings come from a 32-bit clock that only
+resolves to about 0.25 ms after an hour of game time, so treat them as
+rough. Each weapon's config values are logged once when first used
+(`KINEMATICS`).
+
+**Benchmark** -- from the debug console (singleplayer, Eden Preview or a
+host), looking at a System, with any live object as the target:
+`[cursorObject, heli1] call aegism_intercept_fnc_debugBenchmark` times
+AEGIS-M's per-call hot paths (classification, engageability check, aim
+solve, per-frame steer, muzzle points, intercept solve) with
+`diag_codePerformance` and writes one `BENCHMARK` line per function to the
+RPT. Multiply by the counts in a `PERF` line for real milliseconds per
+second.
+
 ## Settings
 
 The Site module's attributes are in four sections. Every default is chosen
@@ -247,7 +310,8 @@ envelope, and all threat classes are engaged.
 | Engage Missiles / Rockets / Bombs / Artillery, Mortar and MLRS Rounds / Fixed-Wing / Helicopters / Drones | all on | Which threat classes the Site engages. |
 | Target Min / Max Height (m above ground) | 0 / 0 | Ignore contacts outside this height band. Max 0 = no limit. |
 | Engage Friendly Munitions Threatening the Site | On | Also engage a friendly/neutral round predicted to hit the Site. |
-| Friendly Threat Radius (m) | 0 | 0 = the round's own config danger radius (`dangerRadiusHit`). |
+| Only Engage Munitions Threatening the Site | On | A hostile artillery/mortar/MLRS round or unguided rocket is only engaged while predicted to land within the Threat Radius of a Site vehicle (`IGNORED` in the RPT otherwise). Guided missiles and bombs are always engaged. Off: every hostile munition in reach is engaged. |
+| Threat Radius (m) | 0 | How close to a Site vehicle a predicted impact counts as a threat, for both settings above. 0 = the round's own config danger radius (`dangerRadiusHit`). |
 
 **Launchers (Missiles)**
 
@@ -265,7 +329,7 @@ envelope, and all threat classes are engaged.
 | Max Range (m) | 0 | 0 = the gun's own reach (Cheetah 35 mm: 2500 m). |
 | Min Elevation (deg) | 5 | Never engages below it; holds fire while the barrel is below it. |
 | Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
-| Pause Between Bursts (s) | 1 | Gap after each burst. |
+| Pause Between Bursts (s) | 1 | Gap after a burst before firing again at the same target. After a kill the gun goes straight on to its next target. |
 | Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |
 
 Range settings are real-world metres, scaled by the CBA setting AEGIS-M
@@ -278,8 +342,8 @@ differ for that vehicle; everything left on "Site setting" (or blank) keeps
 following the Site. Examples: set a long-range SAM's "Artillery, Mortar and
 MLRS Rounds" to Ignore so it never spends missiles on shells, or give one
 CIWS a shorter Max Range as an inner layer. Overrides on a radar affect its
-Interception Targets (what it reports, and which friendly munitions it
-treats as threats). A vehicle's active overrides are logged at start
+Interception Targets (what it reports, and which munitions it treats as
+threats). A vehicle's active overrides are logged at start
 (`OVERRIDES:` in the RPT). Script equivalent, e.g. for a Zeus-placed
 vehicle: `_veh setVariable ["AEGISM_ovr_enabled", true]` plus
 `_veh setVariable ["AEGISM_ovr_<setting>", value]`

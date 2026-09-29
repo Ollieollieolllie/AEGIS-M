@@ -2,49 +2,65 @@
 Function: aegism_intercept_fnc_selectTarget
 
 Description:
-    Target selection for a STANDALONE System (no Site synced -- a networked
-    System gets its assignment from aegism_intercept_fnc_assignEngagements
-    instead). Filters the System's own pooled contacts to those on the
-    doctrine allowlist that at least one of its ready weapons can engage
-    (aegism_intercept_fnc_canEngage), picks the best per the doctrine's
-    targetPriority rule, and returns the nearest-envelope weapon for it.
-
-    Previously the chosen target was matched against the doctrine envelope
-    only and fired at with whichever weapon happened to be first, even if
-    that weapon couldn't reach it.
+    Target selection for one turret of a STANDALONE System (no Site synced
+    -- a networked System gets its assignment from aegism_intercept_fnc_
+    assignEngagements instead). Filters the candidates to those on the
+    doctrine allowlist that at least one of the turret's ready weapons can
+    engage (aegism_intercept_fnc_canEngage), picks the best per the
+    doctrine's targetPriority rule, and returns the weapon for it.
 
     A gun keeps its current target while it can still engage it and its own
     aim has a solution -- as a Site's claim does -- instead of re-picking
-    every tick: under Soonest
-    Impact the shells of one salvo trade places constantly, and a standalone
-    Praetorian swung 40-127 degrees between six of them in 12s without
-    firing. (Launchers still re-pick: they're free for the next target as
-    soon as their missiles are away.)
+    every tick: under Soonest Impact the shells of one salvo trade places
+    constantly, and a standalone Praetorian swung 40-127 degrees between six
+    of them in 12s without firing. That check comes FIRST and alone: only if
+    the current target has to go are the other candidates evaluated (each
+    one is a full intercept solve). Launchers always re-pick (the engagement
+    loop reuses a launcher's pick for a moment and excludes targets its
+    missiles are already flying at).
 
 Parameters:
     _weaponPos - ASL position ranges are measured from <ARRAY>
     _candidates - [object, class] pairs from the System's own pool <ARRAY>
     _engagementSettings - resolved doctrine <HASHMAP>
-    _weapons - this role's weaponInfos that currently have ammo <ARRAY>
+    _weapons - this turret's weaponInfos in this role that have ammo <ARRAY>
     _role - "launcher" or "ciws" <STRING>
     _system - the System vehicle <OBJECT>
     _current - optional, the target it's engaging now <OBJECT>
+    _turretPath - optional, the turret (its aim record) <ARRAY>
 
 Returns:
     [target <OBJECT>, weaponInfo <ARRAY>], or [objNull, []] if nothing is
     engageable
 
 Examples:
-    [_weaponPos, _candidates, _settings, _readyWeapons, "ciws", _cheetah] call aegism_intercept_fnc_selectTarget;
+    [_weaponPos, _candidates, _settings, _readyWeapons, "ciws", _cheetah, _shell, [0]] call aegism_intercept_fnc_selectTarget;
 
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["_weaponPos", "_candidates", "_engagementSettings", "_weapons", "_role", "_system", ["_current", objNull]];
+#include "..\..\main\perf.hpp"
+
+params ["_weaponPos", "_candidates", "_engagementSettings", "_weapons", "_role", "_system", ["_current", objNull], ["_turretPath", []]];
 
 private _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", []];
 private _priority = _engagementSettings getOrDefault ["targetPriority", "soonestImpact"];
+
+// --- A gun on a target keeps it while it can (see header) ---------------------
+private _kept = [];
+if (_role == "ciws" && {!isNull _current} && {alive _current} && {(_candidates findIf { (_x select 0) == _current }) != -1}) then {
+    // ...unless the gun's own latest aim at it found no solution.
+    private _aim = if (_turretPath isEqualTo []) then { [] } else { ([_system, _turretPath] call aegism_intercept_fnc_turretState) getOrDefault ["aim_ciws", []] };
+    private _unsolved = (_aim param [3, objNull]) == _current && {!(_aim param [4, true])};
+    if (!_unsolved && {([_current] call aegism_detect_fnc_classifyTarget) in _allowlist}) then {
+        private _index = _weapons findIf { ([_system, _role, _x, _current, _engagementSettings] call aegism_intercept_fnc_canEngage) select 0 };
+        if (_index != -1) then { _kept = [_current, _weapons select _index]; };
+    };
+};
+if (_kept isNotEqualTo []) exitWith { _kept };
+
+PERF_INC(PERF_SELECT_FULL);
 
 // [object, class, weaponInfo] for every candidate some ready weapon reaches.
 private _engageable = [];
@@ -59,14 +75,6 @@ private _engageable = [];
 } forEach _candidates;
 
 if (_engageable isEqualTo []) exitWith { [objNull, []] };
-
-// ...unless the gun's own latest aim at it found no solution.
-private _aimRecord = _system getVariable ["AEGISM_aim_ciws", []];
-private _currentUnsolved = (_aimRecord param [3, objNull]) == _current && {!(_aimRecord param [4, true])};
-if (_role == "ciws" && {!isNull _current} && {!_currentUnsolved}) then {
-    private _currentIndex = _engageable findIf { (_x select 0) == _current };
-    if (_currentIndex != -1) exitWith { _engageable = [_engageable select _currentIndex]; };
-};
 
 // Higher score = more preferred. SQF's selectMax only works on numbers, so
 // scores are a parallel array.
