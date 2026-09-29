@@ -54,6 +54,11 @@ Description:
         spotStats - burstId -> [rounds, sum ahead m, sum high m, sum target
             deviation m, deviation samples], for aegism_intercept_fnc_
             ciwsBurst's SPOTTING line
+        scatter - target class -> [round class, rounds, sum of squared
+            angular miss square to the line of sight, sum of squared target
+            deviation m, sum of squared flight time s] (fading like the
+            estimate) -- the gun's measured accuracy, for aegism_intercept_
+            fnc_openFireRange
 
 Parameters:
     _spot - [system, turretPath, burstId, correction at firing [lead s,
@@ -158,3 +163,23 @@ _corrections set [_targetClass, [
     if (_leadWeight > 0) then { _weightedLead / _leadWeight } else { 0 },
     if (_elevationWeight > 0) then { _weightedElevation / _elevationWeight } else { 0 }
 ]];
+
+// --- The gun's measured accuracy (aegism_intercept_fnc_openFireRange) --------
+// Its rounds' angular miss square to the line of sight, as fired (with the
+// correction they carried), and how far the real target strayed from the
+// predicted track against the round's flight time.
+private _perpendicular = _miss vectorDiff (_los vectorMultiply (_miss vectorDotProduct _los));
+private _scatterAll = _ts get "scatter";
+if (isNil "_scatterAll") then { _scatterAll = createHashMap; _ts set ["scatter", _scatterAll]; };
+private _scatter = _scatterAll getOrDefault [_targetClass, []];
+if ((_scatter param [0, ""]) != _roundClass) then { _scatter = [_roundClass, 0, 0, 0, 0]; };
+_scatter params ["", "_scatterRounds", "_sumAngleSq", "_sumDeviationSq", "_sumFlightSq"];
+_scatterRounds = _scatterRounds * AEGISM_SPOT_DECAY + 1;
+_sumAngleSq = _sumAngleSq * AEGISM_SPOT_DECAY + (_perpendicular vectorDotProduct _perpendicular) / (_range * _range);
+_sumDeviationSq = _sumDeviationSq * AEGISM_SPOT_DECAY;
+_sumFlightSq = _sumFlightSq * AEGISM_SPOT_DECAY;
+if (_deviation >= 0 && {_flightTime > 0}) then {
+    _sumDeviationSq = _sumDeviationSq + _deviation * _deviation;
+    _sumFlightSq = _sumFlightSq + _flightTime * _flightTime;
+};
+_scatterAll set [_targetClass, [_roundClass, _scatterRounds, _sumAngleSq, _sumDeviationSq, _sumFlightSq]];

@@ -15,7 +15,9 @@ Description:
          - its System is dead, or the contact left the pool
          - the weapon can no longer usefully engage it (aegism_intercept_
            fnc_canEngage: envelope, and a feasible intercept -- a gun is
-           released from a jet flying away that its rounds can't catch)
+           released from a jet flying away that its rounds can't catch).
+           Not asked of a launcher whose salvo is away: its missiles are
+           flying, and another launcher shouldn't fire on top of them
          - launcher MISSED: salvo spent, AEGISM_INTERCEPTOR_SETTLE seconds
            since the last shot, and none of its interceptors are still in
            flight. This is judged from the real missiles (captured by
@@ -84,11 +86,22 @@ Description:
     soonest impact first), so its engagement loop never scans or sorts the
     Site's claims. Consumers use the record's own "target" object.
 
-    Cost: the layered-reserve plan's per-munition, per-launcher scan (when
-    can this launcher first make a shot that lands in time) is cached
-    ("AEGISM_planCache") while the munition keeps to its predicted path, and
-    skipped entirely while every munition already has a launcher. Each run's
-    time is counted for the PERF line (aegism_fnc_perfLog).
+    Cost (it runs in one frame, so it's what shows as a server spike under a
+    salvo):
+        - the layered-reserve plan's per-munition, per-launcher scan (when
+          can this launcher first make a shot that lands in time) is cached
+          ("AEGISM_planCache") while the munition keeps to its predicted
+          path, and skipped while every munition already has a launcher
+        - claims are indexed per turret, so the conflict and queue checks
+          read one turret's claims (they scanned the whole Site's for every
+          candidate weapon of every contact)
+        - each launcher's timing is worked out once per run
+        - a launcher whose salvo is away isn't re-judged (its missiles are
+          flying; it's released once they're gone)
+        - a launcher a contact is plainly beyond is skipped before the full
+          engageability check; a gun's own check rules out far contacts on
+          its flight time to its reach (aegism_intercept_fnc_canEngage)
+    Each run's time is counted for the PERF line (aegism_fnc_perfLog).
 
 Parameters:
     _logic - the Site logic <OBJECT>
@@ -169,12 +182,28 @@ private _allowlist = +(_engagementSettings getOrDefault ["targetClassAllowlist",
 _logic setVariable ["AEGISM_contactAllowlist", _allowlist, false];
 
 // --- 2. Review existing assignments ---------------------------------------
-// Turrets committed to a contact: [system, turretPath, contactKey, role,
-// holding, roundsNeeded]. "holding" = still needs the turret: always for a
-// gun; for a launcher only until its salvo is away (its missiles then guide
-// themselves and the launcher is free for its next target). roundsNeeded =
-// missiles the claim still has to fire (0 for a gun).
-private _busyTurrets = [];
+// Turrets committed to contacts, indexed by turret ([system netId, turret
+// path]) -> [[contactKey, role, holding, roundsNeeded], ...]. "holding" =
+// still needs the turret: always for a gun; for a launcher only until its
+// salvo is away (its missiles then guide themselves and the launcher is free
+// for its next target). roundsNeeded = missiles the claim still has to fire
+// (0 for a gun). Indexed so the conflict and queue checks look at one
+// turret's claims, not the whole Site's for every candidate: with ~30
+// contacts, 8 weapons and 40 claims that was ~10,000 checks a run.
+private _busy = createHashMap;
+private _fnBusyAdd = {
+    params ["_system", "_turretPath", "_contactKey", "_role", "_holding", "_rounds"];
+    private _key = [netId _system, _turretPath];
+    private _list = _busy get _key;
+    if (isNil "_list") then { _list = []; _busy set [_key, _list]; };
+    _list pushBack [_contactKey, _role, _holding, _rounds];
+};
+private _fnBusyRemove = {
+    params ["_system", "_turretPath", "_contactKey"];
+    private _list = _busy getOrDefault [[netId _system, _turretPath], []];
+    private _index = _list findIf { (_x select 0) == _contactKey };
+    if (_index != -1) then { _list deleteAt _index; };
+};
 
 // Iterates a snapshot of the keys: entries are deleted/replaced below, which
 // isn't safe while iterating the HashMap itself.
@@ -195,8 +224,16 @@ private _busyTurrets = [];
             private _lastShotAt = _record get "lastShotAt";
             private _alive = !isNull _system && {alive _system};
             private _systemSettings = if (_alive) then { _system call _fnSettings } else { createHashMap };
-            private _engage = if (_alive) then { [_system, _role, _weaponInfo, _object, _systemSettings] call aegism_intercept_fnc_canEngage } else { [false, ""] };
-            _record set ["flightTime", _engage param [2, 0]];
+            // A launcher whose salvo is away isn't re-judged: its missiles are
+            // flying, and releasing the claim then (the target crossing out of
+            // the envelope) let another launcher fire at it on top of them.
+            // Its claim ends when they're gone (missed, below).
+            private _salvoAway = _role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])};
+            private _engage = [false, ""];
+            if (_alive) then {
+                _engage = if (_salvoAway) then { [true, ""] } else { [_system, _role, _weaponInfo, _object, _systemSettings] call aegism_intercept_fnc_canEngage };
+            };
+            if (!_salvoAway) then { _record set ["flightTime", _engage param [2, 0]]; };
 
             private _unfiredLauncher = _role == "launcher" && {(_record get "roundsFired") == 0};
 
@@ -234,7 +271,7 @@ private _busyTurrets = [];
                 private _roundsNeeded = if (_isGun) then { 0 } else {
                     ((((_record get "system") call _fnSettings) getOrDefault ["salvoSize", 1]) - (_record get "roundsFired")) max 0
                 };
-                _busyTurrets pushBack [_record get "system", (_record get "weaponInfo") select 0, _contactKey, _record get "role", _isGun || {_roundsNeeded > 0}, _roundsNeeded];
+                [_record get "system", (_record get "weaponInfo") select 0, _contactKey, _record get "role", _isGun || {_roundsNeeded > 0}, _roundsNeeded] call _fnBusyAdd;
             } forEach _kept;
         };
     };
@@ -323,10 +360,15 @@ if (_memberPositions isNotEqualTo [] && {count _orderedKeys > 1}) then {
 // it's estimated as its shot interval (aegism_intercept_fnc_
 // launcherInterval) / crew reliability. (Planning on the bare interval
 // queued RAM launchers ~2x deeper than they could fire, so the back of a
-// salvo was left to them until too late.)
+// salvo was left to them until too late.) Worked out once per launcher per
+// run: nothing it depends on changes within a run.
+private _timingCache = createHashMap;
 private _fnLauncherTiming = {
     params ["_candSystem", "_weaponInfo"];
     _weaponInfo params ["_turretPath", "", "_magClass"];
+    private _cacheKey = [netId _candSystem, _turretPath];
+    private _cached = _timingCache get _cacheKey;
+    if (!isNil "_cached") exitWith { _cached };
     private _settings = _candSystem call _fnSettings;
     private _mods = _candSystem getVariable "AEGISM_resolvedCrewMods";
     if (isNil "_mods") then {
@@ -338,7 +380,9 @@ private _fnLauncherTiming = {
     private _interval = ([_candSystem, _weaponInfo, _settings] call aegism_intercept_fnc_launcherInterval) * (_mods get "shotIntervalMult");
     private _spacing = _ts getOrDefault ["spacing", _interval / ((_mods get "reliability") max 0.05)];
     private _readyAt = ((_ts getOrDefault ["shotAt", -1e9]) + _interval) max (_ts getOrDefault ["holdUntil", -1e9]);
-    [_mods get "reactionTime", (_readyAt - time) max 0, _spacing, _candSystem magazineTurretAmmo [_magClass, _turretPath], (_settings getOrDefault ["salvoSize", 1]) max 1]
+    _cached = [_mods get "reactionTime", (_readyAt - time) max 0, _spacing, _candSystem magazineTurretAmmo [_magClass, _turretPath], (_settings getOrDefault ["salvoSize", 1]) max 1];
+    _timingCache set [_cacheKey, _cached];
+    _cached
 };
 
 // Seconds until one launcher turret can fire at a contact: crew reaction,
@@ -350,16 +394,14 @@ private _fnLauncherTiming = {
 // at sat on it until the 15s never-fired timeout.
 private _fnLauncherEta = {
     params ["_candSystem", "_weaponInfo", "_contactKey", "_tti"];
-    private _turretPath = _weaponInfo select 0;
     ([_candSystem, _weaponInfo] call _fnLauncherTiming) params ["_reaction", "_cooldown", "_spacing", "_rounds"];
     private _roundsAhead = 0;
     {
-        _x params ["_bSystem", "_bTurret", "_bKey", "_bRole", "_bHolding", ["_bRounds", 1]];
-        if (_bSystem == _candSystem && {_bTurret isEqualTo _turretPath} && {_bRole == "launcher"} && {_bHolding} && {_bKey != _contactKey}
-            && {(_ttiByKey getOrDefault [_bKey, 1e10]) < _tti}) then {
+        _x params ["_bKey", "_bRole", "_bHolding", "_bRounds"];
+        if (_bRole == "launcher" && {_bHolding} && {_bKey != _contactKey} && {(_ttiByKey getOrDefault [_bKey, 1e10]) < _tti}) then {
             _roundsAhead = _roundsAhead + _bRounds;
         };
-    } forEach _busyTurrets;
+    } forEach (_busy getOrDefault [[netId _candSystem, _weaponInfo select 0], []]);
     if (_rounds <= _roundsAhead) exitWith { AEGISM_NO_ROUND };
     _reaction max (_cooldown + _roundsAhead * _spacing)
 };
@@ -413,14 +455,21 @@ private _fnPlanShot = {
         private _origin = eyePos _candSystem;
         private _p0 = getPosASL _object;
         private _v = velocity _object;
+        private _lockCone = ([_weaponInfo select 1, _weaponInfo select 2] call aegism_intercept_fnc_weaponKinematics) select 8;
         private _shots = [];
         for "_t" from 0 to _tti step AEGISM_RESERVE_PLAN_STEP do {
             private _p = (_p0 vectorAdd (_v vectorMultiply _t)) vectorDiff [0, 0, _drop * _t * _t];
             private _distance = _origin distance _p;
             private _height = (ASLToAGL _p) select 2;
             if (_distance >= _minRange && {_distance <= _maxRange} && {_height >= _minAltitude} && {_maxAltitude <= 0 || {_height <= _maxAltitude}}) then {
-                ([_candSystem, _origin, _object, _weaponInfo, "launcher", false, _t, _ballistic] call aegism_intercept_fnc_computeLeadPoint) params ["", "_feasible", "_flightTime"];
-                if (_feasible && {_t + (_flightTime max 0) < _tti}) then {
+                ([_candSystem, _origin, _object, _weaponInfo, "launcher", false, _t, _ballistic] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "_flightTime"];
+                // Only a shot the turret can point at (or within the missile's
+                // lock cone of): a RAM planned onto rockets above its 40-degree
+                // limit held the Patriots in reserve for kills it couldn't make.
+                if (_feasible && {_t + (_flightTime max 0) < _tti} && {
+                    ([_candSystem, _weaponInfo select 0, _origin vectorFromTo _aimPoint] call aegism_intercept_fnc_turretCanPoint) params ["_canPoint", "_aimElevation", "_minElevation", "_maxElevation"];
+                    _canPoint || {_aimElevation <= _maxElevation + _lockCone && {_aimElevation >= _minElevation - _lockCone}}
+                }) then {
                     _shots pushBack [time + _t, time + _t + (_flightTime max 0)];
                 };
             };
@@ -610,8 +659,7 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                 if (_eta + (_record getOrDefault ["flightTime", 0]) >= _timeToImpact) then {
                     _handoff = [_record, _eta];
                     _existing deleteAt _index;
-                    private _busyIndex = _busyTurrets findIf { (_x select 0) == (_record get "system") && {(_x select 1) isEqualTo _turretPath} && {(_x select 2) == _contactKey} };
-                    if (_busyIndex != -1) then { _busyTurrets deleteAt _busyIndex; };
+                    [_record get "system", _turretPath, _contactKey] call _fnBusyRemove;
                     _hasLauncher = false;
                 };
             };
@@ -642,15 +690,19 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                         // conflicts with a gun on the same turret, or with
                         // its own claims when this contact can't be queued
                         // (an aircraft).
-                        private _conflict = (_busyTurrets findIf {
-                            _x params ["_bSystem", "_bTurret", "_bKey", "_bRole", "_bHolding"];
-                            _bSystem == _candSystem && {_bTurret isEqualTo (_candInfo select 0)} && {_bKey != _contactKey} && {_bHolding}
-                                && {_role == "ciws" || {_bRole == "ciws"} || {!_isMunition}}
+                        private _conflict = ((_busy getOrDefault [[netId _candSystem, _candInfo select 0], []]) findIf {
+                            _x params ["_bKey", "_bRole", "_bHolding"];
+                            _bKey != _contactKey && {_bHolding} && {_role == "ciws" || {_bRole == "ciws"} || {!_isMunition}}
                         }) != -1;
                         private _avoided = _role == "launcher" && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) != -1};
                         private _reserved = _role == "launcher" && {_reserveReach > 0} && {(_candInfo select 5) > _reserveReach};
                         if (_reserved) then { _held pushBackUnique _candSystem; };
-                        if (!_conflict && {!_avoided} && {!_reserved} && {_class in (_candSettings getOrDefault ["targetClassAllowlist", []])}) then {
+                        // A launcher the contact is plainly beyond (its missile's
+                        // own reach; doctrine can only shorten it) is skipped
+                        // before the full check. The margin covers eyePos vs
+                        // vehicle position.
+                        private _beyond = _role == "launcher" && {((getPosASL _candSystem) distance _targetPos) > (_candInfo select 5) + 50};
+                        if (!_conflict && {!_avoided} && {!_reserved} && {!_beyond} && {_class in (_candSettings getOrDefault ["targetClassAllowlist", []])}) then {
                             private _engage = [_candSystem, _role, _candInfo, _object, _candSettings] call aegism_intercept_fnc_canEngage;
                             if (_engage select 0) then { _eligible pushBack [_forEachIndex, _engage param [2, 0]]; };
                         };
@@ -731,8 +783,8 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                                 ["interceptors", []],
                                 ["flightTime", _flightTime]
                             ];
-                            _busyTurrets pushBack [_bestSystem, _bestInfo select 0, _contactKey, _bestRole, true,
-                                [0, ((_bestSystem call _fnSettings) getOrDefault ["salvoSize", 1]) max 1] select (_role == "launcher")];
+                            [_bestSystem, _bestInfo select 0, _contactKey, _bestRole, true,
+                                [0, ((_bestSystem call _fnSettings) getOrDefault ["salvoSize", 1]) max 1] select (_role == "launcher")] call _fnBusyAdd;
                             // A launcher taking munitions stays available for
                             // more this cycle -- it queues them (bounded by each
                             // one's time to impact, see _fnLauncherEta).
@@ -770,8 +822,8 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                     diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " ASSIGN-CLEAR: %1 (launcher) released %2 -- no missile left for it (its queue is deeper than its magazine), no other launcher can take it yet.", _old get "system", _object];
                 } else {
                     _existing pushBack _old;
-                    _busyTurrets pushBack [_old get "system", (_old get "weaponInfo") select 0, _contactKey, "launcher", true,
-                        ((((_old get "system") call _fnSettings) getOrDefault ["salvoSize", 1]) max 1)];
+                    [_old get "system", (_old get "weaponInfo") select 0, _contactKey, "launcher", true,
+                        (((_old get "system") call _fnSettings) getOrDefault ["salvoSize", 1]) max 1] call _fnBusyAdd;
                     _hasLauncher = true;
                 };
             };

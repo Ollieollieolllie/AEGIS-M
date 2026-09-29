@@ -156,12 +156,14 @@ private _fnExecute = {
     params ["_target", "_weaponInfo", "_state"];
     _weaponInfo params ["_turretPath", "_weaponClass", "_magClass"];
 
-    if ((_system magazineTurretAmmo [_magClass, _turretPath]) <= 0) exitWith {};
+    // Each exit below records where this engagement stands ("status", for the
+    // debug overlays, aegism_fnc_statusStyle).
+    if ((_system magazineTurretAmmo [_magClass, _turretPath]) <= 0) exitWith { _state set ["status", "noAmmo"]; };
 
     // A launcher whose salvo is away has nothing left to do for this target
     // (its missiles guide themselves): it no longer aims at it, so the
     // turret is free for its next assignment while they fly.
-    if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) exitWith {};
+    if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) exitWith { _state set ["status", "inFlight"]; };
 
     private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 
@@ -178,6 +180,7 @@ private _fnExecute = {
     _aim params ["_aligned", "_angle", "_tolerance", "_aimPoint", "_feasible", ["_inRange", true]];
 
     if (time < (_state get "assignedAt") + _reactionTime) exitWith {
+        _state set ["status", "reacting"];
         if !(_state getOrDefault ["reactionLogged", false]) then {
             _state set ["reactionLogged", true];
             diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " REACTING: %1 (%2) on %3 -- crew reaction %4s, turret slewing meanwhile.", _system, _role, _target, _reactionTime];
@@ -196,8 +199,10 @@ private _fnExecute = {
     if (_isCiws && {time < _burstEndsAt}) exitWith {
         if (_burstTarget != _target || {!_losClear}) then {
             _ts set ["burst", [time, _burstTarget, _burstId]];
+            _state set ["status", ["slewing", "losBlocked"] select !_losClear];
         } else {
             _state set ["lastShotAt", time];
+            _state set ["status", "firing"];
         };
     };
 
@@ -215,11 +220,12 @@ private _fnExecute = {
     private _interval = _baseInterval * (_crewMods get "shotIntervalMult");
     private _intervalFrom = if (_isCiws) then { [-1, _burstEndsAt] select (_burstTarget == _target) } else { _ts getOrDefault ["shotAt", -1] };
 
-    if (_intervalFrom >= 0 && {time < _intervalFrom + _interval}) exitWith {};
-    if (time < (_state getOrDefault ["nextAttemptAt", -1])) exitWith {};
-    if (!_isCiws && {time < (_ts getOrDefault ["holdUntil", -1])}) exitWith {};
+    if (_intervalFrom >= 0 && {time < _intervalFrom + _interval}) exitWith { _state set ["status", "reloading"]; };
+    if (time < (_state getOrDefault ["nextAttemptAt", -1])) exitWith { _state set ["status", "reloading"]; };
+    if (!_isCiws && {time < (_ts getOrDefault ["holdUntil", -1])}) exitWith { _state set ["status", "reloading"]; };
 
     if (!_losClear) exitWith {
+        _state set ["status", "losBlocked"];
         if !(_state getOrDefault ["losBlocked", false]) then {
             _state set ["losBlocked", true];
             diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOS-BLOCKED: %1 (%2) cannot see %3 -- holding, re-checking every tick.", _system, _role, _target];
@@ -228,6 +234,7 @@ private _fnExecute = {
     _state set ["losBlocked", false];
 
     if (!_feasible) exitWith {
+        _state set ["status", "noSolution"];
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
             diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " NO-SOLUTION: %1 (%2) holding on %3 -- no intercept inside the weapon's reach (target receding faster than the round can close, or meeting point beyond range).", _system, _role, _target];
@@ -237,15 +244,22 @@ private _fnExecute = {
     // A gun tracking a target still beyond its open-fire range (aegism_
     // intercept_fnc_openFireRange): on it, holding fire until it's closer.
     if (!_inRange) exitWith {
+        _state set ["status", "rangeHold"];
         if !(_state getOrDefault ["rangeHoldLogged", false]) then {
             _state set ["rangeHoldLogged", true];
-            (_ts getOrDefault ["solve", []]) params ["", "", "", "", "", "", "", ["_interceptDistance", 0], "", "", ["_openFireRange", 0]];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " RANGE-HOLD: %1 (%2) tracking %3 -- intercept at %4m, beyond its %5m open-fire range (its own config hit probability is lower out there): holding fire until it's closer.",
-                _system, _role, _target, round _interceptDistance, round _openFireRange];
+            (_ts getOrDefault ["solve", []]) params ["", "", "", "", "", "", "", ["_interceptDistance", 0], "", "", ["_openFireRange", 0], ["_minRange", 0]];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " RANGE-HOLD: %1 (%2) tracking %3 -- intercept at %4m, %5: holding fire (see OPEN-FIRE-RANGE).",
+                _system, _role, _target, round _interceptDistance,
+                if (_interceptDistance < _minRange) then {
+                    format ["inside the round's %1m arming distance", round _minRange]
+                } else {
+                    format ["beyond its %1m open-fire range, where one burst is less than %2 percent likely to hit", round _openFireRange, _engagementSettings getOrDefault ["ciwsOpenFireChance", 40]]
+                }];
         };
     };
 
     if (!_aligned) exitWith {
+        _state set ["status", "slewing"];
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
             // Why a turret can't get there: its aim point past the turret's own
@@ -271,6 +285,7 @@ private _fnExecute = {
         case 1: {
             _state set ["lastShotAt", time];
             _state set ["roundsFired", (_state get "roundsFired") + 1];
+            _state set ["status", ["firing", "inFlight"] select (!_isCiws && {(_state get "roundsFired") >= _salvoSize})];
             if (!_isCiws) then {
                 // Measured time per missile when firing back to back (it
                 // includes lost reliability rolls and re-aiming between
@@ -287,6 +302,7 @@ private _fnExecute = {
             _ts set ["shotAt", time];
         };
         case 0: {
+            _state set ["status", "crewFailed"];
             _state set ["nextAttemptAt", time + _interval];
             // Site launcher, nothing fired at this contact yet: the crew's
             // lost cycle holds the turret, and the coordinator hands the
@@ -297,6 +313,7 @@ private _fnExecute = {
                 _state set ["crewFailed", true];
             };
         };
+        default { _state set ["status", "held"]; };
     };
 };
 
@@ -315,6 +332,9 @@ if (!isNull _network) exitWith {
             if (_isCiws || _salvoAway || {!(_turretPath in _workingTurrets)}) then {
                 if (!_isCiws && {!_salvoAway}) then { _workingTurrets pushBack _turretPath; };
                 [_target, _x get "weaponInfo", _x] call _fnExecute;
+            } else {
+                // Behind another on this launcher's queue.
+                _x set ["status", "queued"];
             };
         };
     } forEach _assigned;

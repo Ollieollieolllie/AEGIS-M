@@ -10,6 +10,8 @@ class CfgFunctions
             class resolveEngagementSettings {};
             class resolveCrew {};
             class applyOverrides {};
+            class resolveSettings {};
+            class zeusApplyOverrides {};
             class defaultEngagementSettings {};
             class defaultCrew {};
             class scanForRoles {};

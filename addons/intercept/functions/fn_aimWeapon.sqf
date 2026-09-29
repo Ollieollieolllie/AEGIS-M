@@ -25,9 +25,10 @@ Description:
 
     Alignment:
         ciws - aegism_intercept_fnc_ciwsGate: the intercept inside the gun's
-            open-fire range (aegism_intercept_fnc_openFireRange: where its
-            own config hit probability still reaches doctrine
-            ciwsOpenFireChance), and the barrel's error at the intercept
+            open-fire range (aegism_intercept_fnc_openFireRange: where one
+            burst still hits with doctrine ciwsOpenFireChance, from the gun's
+            measured accuracy, the round's flight and reach, and the hit
+            radius), and the barrel's error at the intercept
             within the target's own half-size (aegism_intercept_fnc_
             targetHitRadius) plus the gun's own spread there (the current
             fire mode's CfgWeapons dispersion), with the last-ditch rule.
@@ -157,10 +158,11 @@ private _barrel = [_system, _turretPath, _weaponClass] call aegism_intercept_fnc
 private _angle = acos (((_barrel vectorCos (_origin vectorFromTo _aimPoint)) min 1) max -1);
 
 if (_isCiws) exitWith {
+    private _targetRadius = [_target] call aegism_intercept_fnc_targetHitRadius;
     private _tolerance = AEGISM_AIM_ON_TARGET;
     if (_interceptDistance > 0) then {
         private _dispersion = ([_system, _turretPath, _weaponClass] call aegism_intercept_fnc_fireModeStats) select 1;
-        _tolerance = deg (_dispersion + ([_target] call aegism_intercept_fnc_targetHitRadius) / _interceptDistance);
+        _tolerance = deg (_dispersion + _targetRadius / _interceptDistance);
     };
 
     // The aim point's own velocity, from the previous solve on this target:
@@ -174,16 +176,21 @@ if (_isCiws) exitWith {
         };
         if (_dt == 0) then { _aimVelocity = _previous select 2; };
     };
-    // How far out this gun opens fire (aegism_intercept_fnc_openFireRange):
-    // its own config hit probability, against doctrine ciwsOpenFireChance.
+    // Where this gun opens fire on this target (aegism_intercept_fnc_
+    // openFireRange): one burst's chance of a hit from its measured
+    // accuracy, the round's flight and the hit radius -- a munition's is the
+    // round's blast radius or its own size, as the fuse uses.
     private _settings = _system getVariable "AEGISM_resolvedEngagementSettings";
     if (isNil "_settings") then { _settings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
-    private _openFireRange = [_weaponClass, (_settings getOrDefault ["ciwsOpenFireChance", 50]) / 100] call aegism_intercept_fnc_openFireRange;
+    private _hitRadius = if (_targetClass in ["missile", "rocket", "bomb", "artilleryShell"]) then {
+        _targetRadius max (([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics) select 11)
+    } else { _targetRadius };
+    ([_system, _turretPath, _weaponInfo, _targetClass, _hitRadius, _settings] call aegism_intercept_fnc_openFireRange) params ["_openFireRange", "_minRange"];
 
-    _ts set ["solve", [time, _aimPoint, _aimVelocity, _cameraOffset, _origin, _tolerance, _feasible, _interceptDistance, _target, _targetClass, _openFireRange]];
+    _ts set ["solve", [time, _aimPoint, _aimVelocity, _cameraOffset, _origin, _tolerance, _feasible, _interceptDistance, _target, _targetClass, _openFireRange, _minRange]];
 
-    private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint, _interceptDistance, _openFireRange] call aegism_intercept_fnc_ciwsGate;
-    [_aligned, _angle, _tolerance, _aimPoint, _feasible, _interceptDistance <= _openFireRange]
+    private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint, _interceptDistance, _openFireRange, _minRange] call aegism_intercept_fnc_ciwsGate;
+    [_aligned, _angle, _tolerance, _aimPoint, _feasible, _interceptDistance <= _openFireRange && {_interceptDistance >= _minRange}]
 };
 
 // --- Launcher ---

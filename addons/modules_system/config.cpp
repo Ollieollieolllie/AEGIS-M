@@ -248,7 +248,7 @@ class Cfg3DEN
                     class AEGISM_ovr_engageOnlyThreats: AEGISM_ovr_costValueJudgment
                     {
                         displayName = "Only Engage Munitions Threatening the Site";
-                        tooltip = "For a radar: whether a hostile artillery round or rocket it sees is only reported while predicted to land within the Threat Radius of a Site vehicle.";
+                        tooltip = "For a radar: whether a hostile munition it sees is only reported while it's a threat to a Site vehicle (predicted to land within the Threat Radius of one, or a missile guided or flying at one).";
                         property = "AEGISM_ovr_engageOnlyThreats";
                         expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_engageOnlyThreats', _value == 'on']};";
                     };
@@ -281,7 +281,7 @@ class Cfg3DEN
                     };
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsMaxRange,"AEGISM_ovr_ciwsMaxRange","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsMaxRange', parseNumber _value]};","Max Range (m)","0 = the gun's own config reach. Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsMinElevation,"AEGISM_ovr_ciwsMinElevation","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsMinElevation', parseNumber _value]};","Min Elevation (deg)","Blank = Site setting.");
-                    AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsOpenFireChance,"AEGISM_ovr_ciwsOpenFireChance","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsOpenFireChance', parseNumber _value]};","Open Fire at Hit Chance (%)","Fires only inside the range where the gun's own config hit probability reaches this. 0 = its full config reach. Blank = Site setting.");
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsOpenFireChance,"AEGISM_ovr_ciwsOpenFireChance","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsOpenFireChance', parseNumber _value]};","Open Fire at Hit Chance (%)","Fires only where one burst is at least this likely to hit, from the gun's measured accuracy and the round's flight. 0 = its full reach. Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstMin,"AEGISM_ovr_ciwsBurstMin","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstMin', parseNumber _value]};","Burst Length Min (s)","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstMax,"AEGISM_ovr_ciwsBurstMax","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstMax', parseNumber _value]};","Burst Length Max (s)","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstPause,"AEGISM_ovr_ciwsBurstPause","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstPause', parseNumber _value]};","Pause Between Bursts (s)","Blank = Site setting.");

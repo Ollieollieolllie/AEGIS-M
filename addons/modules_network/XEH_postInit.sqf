@@ -23,3 +23,7 @@ if (isServer) then {
         _curator addCuratorAddons ["aegism_modules_network"];
     }, true, [], true] call CBA_fnc_addClassEventHandler;
 };
+
+// Editing Site settings and vehicle overrides from Zeus (needs Zeus Enhanced
+// for the dialogs) -- see aegism_network_fnc_zeusInit.
+[] call aegism_network_fnc_zeusInit;

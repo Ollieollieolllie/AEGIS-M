@@ -65,19 +65,18 @@ Description:
         - For a Network/Site: every assignment record in its own AEGISM_
           claims (aegism_intercept_fnc_assignEngagements' output) draws a
           line from the assigned System's weapon-ish position (eyePos) to
-          the contact, coloured yellow once it's fired at least one round
-          (roundsFired > 0) or green if not yet, with a text label showing
-          the role and rounds fired. Every entry in the Site's own AEGISM_
+          the contact, coloured by that engagement's own state (aegism_fnc_
+          statusStyle: queued, reacting, slewing, range hold, firing, in
+          flight, ...), labelled with the weapon, that state, shots or
+          bursts fired and the distance. Every entry in the Site's own AEGISM_
           withheldCiws (a CIWS eligible for this contact but held back by
           the "CIWS Engages as Last Resort Only" doctrine gate) draws a
           dashed-look (short-segment) orange line instead, labeled "CIWS
           WITHHELD (last resort)" -- distinct from an active assignment so
           a withheld-on-purpose CIWS doesn't read as simply idle/incapable.
-        - For a STANDALONE System (no Network -- its own AEGISM_
-          engagementState_ROLE, since it never appears as a claims
-          assignee): the same line/label, drawn from its own local
-          acquisition state instead, coloured grey if LOS is currently
-          blocked.
+        - For a STANDALONE System (no Network -- each weapon turret's own
+          engagement state, since it never appears as a claims assignee):
+          the same line/label and colours.
 
 Parameters:
     None (reads the CBA setting and global pool-owner list itself)
@@ -237,14 +236,15 @@ private _fnDrawPoolOwner = {
                 if (!isNull _target) then {
                     private _targetPos = getPosASL _target;
                     private _roundsFired = _state getOrDefault ["roundsFired", 0];
-                    private _losClear = _state getOrDefault ["losClear", true];
-                    private _color = if (!_losClear) then { [0.5, 0.5, 0.5, 1] } else { if (_roundsFired > 0) then { [1, 0.8, 0, 1] } else { [0.2, 1, 0.2, 1] } };
+                    ([_state getOrDefault ["status", ""]] call aegism_fnc_statusStyle) params ["_statusText", "_color"];
+                    private _isGun = _role == "ciws";
 
                     drawLine3D [ASLToAGL _weaponPos, ASLToAGL _targetPos, _color];
                     drawIcon3D [
                         "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
                         _color, ASLToAGL _targetPos, 1, 1, 0,
-                        format ["%1: %2 shot(s)%3", _role, _roundsFired, ["", " [NO LOS]"] select !_losClear],
+                        format ["%1: %2, %3 %4, %5m", ["missile", "gun"] select _isGun, _statusText, _roundsFired, ["shot(s)", "burst(s)"] select _isGun,
+                            round (_weaponPos distance _targetPos)],
                         1, 0.035, "TahomaB"
                     ];
                 };
@@ -263,13 +263,21 @@ private _fnDrawPoolOwner = {
                         private _weaponPos = eyePos _assignedSystem; // already ASL
                         private _targetPos = getPosASL _target;
                         private _roundsFired = _record get "roundsFired";
-                        private _color = if (_roundsFired > 0) then { [1, 0.8, 0, 1] } else { [0.2, 1, 0.2, 1] };
+                        // Each engagement in its own state's colour (aegism_fnc_
+                        // statusStyle): a launcher's queue shows which one it's
+                        // on, which wait behind it, and which have missiles up.
+                        ([_record getOrDefault ["status", ""]] call aegism_fnc_statusStyle) params ["_statusText", "_color"];
+                        private _isGun = (_record get "role") == "ciws";
 
+                        // Which weapon, and how far: a vehicle with both
+                        // missiles and a gun (a Cheetah) draws both from the
+                        // same spot.
                         drawLine3D [ASLToAGL _weaponPos, ASLToAGL _targetPos, _color];
                         drawIcon3D [
                             "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
                             _color, ASLToAGL _targetPos, 1, 1, 0,
-                            format ["%1: %2 shot(s)", _record get "role", _roundsFired],
+                            format ["%1 %2: %3, %4 %5, %6m", ["missile", "gun"] select _isGun, (_record get "weaponInfo") select 1, _statusText, _roundsFired,
+                                ["shot(s)", "burst(s)"] select _isGun, round (_weaponPos distance _targetPos)],
                             1, 0.035, "TahomaB"
                         ];
                 };

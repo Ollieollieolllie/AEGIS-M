@@ -19,6 +19,7 @@ class CfgFunctions
             class aimWeapon {};
             class elevationAngle {};
             class turretCanPoint {};
+            class turretSlewTime {};
             class envelopeBounds {};
             class inEnvelope {};
             class canEngage {};

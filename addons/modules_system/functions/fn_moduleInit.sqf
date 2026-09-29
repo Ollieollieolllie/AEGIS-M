@@ -124,20 +124,11 @@ private _allSystems = missionNamespace getVariable ["AEGISM_allSystems", []];
 _allSystems pushBackUnique _vehicle;
 missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
 
-private _contactSource = [_vehicle] call aegism_system_fnc_resolveContactSource;
-private _overrides = [];
-private _engagementSettings = [_vehicle, _overrides] call aegism_system_fnc_resolveEngagementSettings;
-private _crew = [_vehicle, _overrides] call aegism_system_fnc_resolveCrew;
+private _overrides = [_vehicle] call aegism_system_fnc_resolveSettings;
 if (_overrides isNotEqualTo []) then {
     diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OVERRIDES: %1 uses its own vehicle settings instead of its Site's: %2", _vehicle, _overrides joinString ", "];
 };
-
-_vehicle setVariable ["AEGISM_resolvedContactSource", _contactSource, false];
-_vehicle setVariable ["AEGISM_resolvedEngagementSettings", _engagementSettings, false];
-_vehicle setVariable ["AEGISM_resolvedCrew", _crew, false];
-// The crew's timing/reliability modifiers, resolved with the crew: the
-// engagement loop and the coordinator read these every tick.
-_vehicle setVariable ["AEGISM_resolvedCrewMods", [_crew, _vehicle] call aegism_intercept_fnc_applyCrewModulation, false];
+private _contactSource = _vehicle getVariable "AEGISM_resolvedContactSource";
 
 [{
     params ["_args", "_pfhHandle"];
@@ -145,11 +136,7 @@ _vehicle setVariable ["AEGISM_resolvedCrewMods", [_crew, _vehicle] call aegism_i
     if (isNull _vehicle || {!alive _vehicle}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
     };
-    private _crew = [_vehicle] call aegism_system_fnc_resolveCrew;
-    _vehicle setVariable ["AEGISM_resolvedContactSource", [_vehicle] call aegism_system_fnc_resolveContactSource, false];
-    _vehicle setVariable ["AEGISM_resolvedEngagementSettings", [_vehicle] call aegism_system_fnc_resolveEngagementSettings, false];
-    _vehicle setVariable ["AEGISM_resolvedCrew", _crew, false];
-    _vehicle setVariable ["AEGISM_resolvedCrewMods", [_crew, _vehicle] call aegism_intercept_fnc_applyCrewModulation, false];
+    [_vehicle] call aegism_system_fnc_resolveSettings;
 }, 5, [_vehicle]] call CBA_fnc_addPerFrameHandler;
 
 if ("ownRadar" in _contactSource) then {

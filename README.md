@@ -16,6 +16,8 @@ Early development.
 ## Dependencies
 
 - [CBA_A3](https://github.com/CBATeam/CBA_A3) (hard dependency)
+- [Zeus Enhanced](https://github.com/zen-mod/ZEN) (optional: needed to edit
+  Site settings and vehicle overrides from Zeus)
 
 ## How it works
 
@@ -39,13 +41,15 @@ are never adopted, so an attack helicopter or an IFV with ATGMs keeps its
 normal AI.
 
 **IFF and threats.** Hostile contacts (mission side relations) are engaged,
-including munitions -- but a hostile artillery, mortar or MLRS round (or
-unguided rocket) only while its predicted impact falls within the threat
-radius of a Site vehicle (Site setting "Only Engage Munitions Threatening
-the Site", on by default): a shell landing well clear of the Site doesn't
-cost a single round (`IGNORED` in the RPT). Guided missiles and bombs are
-always engaged -- they steer or glide, so a ballistic prediction says
-nothing. A friendly or neutral munition is engaged only when it is
+including munitions -- but a hostile munition only while it's a threat to a
+Site vehicle (Site setting "Only Engage Munitions Threatening the Site", on
+by default): an artillery, mortar or MLRS round (or unguided rocket)
+predicted to land within the threat radius of one; a missile guided at one,
+or flying on a line that passes within the threat radius of one; a bomb
+whose fall or line of flight does. A shell landing well clear of the Site,
+or a missile flying at something else, doesn't cost a single round
+(`IGNORED` in the RPT), and is picked up if it turns toward the Site. A
+friendly or neutral munition is engaged only when it is
 predicted to hit the Site (doctrine "Engage Friendly Munitions Threatening
 the Site", on by default): a guided missile whose own target is a Site
 member, or an unguided round whose predicted impact falls within the threat
@@ -96,13 +100,25 @@ engine's own bullet physics, the round passes within 5 cm of the aim point
 out to 2.4 km, and arrives within 4 ms of the predicted time out to 2 km.
 The gun
 tracks a target from as far as it can reach, but only opens fire once the
-intercept is inside its **open-fire range**: where its own config hit
-probability (its fire modes' `minRangeProbab`/`midRangeProbab`/
-`maxRangeProbab`, what the game's AI uses) still reaches the Site's "Open
-Fire at Hit Chance" -- 50 % by default, about 2.1 km for a Phalanx whose
-config reach is 3 km at 10 % (`OPEN-FIRE-RANGE` once per gun, `RANGE-HOLD`
-while it waits). Given a choice, it takes a target it can open fire on now
-over one it can only track. It fires only while the barrel's error at the
+intercept is inside its **open-fire range**: where one burst is at least the
+Site's "Open Fire at Hit Chance" (40 % by default) likely to put a round
+within hitting distance. That's worked out from measurable things only:
+- the gun's own measured scatter: every spotted round's miss, square to the
+  line of sight, over its range. Until it has fired, the fire mode's
+  `dispersion` stands in for it.
+- how far the target strays from its predicted track per second of flight
+  (measured the same way)
+- the round's flight time (`initSpeed`, `airFriction`)
+- the hit radius: the round's own blast radius, or the target's size
+- the rounds in a burst: the gun's measured rate of fire times the burst
+  length
+
+It never fires beyond the round's reach in its lifetime (`timeToLive`), or
+inside its arming distance (`fuseDistance`) against a munition. The range
+moves as the gun learns its own accuracy: `OPEN-FIRE-RANGE` logs it with
+every input, `RANGE-HOLD` while a gun waits, and `TARGET-SIZE` logs each
+target type's measured size. Given a choice, the gun takes a target it can
+open fire on now over one it can only track. It fires only while the barrel's error at the
 intercept is within the target's own size plus the gun's own spread there
 (its fire mode's `dispersion`) -- about 0.3 degrees for a Phalanx at a shell
 2 km out. In the last-ditch
@@ -220,13 +236,25 @@ lives; the contact is then freed for reassignment -- to the same System
 again, a different/better-fit weapon, or CIWS. Two weapons sharing a turret
 are never assigned to different targets.
 
+**Only what a weapon can actually reach.** A launcher is only given a
+target its turret can point at: the intercept point has to be inside the
+turret's own elevation and traverse limits (with the missile's lock cone as
+slack) -- a RAM launcher limited to 40 deg elevation isn't queued a
+high-arc rocket it could never lock, which used to freeze its whole queue
+until a timeout. A gun is only given a target it can slew onto and reach
+before impact: its turret's own rotation rates (config, logged once as
+`TURRET-RATE`) give the slew time, the round's flight time is added, and a
+target that would impact first is released (`can't get on it in time`), so
+the gun moves on to one it can still kill.
+
 Syncing or unsyncing a vehicle to a Site, or editing the Site's own
 Attributes, takes effect live -- nothing requires re-placing modules or
 restarting the mission.
 
 **Server load.** All of the detection and engagement work runs on the
 server; other machines only suppress the AI targeting of crews they
-simulate themselves, and nothing is broadcast. On the server:
+simulate themselves, and nothing is broadcast but a Site alarm's change of
+state (its sound sources) and Zeus edits. On the server:
 - An idle weapon (nothing assigned to it, or nothing in a standalone
   System's pool) costs a quick check ten times a second.
 - Every round fired in the mission passes through one cached lookup; only
@@ -234,13 +262,16 @@ simulate themselves, and nothing is broadcast. On the server:
 - Incoming munitions are tracked by one shared tracker, twice a second
   each, spread over frames. A Site stops looking for a munition once one of
   its radars has it, and each radar re-traces its line of sight to a
-  munition at most once a second.
+  munition at most every 2 s.
 - A CIWS gun's rounds in flight are tracked by one handler per gun, and a
   round is only examined once it's close to the target. The gun solves its
   full aim 20 times a second and steers between solves.
 - The Site coordinator caches each munition's reserve-plan scan while the
   munition keeps to its predicted path, and skips the plan while every
-  munition already has a launcher.
+  munition already has a launcher. It keeps claims indexed per turret, works
+  out each launcher's timing once per run, doesn't re-judge a launcher whose
+  missiles are already flying, and rules out far-off contacts with a
+  distance check before the full engagement check.
 - Config values are read once per class and cached.
 
 The `PERF` line (below) shows all of this. An AA crew that another machine
@@ -267,8 +298,12 @@ standalone System's own acquired target, including live LOS state --
 directly from the same variables the detection/intercept pipeline itself
 reads and writes. Every System also shows a live status label (networked/
 standalone, contact source, per-role ammo, ASSIGNED, and live barrel
-alignment while aiming). An assigned weapon that isn't firing always logs
-why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
+alignment while aiming). Every engagement -- including each munition
+queued on a launcher -- is drawn and labelled in the colour of its own
+state: queued (blue), assigned (green), reacting / slewing (amber),
+reloading (orange), range hold (teal), firing (red), in flight (gold), no LOS
+/ no solution (purple), crew failed / fire held / no ammo (grey). An
+assigned weapon that isn't firing always logs why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
 `ASSIGN-CLEAR` with a reason. Every AEGIS-M RPT line carries the mission's
 game time (`[AEGIS-M] t=123.4 ...`): the RPT's own timestamp is wall-clock
 time, which keeps running while the game is paused.
@@ -277,7 +312,9 @@ time, which keeps running while the game is paused.
 by default) shows a live board in the hint box: the nearest Site's vehicles
 with their roles, colour-coded status (READY, TRACKING, REACTING, SLEWING,
 ENGAGING, FIRING, NO SOLUTION, LOS BLOCKED, NO AMMO, DESTROYED), target and
-ammo, then its contacts and which weapons are on each; other Sites and
+ammo, then each weapon's worked engagements in their state colours (and how
+many more are queued), then its contacts and which weapons are on each
+(coloured the same way); other Sites and
 standalone Systems in summary. It shows data wherever AEGIS-M runs its
 engagement logic: singleplayer, Eden Preview, or a hosted game's host.
 
@@ -305,7 +342,7 @@ second.
 
 ## Settings
 
-The Site module's attributes are in four sections. Every default is chosen
+The Site module's attributes are in five sections. Every default is chosen
 so a Site works out of the box: each weapon uses its own real config
 envelope, and all threat classes are engaged.
 
@@ -326,7 +363,7 @@ envelope, and all threat classes are engaged.
 | Engage Missiles / Rockets / Bombs / Artillery, Mortar and MLRS Rounds / Fixed-Wing / Helicopters / Drones | all on | Which threat classes the Site engages. |
 | Target Min / Max Height (m above ground) | 0 / 0 | Ignore contacts outside this height band. Max 0 = no limit. |
 | Engage Friendly Munitions Threatening the Site | On | Also engage a friendly/neutral round predicted to hit the Site. |
-| Only Engage Munitions Threatening the Site | On | A hostile artillery/mortar/MLRS round or unguided rocket is only engaged while predicted to land within the Threat Radius of a Site vehicle (`IGNORED` in the RPT otherwise). Guided missiles and bombs are always engaged. Off: every hostile munition in reach is engaged. |
+| Only Engage Munitions Threatening the Site | On | A hostile munition is only engaged while it's a threat to a Site vehicle: a shell/rocket predicted to land within the Threat Radius of one, a missile guided or flying at one, a bomb falling or flying at one (`IGNORED` in the RPT otherwise). Off: every hostile munition in reach is engaged. |
 | Threat Radius (m) | 0 | How close to a Site vehicle a predicted impact counts as a threat, for both settings above. 0 = the round's own config danger radius (`dangerRadiusHit`). |
 
 **Launchers (Missiles)**
@@ -344,10 +381,30 @@ envelope, and all threat classes are engaged.
 |---|---|---|
 | Max Range (m) | 0 | 0 = the gun's own reach (Cheetah 35 mm: 2500 m). |
 | Min Elevation (deg) | 5 | Never engages below it; holds fire while the barrel is below it. |
-| Open Fire at Hit Chance (%) | 50 | Tracks from its full reach, but only fires inside the range where the gun's own config hit probability reaches this (Phalanx: about 2.1 km of 3 km). Lower = earlier, farther, more rounds per hit. 0 = its full reach. |
+| Open Fire at Hit Chance (%) | 40 | Tracks from its full reach, but only fires where one burst is at least this likely to hit -- from the gun's measured scatter, the target's straying, the round's flight time, the hit radius and the rounds per burst; never past the round's lifetime reach or inside its arming distance. Lower = earlier, farther, more rounds per hit. 0 = its full reach. |
 | Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
 | Pause Between Bursts (s) | 1 | Gap after a burst before firing again at the same target. After a kill the gun goes straight on to its next target. |
 | Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |
+
+**Alarms**
+
+| Setting | Default | What it does |
+|---|---|---|
+| Going-Live Warning | Base alarm | Sounds from the moment the Site commits a weapon to a target (before its first shot) until the time below after its last shot. |
+| Incoming Alarm | Auto | Sounds while a munition threatening a Site vehicle is inbound (seen by a Site radar in the last 3 s -- the pool's own contact expiry), and replaces the warning meanwhile. Auto: BLUFOR the NATO helicopter warning, OPFOR the CSAT one, anyone else the Klaxon. |
+| Warning Lasts After Last Shot (s) | 10 | How long the warning keeps going after the last missile or gun round. |
+| Custom Warning / Incoming Sound | blank | Any looping sound source class (CfgVehicles, like vanilla's `Sound_Alarm`) -- e.g. from a sound mod with a real national siren or a spoken "incoming" -- replacing that state's tone. |
+
+The tones are the distinct alarm recordings in the base game: Base alarm
+(6.6 s cycle), Klaxon (1.6 s), Klaxon 2 (2.1 s), Siren (1.4 s),
+Restricted-zone warning (4.6 s), Helicopter warning NATO (2.0 s) and CSAT
+(1.5 s), Missile-lock tone (0.2 s beep), or Off. (Vanilla's BLUFOR, OPFOR
+and Independent alarms are the same recording, so they're one tone here.)
+Each plays like vanilla's own alarm sound source: volume 1, heard to 400 m,
+looped by the engine. The speakers are the non-vehicle objects synced to
+the Site -- a loudspeaker prop, a lamp post, a Game Logic -- or the Site
+module itself when none is. Only a change of alarm state crosses the
+network. Logged as `ALARM`.
 
 Range settings are real-world metres, scaled by the CBA setting AEGIS-M
 Range Scale. Launcher ranges never apply to guns, and vice versa.
@@ -361,10 +418,27 @@ MLRS Rounds" to Ignore so it never spends missiles on shells, or give one
 CIWS a shorter Max Range as an inner layer. Overrides on a radar affect its
 Interception Targets (what it reports, and which munitions it treats as
 threats). A vehicle's active overrides are logged at start
-(`OVERRIDES:` in the RPT). Script equivalent, e.g. for a Zeus-placed
-vehicle: `_veh setVariable ["AEGISM_ovr_enabled", true]` plus
+(`OVERRIDES:` in the RPT). Script equivalent:
+`_veh setVariable ["AEGISM_ovr_enabled", true]` plus
 `_veh setVariable ["AEGISM_ovr_<setting>", value]`
 (see `aegism_system_fnc_applyOverrides`).
+
+## Zeus
+
+With Zeus Enhanced loaded, every Site setting and every vehicle override
+can be edited live from Zeus, in a dialog built from the same attributes as
+Eden (same names, tooltips and choices, current values filled in):
+
+- **A Site:** double-click it, or place one (its dialog opens straight
+  away).
+- **An air-defence vehicle** (a radar, SAM launcher or CIWS AEGIS-M has
+  recognised): the **AEGIS-M** button in its Zeus attributes window.
+- **Either:** right-click it for **AEGIS-M Settings**, or place the module
+  **AEGIS-M > Edit Air Defence** on it (or within 50 m of a Site).
+
+An edit reaches every machine, including players who join later, and the
+Site's vehicles pick it up at once (`SITE-SETTINGS` / `OVERRIDES` in the
+RPT) rather than at their next 5-second refresh.
 
 ## License
 

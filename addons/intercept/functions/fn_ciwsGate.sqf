@@ -9,9 +9,10 @@ Description:
     every full solve (aegism_intercept_fnc_aimWeapon) and every steered
     frame in between (aegism_intercept_fnc_ciwsTrack).
 
-        in range - the intercept inside the gun's open-fire range
-            (aegism_intercept_fnc_openFireRange). Beyond it the gun keeps
-            tracking but never fires, last-ditch or not.
+        in range - the intercept inside the gun's open-fire range, and not
+            inside the round's arming distance against a munition (aegism_
+            intercept_fnc_openFireRange). Outside it the gun keeps tracking
+            but never fires, last-ditch or not.
         aligned - in range, a feasible intercept and the barrel within
             tolerance: the target's half-size plus the gun's dispersion, as
             an angle at the intercept distance
@@ -38,6 +39,7 @@ Parameters:
     _aimPoint - the aim point, ASL <ARRAY>
     _interceptDistance - metres to the intercept <NUMBER>
     _openFireRange - the gun's open-fire range, metres <NUMBER>
+    _minRange - the round's arming distance against this target, metres <NUMBER>
 
 Returns:
     Aligned <BOOLEAN>
@@ -55,9 +57,9 @@ Author:
 #define AEGISM_ENGAGEMENT_TICK 0.1
 #define AEGISM_LAST_DITCH_MAX_GATES 5
 
-params ["_system", "_ts", "_target", "_targetClass", "_angle", "_tolerance", "_feasible", "_aimPoint", ["_interceptDistance", 0], ["_openFireRange", 1e10]];
+params ["_system", "_ts", "_target", "_targetClass", "_angle", "_tolerance", "_feasible", "_aimPoint", ["_interceptDistance", 0], ["_openFireRange", 1e10], ["_minRange", 0]];
 
-private _inRange = _interceptDistance <= _openFireRange;
+private _inRange = _interceptDistance <= _openFireRange && {_interceptDistance >= _minRange};
 private _aligned = _feasible && {_inRange} && {_angle <= _tolerance};
 
 // Settled: the angle hasn't set a new best for AEGISM_AIM_SETTLE_TICKS

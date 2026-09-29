@@ -71,16 +71,25 @@ PERF_INC(PERF_SELECT_FULL);
 
 // [object, class, weaponInfo, in open-fire range] for every candidate some
 // ready weapon reaches.
-private _openFireChance = (_engagementSettings getOrDefault ["ciwsOpenFireChance", 50]) / 100;
 private _engageable = [];
 {
     _x params ["_object", "_class"];
     if (!isNull _object && {alive _object} && {_class in _allowlist}) then {
         private _inRange = false;
         private _idx = _weapons findIf {
-            private _engage = [_system, _role, _x, _object, _engagementSettings] call aegism_intercept_fnc_canEngage;
+            private _weaponInfo = _x;
+            private _engage = [_system, _role, _weaponInfo, _object, _engagementSettings] call aegism_intercept_fnc_canEngage;
             if (_engage select 0) then {
-                _inRange = _role != "ciws" || {(_engage param [3, 0]) <= ([_x select 1, _openFireChance] call aegism_intercept_fnc_openFireRange)};
+                _inRange = _role != "ciws" || {
+                    // As the gun's own aim judges it (aegism_intercept_fnc_aimWeapon).
+                    private _hitRadius = [_object] call aegism_intercept_fnc_targetHitRadius;
+                    if (_class in ["missile", "rocket", "bomb", "artilleryShell"]) then {
+                        _hitRadius = _hitRadius max (([_weaponInfo select 1, _weaponInfo select 2] call aegism_intercept_fnc_weaponKinematics) select 11);
+                    };
+                    ([_system, _weaponInfo select 0, _weaponInfo, _class, _hitRadius, _engagementSettings] call aegism_intercept_fnc_openFireRange) params ["_openFireRange", "_minRange"];
+                    private _interceptDistance = _engage param [3, 0];
+                    _interceptDistance <= _openFireRange && {_interceptDistance >= _minRange}
+                };
             };
             _engage select 0
         };

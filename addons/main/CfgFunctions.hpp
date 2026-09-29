@@ -8,10 +8,13 @@ class CfgFunctions
             class pollSyncedObjects {};
             class contactKey {};
             class perfLog {};
+            class statusStyle {};
             class debugDraw {};
             class debugHint {};
             class debugCheckSite {};
             class setWeaponAiSuppressed {};
+            class zeusAttributeDialog {};
+            class applyAttributeValues {};
         };
     };
 };

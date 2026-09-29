@@ -24,7 +24,8 @@
 #define PERF_ROUNDS_MS 17
 #define PERF_TRACKER_MS 18
 #define PERF_IGNORED 19
-#define PERF_COUNT 20
+#define PERF_OPEN_FIRE_BUILDS 20
+#define PERF_COUNT 21
 
 #define PERF_INC(INDEX) AEGISM_perfCounts set [INDEX, (AEGISM_perfCounts select INDEX) + 1]
 #define PERF_ADD(INDEX,VALUE) AEGISM_perfCounts set [INDEX, (AEGISM_perfCounts select INDEX) + (VALUE)]

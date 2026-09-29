@@ -15,13 +15,18 @@ Description:
         minElev / maxElev - elevation limits, degrees
         barrelPairs - [beginning, end] memory point names of the barrel
             (gunBeg/gunEnd, missileBeg/missileEnd) that both exist
+        traverseRate / elevateRate - how fast it turns, degrees per second:
+            maxHorizontalRotSpeed / maxVerticalRotSpeed, in the config's own
+            unit of 45 degrees per second (0 if not set). Logged once per
+            vehicle type and turret (TURRET-RATE).
 
 Parameters:
     _vehicle - the vehicle <OBJECT>
     _turretPath - turret path <ARRAY>
 
 Returns:
-    [muzzleGun, muzzleLauncher, camera, minElev, maxElev, barrelPairs] <ARRAY>
+    [muzzleGun, muzzleLauncher, camera, minElev, maxElev, barrelPairs,
+     traverseRate, elevateRate] <ARRAY>
 
 Examples:
     [_praetorian, [0]] call aegism_intercept_fnc_turretConfig;
@@ -69,7 +74,12 @@ _cached = [
     ([["memoryPointGunnerOptics"], ["uavCameraGunnerPos", "memoryPointGunnerOptics"]] select (unitIsUAV _vehicle)) call _fnFirst,
     getNumber (_turretCfg >> "minElev"),
     getNumber (_turretCfg >> "maxElev"),
-    _barrelPairs
+    _barrelPairs,
+    45 * getNumber (_turretCfg >> "maxHorizontalRotSpeed"),
+    45 * getNumber (_turretCfg >> "maxVerticalRotSpeed")
 ];
 _cache set [_key, _cached];
+diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TURRET-RATE: %1 turret %2 -- traverses %3 deg/s, elevates %4 deg/s (maxHorizontalRotSpeed %5, maxVerticalRotSpeed %6 x 45 deg/s), elevation %7 to %8 deg.",
+    typeOf _vehicle, _turretPath, round (_cached select 6), round (_cached select 7),
+    getNumber (_turretCfg >> "maxHorizontalRotSpeed"), getNumber (_turretCfg >> "maxVerticalRotSpeed"), _cached select 3, _cached select 4];
 _cached

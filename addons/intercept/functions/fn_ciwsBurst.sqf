@@ -84,7 +84,7 @@ private _roundLifetime = ([_weaponClass, _magazineClass] call aegism_intercept_f
 
 [{
     params ["_args", "_pfhHandle"];
-    _args params ["_system", "_target", "_turretPath", "_weaponClass", "_magazineClass", "_ts", "_startedAt", "_ammoAtStart", "_minElevation", "_elevationHeld", "_burstId", "_targetDesc", "_targetClass", "_roundLifetime"];
+    _args params ["_system", "_target", "_turretPath", "_weaponClass", "_magazineClass", "_ts", "_startedAt", "_ammoAtStart", "_minElevation", "_elevationHeld", "_burstId", "_targetDesc", "_targetClass", "_roundLifetime", "_firingTime"];
 
     (_ts getOrDefault ["burst", [-1, objNull, 0]]) params ["_endsAt", "", "_currentId"];
     private _ammo = if (alive _system) then { _system magazineTurretAmmo [_magazineClass, _turretPath] } else { 0 };
@@ -101,7 +101,15 @@ private _roundLifetime = ([_weaponClass, _magazineClass] call aegism_intercept_f
         // no newer burst owns the turret.
         if (!_superseded) then { _ts set ["burst", [time min _endsAt, _target, _burstId]]; };
         private _fired = (_ammoAtStart - _ammo) max 0;
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " BURST-END: %1 fired %2 round(s) of %3 at %4 in %5s%6.", _system, _fired, _weaponClass, _targetDesc, round ((time - _startedAt) * 10) / 10,
+        // The gun's real rate of fire, over the time it was cleared to fire
+        // (aegism_intercept_fnc_openFireRange): the engine fires at most once
+        // a frame, so it can fall short of the config's.
+        if (_fired > 0 && {_firingTime > 0}) then {
+            _ts set ["rateRounds", (_ts getOrDefault ["rateRounds", 0]) + _fired];
+            _ts set ["rateTime", (_ts getOrDefault ["rateTime", 0]) + _firingTime];
+        };
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " BURST-END: %1 fired %2 round(s) of %3 at %4 in %5s%6%7.", _system, _fired, _weaponClass, _targetDesc, round ((time - _startedAt) * 10) / 10,
+            if (_fired > 0 && {_firingTime > 0}) then { format [" (%1/s over the %2s it was on target)", round (_fired / _firingTime), round (_firingTime * 10) / 10] } else { "" },
             ["", format [" (held %1s: barrel below the %2 deg CIWS minimum elevation)", round (_elevationHeld * 10) / 10, _minElevation]] select (_elevationHeld > 0)];
 
         if (_fired > 0) then {
@@ -135,6 +143,7 @@ private _roundLifetime = ([_weaponClass, _magazineClass] call aegism_intercept_f
     if (_barrelElevation < _minElevation) exitWith {
         _args set [9, _elevationHeld + diag_deltaTime];
     };
+    _args set [14, _firingTime + diag_deltaTime];
 
     (weaponState [_system, _turretPath, _weaponClass]) params ["", "", "", "_loadedMagazine", "_loadedAmmo", ["_reloadPhase", 0]];
     if (_reloadPhase != 0 || {_loadedAmmo <= 0}) exitWith {};
@@ -164,4 +173,4 @@ private _roundLifetime = ([_weaponClass, _magazineClass] call aegism_intercept_f
     } else {
         [_system, ["UseMagazine", _system, _gunner, _creator, _id]] remoteExec ["action", _system turretOwner _turretPath];
     };
-}, 0, [_system, _target, _turretPath, _weaponClass, _magazineClass, _ts, time, _system magazineTurretAmmo [_magazineClass, _turretPath], _minElevation, 0, _burstId, _targetDesc, _targetClass, _roundLifetime]] call CBA_fnc_addPerFrameHandler;
+}, 0, [_system, _target, _turretPath, _weaponClass, _magazineClass, _ts, time, _system magazineTurretAmmo [_magazineClass, _turretPath], _minElevation, 0, _burstId, _targetDesc, _targetClass, _roundLifetime, 0]] call CBA_fnc_addPerFrameHandler;

@@ -107,42 +107,12 @@ if (isNull _logic) exitWith {};
 _units = (_units apply { vehicle _x }) select { _x isKindOf "AllVehicles" && {!(_x isKindOf "CAManBase")} };
 _units = _units arrayIntersect _units;
 
-private _allowlist = [];
-if (_logic getVariable ["allowMissile", true]) then { _allowlist pushBack "missile"; };
-if (_logic getVariable ["allowRocket", true]) then { _allowlist pushBack "rocket"; };
-if (_logic getVariable ["allowBomb", true]) then { _allowlist pushBack "bomb"; };
-if (_logic getVariable ["allowArtilleryShell", true]) then { _allowlist pushBack "artilleryShell"; };
-if (_logic getVariable ["allowFixedWing", true]) then { _allowlist pushBack "fixedWing"; };
-if (_logic getVariable ["allowHelicopter", true]) then { _allowlist pushBack "helicopter"; };
-if (_logic getVariable ["allowDrone", true]) then { _allowlist pushBack "drone"; };
+([_logic] call aegism_network_fnc_readSiteSettings) params ["_engagementData", "_crewData"];
+private _allowlist = _engagementData get "targetClassAllowlist";
 
-private _engagementData = createHashMapFromArray [
-    ["minRange", _logic getVariable ["minRange", 0]],
-    ["maxRange", _logic getVariable ["maxRange", 0]],
-    ["ciwsMaxRange", _logic getVariable ["ciwsMaxRange", 0]],
-    ["minAltitude", _logic getVariable ["minAltitude", 0]],
-    ["maxAltitude", _logic getVariable ["maxAltitude", 0]],
-    ["targetPriority", _logic getVariable ["targetPriority", "soonestImpact"]],
-    ["salvoSize", _logic getVariable ["salvoSize", 1]],
-    ["minShotInterval", _logic getVariable ["minShotInterval", 0]],
-    ["ciwsBurstMin", _logic getVariable ["ciwsBurstMin", 3]],
-    ["ciwsBurstMax", _logic getVariable ["ciwsBurstMax", 5]],
-    ["ciwsBurstPause", _logic getVariable ["ciwsBurstPause", 1]],
-    ["ciwsMinElevation", _logic getVariable ["ciwsMinElevation", 5]],
-    ["ciwsOpenFireChance", _logic getVariable ["ciwsOpenFireChance", 50]],
-    ["engageFriendlyThreats", _logic getVariable ["engageFriendlyThreats", true]],
-    ["engageOnlyThreats", _logic getVariable ["engageOnlyThreats", true]],
-    ["friendlyThreatRadius", _logic getVariable ["friendlyThreatRadius", 0]],
-    ["targetClassAllowlist", _allowlist],
-    ["ciwsLastResort", _logic getVariable ["ciwsLastResort", false]]
-];
-
-private _crewData = createHashMapFromArray [
-    ["skillTier", _logic getVariable ["skillTier", "regular"]],
-    ["temperament", _logic getVariable ["temperament", "standard"]],
-    ["costValueJudgment", _logic getVariable ["costValueJudgment", false]],
-    ["crewOnAutomated", _logic getVariable ["crewOnAutomated", false]]
-];
+// In Zeus, double-clicking the Site opens AEGIS-M's own settings dialog
+// (aegism_network_fnc_zeusInit), not Zeus Enhanced's generic object window.
+_logic setVariable ["zen_attributes_disabled", true];
 
 _logic setVariable ["AEGISM_pooledContacts", createHashMap, false];
 _logic setVariable ["AEGISM_claims", createHashMap, false];
@@ -196,8 +166,10 @@ private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_syst
         if (!(_object isKindOf "AllVehicles") || {_object isKindOf "CAManBase"}) exitWith {};
         private _siteLogic = _data get "logic";
         _object setVariable ["AEGISM_network", _siteLogic, false];
-        _object setVariable ["AEGISM_engagement", _data get "engagementData", false];
-        _object setVariable ["AEGISM_crew", _data get "crewData", false];
+        // The Site's CURRENT settings -- a Zeus edit (aegism_network_fnc_
+        // zeusApplySite) replaces them after this init.
+        _object setVariable ["AEGISM_engagement", _siteLogic getVariable "AEGISM_engagement", false];
+        _object setVariable ["AEGISM_crew", _siteLogic getVariable "AEGISM_crew", false];
         // remoteExecCall to EVERY machine (target 0) -- this callback runs
         // server-only (aegism_fnc_pollSyncedObjects), and disableAI is
         // local AI state, so it must reach wherever the crew is simulated.
@@ -251,7 +223,7 @@ private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_syst
         private _members = _siteLogic getVariable ["AEGISM_networkMembers", []];
         _siteLogic setVariable ["AEGISM_networkMembers", _members - [_object], false];
     },
-    createHashMapFromArray [["logic", _logic], ["engagementData", _engagementData], ["crewData", _crewData]],
+    createHashMapFromArray [["logic", _logic]],
     5,
     {
         params ["_logic", "_logicNetId"];
@@ -266,16 +238,19 @@ private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_syst
 // wide state), so registering it on every client would have each one
 // independently compute and stomp on the same assignments. Every 0.5s;
 // member engagement loops tick at 0.1s and work the published assignments
-// in between.
+// in between. The Site's alarm (aegism_network_fnc_siteAlarm) follows the
+// assignments it has just made; its sound sources go with the Site.
 if (isServer) then {
     [{
         params ["_args", "_pfhHandle"];
-        _args params ["_logic"];
+        _args params ["_logic", "_alarm"];
         if (isNull _logic) exitWith {
+            { deleteVehicle _x; } forEach (_alarm select 2);
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
         [_logic] call aegism_intercept_fnc_assignEngagements;
-    }, 0.5, [_logic]] call CBA_fnc_addPerFrameHandler;
+        [_logic, _alarm] call aegism_network_fnc_siteAlarm;
+    }, 0.5, [_logic, ["", "", []]]] call CBA_fnc_addPerFrameHandler;
 };
 
 diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];

@@ -2,16 +2,18 @@
 Function: aegism_detect_fnc_munitionThreat
 
 Description:
-    Whether a munition is predicted to hit what a pool owner protects: every
-    live member of its Site, or just itself if standalone. Asked of a
-    friendly or neutral munition (engaged only if so), and of a hostile
-    artillery round or rocket when the Site only engages threats
-    (aegism_detect_fnc_munitionCheck).
+    Whether a munition is a threat to what a pool owner protects: every live
+    member of its Site, or just itself if standalone. Asked of a friendly or
+    neutral munition (engaged only if so), and of any hostile munition when
+    the Site only engages threats (aegism_detect_fnc_munitionCheck).
 
-        guided missile - its own seeker target (missileTarget) is one of the
-            protected vehicles
-        anything else (or a missile with no target) - its predicted impact
-            falls within the threat radius of one of them. Prediction is a
+        missile - its own seeker target (missileTarget) is one of the
+            protected vehicles ("guided"), or its current line of flight
+            passes within the threat radius of one, closing ("heading")
+        bomb - its line of flight passes within the threat radius, or its
+            predicted fall lands within it
+        artillery round, rocket - its predicted impact falls within the
+            threat radius of one of them ("ballistic"). Prediction is a
             drag-free ballistic fall from the current position and velocity
             to each protected vehicle's own height. Vanilla artillery really
             is drag-free (Sh_155mm_AMOS and the MLRS R_230mm_fly have
@@ -34,7 +36,8 @@ Parameters:
 
 Returns:
     [] if no threat, else [threatened vehicle <OBJECT>, predicted miss
-    distance m <NUMBER>, threat radius m <NUMBER>, "guided" | "ballistic"]
+    distance m <NUMBER>, threat radius m <NUMBER>, "guided" | "heading" |
+    "ballistic"]
 
 Examples:
     [_shell, "artilleryShell", _radar, 0] call aegism_detect_fnc_munitionThreat;
@@ -102,14 +105,36 @@ if (_radius <= 0) then {
 };
 
 private _missileTarget = if (_class == "missile") then { missileTarget _projectile } else { objNull };
-if (!isNull _missileTarget) exitWith {
-    [[], [_missileTarget, 0, _radius, "guided"]] select (_missileTarget in _protected)
+if (!isNull _missileTarget && {_missileTarget in _protected}) exitWith {
+    [_missileTarget, 0, _radius, "guided"]
 };
 
 private _pos = getPosASL _projectile;
-(velocity _projectile) params ["_vx", "_vy", "_vz"];
+private _velocity = velocity _projectile;
+_velocity params ["_vx", "_vy", "_vz"];
 
 private _best = [];
+// A missile or bomb flying straight at the Site: the closest its current
+// line of flight comes to a protected vehicle (it steers or glides, so its
+// fall alone says little), if it's closing.
+if (_class in ["missile", "bomb"]) then {
+    private _speedSq = _velocity vectorDotProduct _velocity;
+    if (_speedSq > 0) then {
+        {
+            private _toVehicle = (getPosASL _x) vectorDiff _pos;
+            private _along = (_toVehicle vectorDotProduct _velocity) / _speedSq;
+            if (_along > 0) then {
+                private _miss = vectorMagnitude (_toVehicle vectorDiff (_velocity vectorMultiply _along));
+                if (_miss <= _radius && {_best isEqualTo [] || {_miss < (_best select 1)}}) then {
+                    _best = [_x, _miss, _radius, "heading"];
+                };
+            };
+        } forEach _protected;
+    };
+};
+// A missile guided at something else, not flying at the Site: no threat.
+if (_class == "missile") exitWith { _best };
+
 {
     // Later root of z0 + vz*t - g*t^2/2 = protected vehicle's height: the
     // moment the round comes down through that height.

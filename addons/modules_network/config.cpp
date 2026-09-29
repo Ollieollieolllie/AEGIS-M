@@ -6,7 +6,7 @@ class CfgPatches
         weapons[] = {};
         author = "Snow(Dryden)";
         requiredVersion = 2.10;
-        requiredAddons[] = {"aegism_main", "aegism_intercept", "A3_Modules_F"};
+        requiredAddons[] = {"aegism_main", "aegism_intercept", "aegism_modules_system", "A3_Modules_F", "A3_Sounds_F"};
         #include "version.hpp"
     };
 };
@@ -28,8 +28,105 @@ class Extended_PostInit_EventHandlers
     };
 };
 
+// Site alarms (aegism_network_fnc_siteAlarm): one looping sound per tone,
+// built exactly like vanilla's own "Alarm" sound source (CfgSFX AlarmSfx,
+// CfgVehicles Sound_Alarm): volume 1, heard to 400m, played back to back.
+// Every tone is a distinct vanilla recording (the vanilla alarm_BLUFOR,
+// alarm_OPFOR and alarm_Independent files are byte-for-byte the same
+// recording, so they're one tone here: "base"). Lengths measured from the
+// files themselves.
+class CfgSFX
+{
+    class AEGISM_Alarm_Base_Sfx
+    {
+        name = "AEGIS-M: Base alarm";
+        sounds[] = {"alarm"};
+        alarm[] = {"A3\Sounds_F\sfx\alarm_BLUFOR", 1, 1, 400, 1, 0, 0, 0}; // 6.6s
+        empty[] = {"", 0, 0, 0, 0, 0, 0, 0};
+    };
+    class AEGISM_Alarm_Klaxon_Sfx: AEGISM_Alarm_Base_Sfx
+    {
+        name = "AEGIS-M: Klaxon";
+        alarm[] = {"A3\Sounds_F\sfx\alarm", 1, 1, 400, 1, 0, 0, 0}; // 1.6s
+    };
+    class AEGISM_Alarm_Klaxon2_Sfx: AEGISM_Alarm_Base_Sfx
+    {
+        name = "AEGIS-M: Klaxon 2";
+        alarm[] = {"A3\Sounds_F\sfx\alarm_3", 1, 1, 400, 1, 0, 0, 0}; // 2.1s
+    };
+    class AEGISM_Alarm_Siren_Sfx: AEGISM_Alarm_Base_Sfx
+    {
+        name = "AEGIS-M: Siren";
+        alarm[] = {"A3\Sounds_F\sfx\siren", 1, 1, 400, 1, 0, 0, 0}; // 1.4s
+    };
+    class AEGISM_Alarm_Zone_Sfx: AEGISM_Alarm_Base_Sfx
+    {
+        name = "AEGIS-M: Restricted-zone warning";
+        alarm[] = {"A3\Sounds_F_Orange\MissionSFX\Orange_ZoneRestriction_Warning", 1, 1, 400, 1, 0, 0, 0}; // 4.6s
+    };
+    class AEGISM_Alarm_HeliNato_Sfx: AEGISM_Alarm_Base_Sfx
+    {
+        name = "AEGIS-M: Helicopter warning (NATO)";
+        alarm[] = {"A3\Sounds_F\vehicles\air\noises\heli_alarm_bluefor", 1, 1, 400, 1, 0, 0, 0}; // 2.0s
+    };
+    class AEGISM_Alarm_HeliCsat_Sfx: AEGISM_Alarm_Base_Sfx
+    {
+        name = "AEGIS-M: Helicopter warning (CSAT)";
+        alarm[] = {"A3\Sounds_F\vehicles\air\noises\heli_alarm_opfor", 1, 1, 400, 1, 0, 0, 0}; // 1.5s
+    };
+    class AEGISM_Alarm_Lock_Sfx: AEGISM_Alarm_Base_Sfx
+    {
+        name = "AEGIS-M: Missile-lock tone";
+        alarm[] = {"A3\Sounds_F\vehicles\air\noises\alarm_locked_by_missile_2", 1, 1, 400, 1, 0, 0, 0}; // 0.2s
+    };
+};
+
 class CfgVehicles
 {
+    class Sound;
+    class AEGISM_Alarm_Base: Sound
+    {
+        author = "Snow(Dryden)";
+        scope = 1;
+        sound = "AEGISM_Alarm_Base_Sfx";
+        displayName = "AEGIS-M: Base alarm";
+    };
+    class AEGISM_Alarm_Klaxon: AEGISM_Alarm_Base
+    {
+        sound = "AEGISM_Alarm_Klaxon_Sfx";
+        displayName = "AEGIS-M: Klaxon";
+    };
+    class AEGISM_Alarm_Klaxon2: AEGISM_Alarm_Base
+    {
+        sound = "AEGISM_Alarm_Klaxon2_Sfx";
+        displayName = "AEGIS-M: Klaxon 2";
+    };
+    class AEGISM_Alarm_Siren: AEGISM_Alarm_Base
+    {
+        sound = "AEGISM_Alarm_Siren_Sfx";
+        displayName = "AEGIS-M: Siren";
+    };
+    class AEGISM_Alarm_Zone: AEGISM_Alarm_Base
+    {
+        sound = "AEGISM_Alarm_Zone_Sfx";
+        displayName = "AEGIS-M: Restricted-zone warning";
+    };
+    class AEGISM_Alarm_HeliNato: AEGISM_Alarm_Base
+    {
+        sound = "AEGISM_Alarm_HeliNato_Sfx";
+        displayName = "AEGIS-M: Helicopter warning (NATO)";
+    };
+    class AEGISM_Alarm_HeliCsat: AEGISM_Alarm_Base
+    {
+        sound = "AEGISM_Alarm_HeliCsat_Sfx";
+        displayName = "AEGIS-M: Helicopter warning (CSAT)";
+    };
+    class AEGISM_Alarm_Lock: AEGISM_Alarm_Base
+    {
+        sound = "AEGISM_Alarm_Lock_Sfx";
+        displayName = "AEGIS-M: Missile-lock tone";
+    };
+
     // ModuleDescription is a class NESTED in Module_F, so it is declared
     // there. It used to be declared at the root of CfgVehicles, which created
     // an empty *vehicle* class called ModuleDescription: the engine then
@@ -305,7 +402,7 @@ class CfgVehicles
             class EngageOnlyThreats
             {
                 displayName = "Only Engage Munitions Threatening the Site";
-                tooltip = "On (default): a hostile artillery, mortar or MLRS round (or unguided rocket) is only engaged while its predicted impact falls within the Threat Radius of a Site vehicle -- a shell landing well clear of the Site doesn't cost a single round, and is logged once as IGNORED. Guided missiles and bombs are always engaged (they steer or glide, so a ballistic prediction says nothing). Off: every hostile munition in reach is engaged, wherever it will land.";
+                tooltip = "On (default): a hostile munition is only engaged while it's a threat to a Site vehicle -- an artillery, mortar or MLRS round (or unguided rocket) predicted to land within the Threat Radius of one; a missile guided at one, or flying on a line that passes within the Threat Radius of one; a bomb whose fall or line of flight does. One landing well clear of the Site, or a missile flying at something else, doesn't cost a single round (logged once as IGNORED), and is picked up if it turns toward the Site. Off: every hostile munition in reach is engaged, wherever it's going.";
                 property = "engageOnlyThreats";
                 control = "Checkbox";
                 expression = "_this setVariable ['engageOnlyThreats', _value];";
@@ -405,12 +502,12 @@ class CfgVehicles
             class CiwsOpenFireChance
             {
                 displayName = "Open Fire at Hit Chance (%)";
-                tooltip = "A CIWS gun tracks a target from as far as it can reach, but only fires once the intercept is inside the range where the gun's OWN config hit probability (its fire modes' minRangeProbab/midRangeProbab/maxRangeProbab, what the game's AI uses) is at least this. 50 (default): the Phalanx opens fire inside about 2.1 km of its 3 km reach, where its config puts the odds at 10 percent. Lower = fires earlier and farther, spending more rounds for fewer hits. 0 = its full config reach. The range used is logged once per gun (OPEN-FIRE-RANGE), and a gun waiting for a target to close logs RANGE-HOLD.";
+                tooltip = "A CIWS gun tracks a target from as far as it can reach, but only fires once ONE BURST is at least this likely (40 percent by default) to put a round within hitting distance of it. Worked out from measurable things: the gun's own measured scatter (its spotted rounds' misses; the fire mode's dispersion until it has fired), how far the target strays from its predicted track, the round's flight time (initSpeed, airFriction), the hit radius (the round's blast radius or the target's own size), and the rounds in a burst (its measured rate of fire x the burst length). Never beyond the round's reach in its own lifetime (timeToLive), and never inside its arming distance (fuseDistance) against a munition. Lower = fires earlier and farther, spending more rounds for fewer hits. 0 = its full reach. The range and every input are logged (OPEN-FIRE-RANGE); a gun waiting for a target to close logs RANGE-HOLD.";
                 property = "ciwsOpenFireChance";
                 control = "Edit";
                 expression = "_this setVariable ['ciwsOpenFireChance', _value];";
                 typeName = "NUMBER";
-                defaultValue = "50";
+                defaultValue = "40";
             };
             class CiwsBurstMin
             {
@@ -452,11 +549,96 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "false";
             };
+
+            // ======================================================== ALARMS
+            class Section_Alarms
+            {
+                property = "aegism_site_section_alarms";
+                control = "SubCategory";
+                displayName = "Alarms";
+                title = "Alarms";
+                description = "";
+            };
+            class AlarmWarning
+            {
+                displayName = "Going-Live Warning";
+                tooltip = "Sounds from the moment the Site commits a weapon to a target (before its first shot: the crew's reaction and the turret's slew), and keeps sounding until the Warning Lasts time after its last shot. Plays from every non-vehicle object synced to this Site (a loudspeaker, a lamp post, a Game Logic -- anything that isn't a vehicle or a unit), or from this module itself if none is. Heard to 400m, like vanilla's own alarm. The Incoming Alarm replaces it while a munition is inbound. Tone lengths are one cycle.";
+                property = "alarmWarning";
+                control = "Combo";
+                expression = "_this setVariable ['alarmWarning', _value];";
+                typeName = "STRING";
+                defaultValue = "'base'";
+                class Values
+                {
+                    class Base { name = "Base alarm (6.6s cycle)"; value = "base"; };
+                    class Klaxon { name = "Klaxon (1.6s)"; value = "klaxon"; };
+                    class Klaxon2 { name = "Klaxon 2 (2.1s)"; value = "klaxon2"; };
+                    class Siren { name = "Siren (1.4s)"; value = "siren"; };
+                    class Zone { name = "Restricted-zone warning (4.6s)"; value = "zone"; };
+                    class HeliNato { name = "Helicopter warning, NATO (2.0s)"; value = "heliNato"; };
+                    class HeliCsat { name = "Helicopter warning, CSAT (1.5s)"; value = "heliCsat"; };
+                    class Lock { name = "Missile-lock tone (0.2s beep)"; value = "lock"; };
+                    class Off { name = "Off"; value = "off"; };
+                };
+            };
+            class AlarmIncoming
+            {
+                displayName = "Incoming Alarm";
+                tooltip = "Sounds while a munition is inbound on the Site -- one a Site radar sees that is a threat to a Site vehicle (an artillery, mortar or MLRS round or a rocket predicted to land within the Threat Radius of one, a missile guided or flying at one, a bomb falling on one), whether it's hostile or a friendly round falling short -- and for 3s after the last one is seen (the Site's own contact expiry). Replaces the Going-Live Warning while it sounds. Auto (default): by the Site's side -- BLUFOR the NATO helicopter warning, OPFOR the CSAT one, anyone else the Klaxon.";
+                property = "alarmIncoming";
+                control = "Combo";
+                expression = "_this setVariable ['alarmIncoming', _value];";
+                typeName = "STRING";
+                defaultValue = "'auto'";
+                class Values
+                {
+                    class Auto { name = "Auto (by the Site's side)"; value = "auto"; };
+                    class Base { name = "Base alarm (6.6s cycle)"; value = "base"; };
+                    class Klaxon { name = "Klaxon (1.6s)"; value = "klaxon"; };
+                    class Klaxon2 { name = "Klaxon 2 (2.1s)"; value = "klaxon2"; };
+                    class Siren { name = "Siren (1.4s)"; value = "siren"; };
+                    class Zone { name = "Restricted-zone warning (4.6s)"; value = "zone"; };
+                    class HeliNato { name = "Helicopter warning, NATO (2.0s)"; value = "heliNato"; };
+                    class HeliCsat { name = "Helicopter warning, CSAT (1.5s)"; value = "heliCsat"; };
+                    class Lock { name = "Missile-lock tone (0.2s beep)"; value = "lock"; };
+                    class Off { name = "Off"; value = "off"; };
+                };
+            };
+            class AlarmHold
+            {
+                displayName = "Warning Lasts After Last Shot (s)";
+                tooltip = "How long the Going-Live Warning keeps sounding after the Site's last shot (missile or gun), once no weapon is assigned any more.";
+                property = "alarmHold";
+                control = "Edit";
+                expression = "_this setVariable ['alarmHold', _value];";
+                typeName = "NUMBER";
+                defaultValue = "10";
+            };
+            class AlarmWarningCustom
+            {
+                displayName = "Custom Warning Sound";
+                tooltip = "Optional: the class name of any looping sound source (CfgVehicles, like vanilla's Sound_Alarm -- e.g. one from a sound mod with a real national air-raid siren). Replaces the Going-Live Warning's tone. Blank = use the tone above.";
+                property = "alarmWarningCustom";
+                control = "Edit";
+                expression = "_this setVariable ['alarmWarningCustom', _value];";
+                typeName = "STRING";
+                defaultValue = "''";
+            };
+            class AlarmIncomingCustom
+            {
+                displayName = "Custom Incoming Sound";
+                tooltip = "Optional: the class name of any looping sound source (CfgVehicles, like vanilla's Sound_Alarm -- e.g. one from a sound mod with a spoken 'INCOMING' alert). Replaces the Incoming Alarm's tone. Blank = use the tone above.";
+                property = "alarmIncomingCustom";
+                control = "Edit";
+                expression = "_this setVariable ['alarmIncomingCustom', _value];";
+                typeName = "STRING";
+                defaultValue = "''";
+            };
         };
 
         class ModuleDescription: ModuleDescription
         {
-            description = "The one AEGIS-M module: sync it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a site to link them into one battery under these settings, with a shared coordinator assigning each detected threat to the best-fit weapon. Roles are discovered automatically from each vehicle's real sensors and loaded ammo. Any vehicle can override these settings for itself in its own attributes (AEGIS-M: Vehicle Overrides). A qualifying vehicle still works standalone with default settings if never synced to a Site.";
+            description = "The one AEGIS-M module: sync it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a site to link them into one battery under these settings, with a shared coordinator assigning each detected threat to the best-fit weapon. Roles are discovered automatically from each vehicle's real sensors and loaded ammo. Any vehicle can override these settings for itself in its own attributes (AEGIS-M: Vehicle Overrides). A qualifying vehicle still works standalone with default settings if never synced to a Site. Sync non-vehicle objects (a loudspeaker, a lamp post, a Game Logic) to make them the Site's alarm speakers (see Alarms). In Zeus (with Zeus Enhanced): double-click the Site, or right-click it or a vehicle for AEGIS-M Settings.";
             sync[] = {"AnyVehicle"};
         };
     };

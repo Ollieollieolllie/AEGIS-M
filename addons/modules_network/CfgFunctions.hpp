@@ -6,6 +6,11 @@ class CfgFunctions
             file = "\x\aegism\addons\modules_network\functions";
             class moduleInit {};
             class scanForUninitSites {};
+            class readSiteSettings {};
+            class siteAlarm {};
+            class zeusApplySite {};
+            class zeusEdit {};
+            class zeusInit {};
         };
     };
 };

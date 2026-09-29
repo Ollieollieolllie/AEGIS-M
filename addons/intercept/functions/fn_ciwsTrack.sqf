@@ -67,7 +67,7 @@ private _fnTrack = {
     };
 
     PERF_INC(PERF_STEER_FRAMES);
-    _solve params ["_solvedAt", "_solvedAim", "_aimVelocity", "_cameraOffset", "_origin", "_tolerance", "_feasible", "_interceptDistance", "", "_targetClass", "_openFireRange"];
+    _solve params ["_solvedAt", "_solvedAim", "_aimVelocity", "_cameraOffset", "_origin", "_tolerance", "_feasible", "_interceptDistance", "", "_targetClass", "_openFireRange", "_minRange"];
     private _aimPoint = _solvedAim vectorAdd (_aimVelocity vectorMultiply (time - _solvedAt));
     if (_system turretLocal _turretPath) then {
         _system lockCameraTo [_aimPoint vectorAdd _cameraOffset, _turretPath, false];
@@ -77,8 +77,8 @@ private _fnTrack = {
 
     private _barrel = [_system, _turretPath, _weaponInfo select 1] call aegism_intercept_fnc_barrelDirection;
     private _angle = acos (((_barrel vectorCos (_origin vectorFromTo _aimPoint)) min 1) max -1);
-    private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint, _interceptDistance, _openFireRange] call aegism_intercept_fnc_ciwsGate;
-    [_aligned, _angle, _tolerance, _aimPoint, _feasible, _interceptDistance <= _openFireRange]
+    private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint, _interceptDistance, _openFireRange, _minRange] call aegism_intercept_fnc_ciwsGate;
+    [_aligned, _angle, _tolerance, _aimPoint, _feasible, _interceptDistance <= _openFireRange && {_interceptDistance >= _minRange}]
 };
 
 if !(_ts getOrDefault ["tracking", false]) then {

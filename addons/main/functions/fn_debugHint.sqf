@@ -12,9 +12,13 @@ Description:
         - every other Site as a one-line summary
         - standalone (unsynced) Systems, one line each
 
-    Status colours: green READY, yellow TRACKING (radar with contacts), amber
-    REACTING/SLEWING, orange ENGAGING, red FIRING, purple NO SOLUTION /
-    LOS BLOCKED, grey NO AMMO, dark grey DESTROYED.
+    Each engagement shows in its own state's colour (aegism_fnc_statusStyle
+    -- the state the engagement loop records on it every tick): blue QUEUED
+    behind another on its launcher, amber REACTING/SLEWING, orange
+    RELOADING, teal RANGE HOLD, red FIRING, gold IN FLIGHT, purple NO LOS /
+    NO SOLUTION, grey CREW FAILED / FIRE HELD / NO AMMO. A vehicle with
+    nothing assigned: green READY, yellow TRACKING (radar with contacts),
+    grey NO AMMO, dark grey DESTROYED.
 
     Reads the same server-side variables the engagement pipeline runs on,
     so it only has data where that pipeline runs: singleplayer, Eden
@@ -36,16 +40,12 @@ Author:
 
 #define COL_READY "#66BB6A"
 #define COL_TRACK "#FFEE58"
-#define COL_SLEW "#FFCA28"
 #define COL_ENGAGE "#FFA726"
-#define COL_FIRE "#EF5350"
-#define COL_BLOCKED "#CE93D8"
 #define COL_EMPTY "#9E9E9E"
 #define COL_DEAD "#616161"
 #define COL_DIM "#90A4AE"
 #define COL_HEAD "#4FC3F7"
 #define AEGISM_HINT_MAX_CONTACTS 6
-#define AEGISM_HINT_RECENT_SHOT 2
 
 if !("aegism_main_debugHint" call CBA_settings_fnc_get) exitWith {
     if (missionNamespace getVariable ["AEGISM_debugHintShown", false]) then {
@@ -73,42 +73,35 @@ private _fnColour = {
     format ["<t color='%1'>%2</t>", _colour, _text]
 };
 
-// [status text, colour] for one System, from its live engagement state.
+// [status text, colour] for one System, from its engagements' own states
+// (the "status" the engagement loop records, aegism_fnc_statusStyle): each
+// engagement it's working, in its state's colour, and how many wait queued
+// behind them; the System takes the colour of the most urgent.
 private _fnSystemStatus = {
     params ["_system", "_records"];
     if (!alive _system) exitWith { ["DESTROYED", COL_DEAD] };
 
     private _systemData = _system getVariable ["AEGISM_system", createHashMap];
-    private _status = [];
+    private _lines = [];
+    private _queued = 0;
+    private _urgent = [-1, COL_ENGAGE];
     {
         private _record = _x;
-        private _role = _record get "role";
-        private _target = _record getOrDefault ["target", objNull];
-        (_record get "weaponInfo") params ["_turretPath"];
-        private _turretState = (_system getVariable ["AEGISM_turrets", createHashMap]) getOrDefault [_turretPath, createHashMap];
-        private _burstEnds = (_turretState getOrDefault ["burst", [-1]]) select 0;
-        (_turretState getOrDefault ["aim_" + _role, []]) params [["_angle", 0], ["_tolerance", 180], ["_aimAt", -1e9], ["_aimTarget", objNull], ["_feasible", true]];
-        private _aimFresh = time - _aimAt < 1 && {_aimTarget == _target};
-        private _targetText = format ["%1 %2", [_target] call _fnShortName, [_system distance _target] call _fnRange];
-        private _roleTag = ["L", "C"] select (_role == "ciws");
-
-        private _line = switch (true) do {
-            case (time < _burstEnds || {time - (_record get "lastShotAt") < AEGISM_HINT_RECENT_SHOT && {(_record get "lastShotAt") >= 0}}): { [format ["FIRING %1", _targetText], COL_FIRE] };
-            case (_aimFresh && {!_feasible}): { [format ["NO SOLUTION %1", _targetText], COL_BLOCKED] };
-            case (_record getOrDefault ["losBlocked", false]): { [format ["LOS BLOCKED %1", _targetText], COL_BLOCKED] };
-            case (_aimFresh && {_angle > _tolerance}): { [format ["SLEWING %1deg %2", round _angle, _targetText], COL_SLEW] };
-            case (time - (_record get "assignedAt") < 1): { [format ["REACTING %1", _targetText], COL_SLEW] };
-            default { [format ["ENGAGING %1", _targetText], COL_ENGAGE] };
+        ([_record getOrDefault ["status", ""]] call aegism_fnc_statusStyle) params ["_label", "", "_hex", "_urgency"];
+        if ((_record getOrDefault ["status", ""]) == "queued") then {
+            _queued = _queued + 1;
+        } else {
+            private _target = _record getOrDefault ["target", objNull];
+            _lines pushBack ([_hex, format ["%1: %2 %3 %4", ["L", "C"] select ((_record get "role") == "ciws"), toUpper _label, [_target] call _fnShortName, [_system distance _target] call _fnRange]] call _fnColour);
         };
-        _status pushBack [format ["%1: %2", _roleTag, _line select 0], _line select 1];
+        if (_urgency > (_urgent select 0)) then { _urgent = [_urgency, _hex]; };
     } forEach _records;
 
-    if (_status isNotEqualTo []) exitWith {
-        // Most urgent colour first (FIRING > ...), all lines shown.
-        private _order = [COL_FIRE, COL_BLOCKED, COL_SLEW, COL_ENGAGE];
-        private _worst = _status select 0;
-        { if ((_order find (_x select 1)) < (_order find (_worst select 1))) then { _worst = _x; }; } forEach _status;
-        [(_status apply { _x select 0 }) joinString " | ", _worst select 1]
+    if (_records isNotEqualTo []) exitWith {
+        if (_queued > 0) then {
+            _lines pushBack ([(["queued"] call aegism_fnc_statusStyle) select 2, format ["+%1 queued", _queued]] call _fnColour);
+        };
+        [_lines joinString " | ", _urgent select 1]
     };
 
     private _weapons = (_systemData getOrDefault ["launcherWeapons", []]) + (_systemData getOrDefault ["ciwsWeapons", []]);
@@ -206,11 +199,18 @@ if (_sites isNotEqualTo []) then {
                 private _object = _entry get "object";
                 private _nearest = 1e10;
                 { _nearest = _nearest min (_x distance _object); } forEach _members;
-                private _onIt = (_claims getOrDefault [_key, []]) apply { format ["%1 %2", ["L", "C"] select ((_x get "role") == "ciws"), [_x get "system"] call _fnShortName] };
+                // Every weapon on it, each in its own engagement state's
+                // colour, and the contact's dot in the most urgent of them.
+                private _urgent = [-1, COL_TRACK];
+                private _onIt = (_claims getOrDefault [_key, []]) apply {
+                    ([_x getOrDefault ["status", ""]] call aegism_fnc_statusStyle) params ["_label", "", "_hex", "_urgency"];
+                    if (_urgency > (_urgent select 0)) then { _urgent = [_urgency, _hex]; };
+                    [_hex, format ["%1 %2 %3", ["L", "C"] select ((_x get "role") == "ciws"), [_x get "system"] call _fnShortName, _label]] call _fnColour
+                };
                 _lines pushBack format ["<t align='left' size='0.75'>  %1 %2 <t color='%3'>%4 %5</t>%6</t><br/>",
-                    [[COL_TRACK, COL_ENGAGE] select (_onIt isNotEqualTo []), "●"] call _fnColour,
+                    [_urgent select 1, "●"] call _fnColour,
                     [_object] call _fnShortName, COL_DIM, _entry get "class", [_nearest] call _fnRange,
-                    ["", format [" <t color='%1'>&lt;- %2</t>", COL_ENGAGE, _onIt joinString ", "]] select (_onIt isNotEqualTo [])];
+                    ["", format [" <t color='%1'>&lt;-</t> %2", COL_DIM, _onIt joinString ", "]] select (_onIt isNotEqualTo [])];
             };
         } forEach _sorted;
         if (count _sorted > AEGISM_HINT_MAX_CONTACTS) then {
