@@ -58,5 +58,7 @@ if (_class in ["artilleryShell", "rocket", "bomb"]) then {
     private _nearest = _positions select 0;
     { if ((_pos distance _x) < (_pos distance _nearest)) then { _nearest = _x; }; } forEach _positions;
     private _closing = _velocity vectorDotProduct (_pos vectorFromTo _nearest);
-    [AEGISM_NOT_COMING, (_pos distance _nearest) / _closing] select (_closing > 0)
+    // if/else, not [a, b] select: both elements of an array literal are
+    // evaluated, so a hovering contact (closing speed 0) divided by zero.
+    if (_closing > 0) then { (_pos distance _nearest) / _closing } else { AEGISM_NOT_COMING }
 }

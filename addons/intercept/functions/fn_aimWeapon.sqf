@@ -23,7 +23,14 @@ Description:
     the turret tracks the target itself and the weapon is not aligned.
 
     Alignment:
-        ciws - barrel within AEGISM_AIM_ON_TARGET degrees of the aim point.
+        ciws - a round fired now would pass close enough to hit: the barrel's
+            error at the intercept (angle x intercept distance) within the
+            target's own half-size (its bounding box, aegism_intercept_fnc_
+            targetHitRadius) plus the gun's own spread there (the current
+            fire mode's CfgWeapons dispersion x distance). For a Phalanx
+            (dispersion 0.0045) at a 155mm shell 2km out that's ~0.3 degrees;
+            it used to be a flat 2 degrees -- ~70m of error at 2km, far wider
+            than any target.
         launcher - barrel within AEGISM_AIM_ON_TARGET degrees, OR the turret
             has stopped closing on the aim point (the angle hasn't shrunk for
             AEGISM_AIM_SETTLE_TICKS checks in a row: it's at its elevation
@@ -34,6 +41,14 @@ Description:
             which a turret still slewing passed on its way past: missiles
             left the rail well off the aim point and turned hard after.
     Barrel direction: aegism_intercept_fnc_barrelDirection.
+
+    CIWS aim carries the gun's own spotting correction ("AEGISM_ciws
+    Correction_<turretPath>", [lead time s, elevation rad], aegism_intercept_
+    fnc_ciwsSpot): its fired rounds are measured as they pass the track the
+    target was PREDICTED to fly, and the systematic miss is fed back into the
+    aim. The prediction each shot uses is recorded as "AEGISM_ciwsTrack_
+    <turretPath>" [time, position, velocity, acceleration] for aegism_
+    intercept_fnc_onSystemFired to hand each round.
 
     Shared turrets: a vehicle whose launcher and gun sit on the same turret
     (e.g. the Cheetah) would have both engagement loops issuing competing
@@ -82,7 +97,20 @@ private _tolerance = AEGISM_AIM_ON_TARGET;
 // metre low).
 ([_system, _turretPath, _role] call aegism_intercept_fnc_turretPoints) params ["_origin", "_camera"];
 
-([_system, _origin, _target, _weaponInfo, _role] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible"];
+// CIWS spotting correction (aegism_intercept_fnc_ciwsSpot): lead time added
+// to the target's projection, and an elevation angle applied square to the
+// line of sight -- what this gun's own rounds say it needs.
+(_system getVariable [format ["AEGISM_ciwsCorrection_%1", _turretPath], [0, 0]]) params ["_leadCorrection", "_elevationCorrection"];
+if (!_isCiws) then { _leadCorrection = 0; _elevationCorrection = 0; };
+
+([_system, _origin, _target, _weaponInfo, _role, true, 0, false, _leadCorrection] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "", "_interceptDistance", "_track"];
+if (_isCiws) then { _system setVariable [format ["AEGISM_ciwsTrack_%1", _turretPath], [time] + _track, false]; };
+
+if (_elevationCorrection != 0) then {
+    private _los = _origin vectorFromTo _aimPoint;
+    private _up = vectorNormalized ([0, 0, 1] vectorDiff (_los vectorMultiply (_los select 2)));
+    _aimPoint = _aimPoint vectorAdd (_up vectorMultiply (_elevationCorrection * _interceptDistance));
+};
 
 private _ownerKey = format ["AEGISM_ciwsAimAt_%1", _turretPath];
 if (_isCiws) then { _system setVariable [_ownerKey, time, false]; };
@@ -95,6 +123,16 @@ private _barrel = [_system, _turretPath, _weaponClass] call aegism_intercept_fnc
 // Clamped: float error can push vectorCos fractionally past 1, and acos of
 // that is undefined.
 private _angle = acos (((_barrel vectorCos (_origin vectorFromTo _aimPoint)) min 1) max -1);
+
+if (_isCiws && {_interceptDistance > 0}) then {
+    // Current fire mode: weaponState reports a weapon with no modes[] of its
+    // own under its own class name, which isn't a sub-class.
+    private _weaponCfg = configFile >> "CfgWeapons" >> _weaponClass;
+    private _modeCfg = _weaponCfg >> ((weaponState [_system, _turretPath, _weaponClass]) param [2, ""]);
+    if (!isClass _modeCfg) then { _modeCfg = _weaponCfg; };
+    private _dispersion = getNumber (_modeCfg >> "dispersion");
+    _tolerance = deg (_dispersion + ([_target] call aegism_intercept_fnc_targetHitRadius) / _interceptDistance);
+};
 
 _system setVariable [format ["AEGISM_aim_%1", _role], [_angle, _tolerance, time, _target, _feasible], false];
 

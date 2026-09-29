@@ -26,6 +26,7 @@ class CfgFunctions
             class engagementLoop {R;};
             class fireWeapon {R;};
             class ciwsBurst {R;};
+            class ciwsSpot {R;};
             class interceptorPFH {R;};
             class debugSetFireHold {R;};
         };

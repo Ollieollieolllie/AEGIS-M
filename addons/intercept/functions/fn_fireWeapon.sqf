@@ -95,7 +95,7 @@ if !(_system getVariable ["AEGISM_firedEhAdded", false]) then {
 // command; a CIWS burst lasts its own duration.
 private _targetIsMunition = ([_target] call aegism_detect_fnc_classifyTarget) in ["missile", "rocket", "bomb", "artilleryShell"];
 private _contextLifetime = [2, _burstDuration + 0.5] select _isCiws;
-_system setVariable [format ["AEGISM_capture_%1", _weaponClass], [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition], false];
+_system setVariable [format ["AEGISM_capture_%1", _weaponClass], [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition, _turretPath], false];
 
 if (_isCiws) then {
     diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];

@@ -18,11 +18,13 @@ Description:
     conservative than trying to reason about which axis the interceptor
     actually approached from.
 
-    Deliberately NOT called for a platform target (helicopter/plane/drone)
-    -- see aegism_intercept_fnc_interceptorPFH's own doc comment for why:
-    those already have real hitpoints/collision, so widening their
+    Never used to widen the hit radius for a platform target (helicopter/
+    plane/drone) -- see aegism_intercept_fnc_interceptorPFH's own doc comment
+    for why: those already have real hitpoints/collision, so widening their
     effective radius here would credit a near-miss the engine itself never
-    registered as a hit.
+    registered as a hit. For those it only measures size: CIWS spotting
+    (aegism_intercept_fnc_ciwsSpot) uses it to tell a round that went
+    through the target's body from one that missed.
 
 Parameters:
     _target - the munition target object to measure <OBJECT>

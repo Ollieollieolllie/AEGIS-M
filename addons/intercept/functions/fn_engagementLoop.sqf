@@ -127,6 +127,9 @@ private _fnExecute = {
     if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) exitWith {};
 
     ([_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon) params ["_aligned", "_angle", "_tolerance", "", "_feasible"];
+    // A running CIWS burst (aegism_intercept_fnc_ciwsBurst) stops once this
+    // goes stale: the assignment is no longer being worked.
+    if (_isCiws) then { _system setVariable [format ["AEGISM_ciwsTickAt_%1", _turretPath], time, false]; };
 
     if (time < (_state get "assignedAt") + _reactionTime) exitWith {
         if !(_state getOrDefault ["reactionLogged", false]) then {
@@ -189,7 +192,7 @@ private _fnExecute = {
     if (!_aligned) exitWith {
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6.", _system, _role, _target, round (_angle * 10) / 10, _tolerance,
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
                 ["", " (or the turret settled inside the missile's lock cone)"] select !_isCiws];
         };
     };

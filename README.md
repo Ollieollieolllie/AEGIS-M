@@ -74,7 +74,24 @@ meeting point instead of turning hard after launch: a launcher fires only
 with its barrel within 2 degrees of that point, or once its turret has
 stopped closing on it (at its elevation limit, or trailing a fast lead
 point) with the target inside the missile's own lock cone
-(`missileLockCone`). The RPT's `FIRE` line gives the launch angle. A target with **no
+(`missileLockCone`). The RPT's `FIRE` line gives the launch angle.
+
+**CIWS guns fire only when a round could hit, and correct their own aim
+from their rounds (closed-loop spotting, as a real Phalanx does).** A gun
+re-aims every frame of a burst and fires only while the barrel's error at
+the intercept is within the target's own size plus the gun's own spread
+there (its fire mode's `dispersion`) -- about 0.3 degrees for a Phalanx at
+a shell 2 km out. Every round it fires is measured as it passes the track
+the target was *predicted* to fly: how far ahead of or behind the crossing
+motion, and how far high or low. That miss is the gun's own error alone
+(turret lag, flight-time estimate, drop, zeroing), kept apart from the
+target's evasion, so a jinking helicopter can't drag the aim around. The
+gun keeps a running estimate of the lead-time and elevation correction it
+needs, weighting each round by how precisely it measures it, and carries it
+across bursts until it changes ammunition. After each burst a `SPOTTING`
+line in the RPT gives the average miss against the predicted track, how far
+the target strayed from that track (evasion no fire control can foresee),
+and the correction in use. A target with **no
 feasible intercept** -- receding faster than the round can close, or
 meeting point beyond the weapon's reach or the round's lifetime -- is not
 engaged, and a weapon already on it is released (`NO-SOLUTION` /

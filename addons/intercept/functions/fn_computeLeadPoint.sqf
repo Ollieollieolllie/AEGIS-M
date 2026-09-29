@@ -53,10 +53,15 @@ Parameters:
     _delay - optional, seconds from now the shot leaves, default 0 <NUMBER>
     _ballistic - optional, project the target on gravity alone, default
         false <BOOLEAN>
+    _leadBias - optional, seconds added to the time the target is projected
+        forward (not to the round's flight time): a CIWS gun's spotting
+        correction, aegism_intercept_fnc_ciwsSpot. Default 0 <NUMBER>
 
 Returns:
     [aimPoint ASL <ARRAY>, feasible <BOOLEAN>, timeOfFlight s <NUMBER>
-     (-1 if infeasible), interceptDistance m <NUMBER>]
+     (-1 if infeasible), interceptDistance m <NUMBER>, predicted track
+     [position ASL, velocity, acceleration] the target was projected from
+     <ARRAY> -- CIWS spotting replays it (aegism_intercept_fnc_ciwsSpot)]
 
 Examples:
     [_cheetah, eyePos gunner _cheetah, _heli, _weaponInfo, "ciws"] call aegism_intercept_fnc_computeLeadPoint;
@@ -73,7 +78,7 @@ Author:
 // (e^30 ~ 1e13) -- treated as "can't get there" rather than overflowing.
 #define AEGISM_MAX_DRAG_EXPONENT 30
 
-params ["_system", "_origin", "_target", "_weaponInfo", "_role", ["_useAcceleration", true], ["_delay", 0], ["_ballistic", false]];
+params ["_system", "_origin", "_target", "_weaponInfo", "_role", ["_useAcceleration", true], ["_delay", 0], ["_ballistic", false], ["_leadBias", 0]];
 _weaponInfo params ["", "_weaponClass", "_magazineClass", "", "", ["_maxRange", 0]];
 
 private _targetPos = getPosASLVisual _target;
@@ -122,7 +127,7 @@ private _fnTimeOfFlight = if (_isGun) then {
 // nor thrust): nothing to predict with, so aim at the target and don't
 // block the engagement -- the old behaviour -- rather than calling every
 // target unreachable.
-if ((_isGun && {_v0 <= 0}) || {!_isGun && {_burnSpeed <= 0}}) exitWith { [_targetPos, true, -1, _currentDistance] };
+if ((_isGun && {_v0 <= 0}) || {!_isGun && {_burnSpeed <= 0}}) exitWith { [_targetPos, true, -1, _currentDistance, [_targetPos, velocity _target, [0, 0, 0]]] };
 
 private _targetVelocity = velocity _target;
 private _targetAcceleration = [0, 0, 0];
@@ -163,19 +168,22 @@ private _feasible = !([_currentDistance, _timeToGo] call _fnOutOfReach);
 
 if (_feasible) then {
     for "_i" from 1 to AEGISM_LEAD_SOLVE_ITERATIONS do {
+        private _leadTime = (_timeToGo + _leadBias) max 0;
         _aimPoint = _targetPos
-            vectorAdd (_targetVelocity vectorMultiply _timeToGo)
-            vectorAdd (_targetAcceleration vectorMultiply (0.5 * _timeToGo * _timeToGo));
+            vectorAdd (_targetVelocity vectorMultiply _leadTime)
+            vectorAdd (_targetAcceleration vectorMultiply (0.5 * _leadTime * _leadTime));
         _interceptDistance = _origin distance _aimPoint;
         _timeToGo = [_interceptDistance] call _fnTimeOfFlight;
         if ([_interceptDistance, _timeToGo] call _fnOutOfReach) exitWith { _feasible = false; };
     };
 };
 
-if (!_feasible) exitWith { [_targetPos, false, -1, _interceptDistance] };
+private _track = [_targetPos, _targetVelocity, _targetAcceleration];
+
+if (!_feasible) exitWith { [_targetPos, false, -1, _interceptDistance, _track] };
 
 if (_isGun) then {
     _aimPoint = _aimPoint vectorAdd [0, 0, 0.5 * AEGISM_GRAVITY * _timeToGo * _timeToGo];
 };
 
-[_aimPoint, true, _timeToGo, _interceptDistance]
+[_aimPoint, true, _timeToGo, _interceptDistance, _track]
