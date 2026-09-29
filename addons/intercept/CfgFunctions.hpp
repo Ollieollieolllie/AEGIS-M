@@ -14,6 +14,7 @@ class CfgFunctions
             class turretPoints {R;};
             class aimWeapon {R;};
             class elevationAngle {R;};
+            class turretCanPoint {R;};
             class envelopeBounds {R;};
             class inEnvelope {R;};
             class canEngage {R;};
@@ -25,6 +26,7 @@ class CfgFunctions
             class assignEngagements {R;};
             class engagementLoop {R;};
             class fireWeapon {R;};
+            class ciwsTrack {R;};
             class ciwsBurst {R;};
             class ciwsSpot {R;};
             class interceptorPFH {R;};

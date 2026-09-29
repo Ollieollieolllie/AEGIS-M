@@ -13,6 +13,14 @@ Description:
     only and fired at with whichever weapon happened to be first, even if
     that weapon couldn't reach it.
 
+    A gun keeps its current target while it can still engage it and its own
+    aim has a solution -- as a Site's claim does -- instead of re-picking
+    every tick: under Soonest
+    Impact the shells of one salvo trade places constantly, and a standalone
+    Praetorian swung 40-127 degrees between six of them in 12s without
+    firing. (Launchers still re-pick: they're free for the next target as
+    soon as their missiles are away.)
+
 Parameters:
     _weaponPos - ASL position ranges are measured from <ARRAY>
     _candidates - [object, class] pairs from the System's own pool <ARRAY>
@@ -20,6 +28,7 @@ Parameters:
     _weapons - this role's weaponInfos that currently have ammo <ARRAY>
     _role - "launcher" or "ciws" <STRING>
     _system - the System vehicle <OBJECT>
+    _current - optional, the target it's engaging now <OBJECT>
 
 Returns:
     [target <OBJECT>, weaponInfo <ARRAY>], or [objNull, []] if nothing is
@@ -32,7 +41,7 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["_weaponPos", "_candidates", "_engagementSettings", "_weapons", "_role", "_system"];
+params ["_weaponPos", "_candidates", "_engagementSettings", "_weapons", "_role", "_system", ["_current", objNull]];
 
 private _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", []];
 private _priority = _engagementSettings getOrDefault ["targetPriority", "soonestImpact"];
@@ -50,6 +59,14 @@ private _engageable = [];
 } forEach _candidates;
 
 if (_engageable isEqualTo []) exitWith { [objNull, []] };
+
+// ...unless the gun's own latest aim at it found no solution.
+private _aimRecord = _system getVariable ["AEGISM_aim_ciws", []];
+private _currentUnsolved = (_aimRecord param [3, objNull]) == _current && {!(_aimRecord param [4, true])};
+if (_role == "ciws" && {!isNull _current} && {!_currentUnsolved}) then {
+    private _currentIndex = _engageable findIf { (_x select 0) == _current };
+    if (_currentIndex != -1) exitWith { _engageable = [_engageable select _currentIndex]; };
+};
 
 // Higher score = more preferred. SQF's selectMax only works on numbers, so
 // scores are a parallel array.

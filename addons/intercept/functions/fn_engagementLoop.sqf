@@ -126,10 +126,16 @@ private _fnExecute = {
     // aiming at it until the kill/miss was known, holding the launcher idle.
     if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) exitWith {};
 
-    ([_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon) params ["_aligned", "_angle", "_tolerance", "", "_feasible"];
+    ([_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon) params ["_aligned", "_angle", "_tolerance", "_aimPoint", "_feasible"];
     // A running CIWS burst (aegism_intercept_fnc_ciwsBurst) stops once this
-    // goes stale: the assignment is no longer being worked.
-    if (_isCiws) then { _system setVariable [format ["AEGISM_ciwsTickAt_%1", _turretPath], time, false]; };
+    // goes stale: the assignment is no longer being worked. The gun's
+    // per-frame tracker (aegism_intercept_fnc_ciwsTrack) keeps the turret on
+    // this target between ticks, bursts or not.
+    if (_isCiws) then {
+        _system setVariable [format ["AEGISM_ciwsTickAt_%1", _turretPath], time, false];
+        _system setVariable [format ["AEGISM_ciwsTrackTarget_%1", _turretPath], [_target, _weaponInfo, time], false];
+        [_system, _turretPath] call aegism_intercept_fnc_ciwsTrack;
+    };
 
     if (time < (_state get "assignedAt") + _reactionTime) exitWith {
         if !(_state getOrDefault ["reactionLogged", false]) then {
@@ -192,8 +198,14 @@ private _fnExecute = {
     if (!_aligned) exitWith {
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
-                ["", " (or the turret settled inside the missile's lock cone)"] select !_isCiws];
+            // Why a turret can't get there: its aim point past the turret's own
+            // elevation limits (aegism_intercept_fnc_turretCanPoint).
+            ([_system, _turretPath, _weaponPos vectorFromTo _aimPoint] call aegism_intercept_fnc_turretCanPoint) params ["_canPoint", "_aimElevation", "_minElevation", "_maxElevation"];
+            private _limitNote = if (_canPoint) then { "" } else {
+                format [" -- aim point at %1 deg elevation, beyond the turret's %2 to %3 deg", round _aimElevation, _minElevation, _maxElevation]
+            };
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6%7.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
+                ["", " (or the turret settled inside the missile's lock cone)"] select !_isCiws, _limitNote];
         };
     };
 
@@ -290,9 +302,9 @@ if (_readyWeapons isEqualTo []) exitWith {};
 private _pool = _system getVariable ["AEGISM_pooledContacts", createHashMap];
 private _candidates = (values _pool) apply { [_x get "object", _x get "class"] };
 
-([_weaponPos, _candidates, _engagementSettings, _readyWeapons, _role, _system] call aegism_intercept_fnc_selectTarget) params ["_target", "_weaponInfo"];
-
 private _state = _system getVariable [_stateKey, createHashMap];
+
+([_weaponPos, _candidates, _engagementSettings, _readyWeapons, _role, _system, _state getOrDefault ["target", objNull]] call aegism_intercept_fnc_selectTarget) params ["_target", "_weaponInfo"];
 if (isNull _target) exitWith {
     _state set ["targetNetId", ""];
     _system setVariable [_stateKey, _state, false];

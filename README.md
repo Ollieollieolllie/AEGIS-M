@@ -78,10 +78,15 @@ point) with the target inside the missile's own lock cone
 
 **CIWS guns fire only when a round could hit, and correct their own aim
 from their rounds (closed-loop spotting, as a real Phalanx does).** A gun
-re-aims every frame of a burst and fires only while the barrel's error at
+re-aims every frame from the moment it has a target -- not just while a
+burst is running, so it is already on the intercept point when the first
+burst can open -- and fires only while the barrel's error at
 the intercept is within the target's own size plus the gun's own spread
 there (its fire mode's `dispersion`) -- about 0.3 degrees for a Phalanx at
-a shell 2 km out. Every round it fires is measured as it passes the track
+a shell 2 km out. In the last-ditch window (the target due to impact within
+the gun's own longest burst, `Burst Length Max`) it also fires once its
+turret has settled as close as it can get, wherever that is: there is no
+better shot coming (`LAST-DITCH` in the RPT). Every round it fires is measured as it passes the track
 the target was *predicted* to fly: how far ahead of or behind the crossing
 motion, and how far high or low. That miss is the gun's own error alone
 (turret lag, flight-time estimate, drop, zeroing), kept apart from the
@@ -91,7 +96,11 @@ needs, weighting each round by how precisely it measures it, and carries it
 across bursts until it changes ammunition. After each burst a `SPOTTING`
 line in the RPT gives the average miss against the predicted track, how far
 the target strayed from that track (evasion no fire control can foresee),
-and the correction in use. A target with **no
+and the correction in use. A gun never takes a target whose aim point is
+beyond its turret's own elevation limits (`minElev`/`maxElev`) -- a shell
+diving steeply beside a Praetorian (max 85 degrees) is released rather than
+held with the barrel pinned short -- and a standalone gun keeps its target
+while it can still engage it instead of re-picking every tick. A target with **no
 feasible intercept** -- receding faster than the round can close, or
 meeting point beyond the weapon's reach or the round's lifetime -- is not
 engaged, and a weapon already on it is released (`NO-SOLUTION` /

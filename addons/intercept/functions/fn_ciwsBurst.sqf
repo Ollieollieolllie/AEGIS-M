@@ -12,12 +12,13 @@ Description:
     (burst = 2), so one call per engagement tick gave 2-round pops about a
     second apart instead of sustained fire.
 
-    Re-aims every frame of the burst (aegism_intercept_fnc_aimWeapon) and
-    fires only while that aim is for THIS target, has a feasible intercept,
-    and is within tolerance: a turret that falls off the lead point
-    mid-burst holds fire until it's back on. (Aiming only at the engagement
-    loop's 0.1s tick left the turret chasing a lead point that jumped every
-    tick -- against a crossing target the rounds trailed it.)
+    Fires only while the gun's aim -- refreshed every frame by its tracker,
+    aegism_intercept_fnc_ciwsTrack, for as long as it has a target -- is for
+    THIS target, has a feasible intercept, and is within tolerance: a turret
+    that falls off the lead point mid-burst holds fire until it's back on.
+    (Aiming only at the engagement loop's 0.1s tick left the turret chasing
+    a lead point that jumped every tick -- against a crossing target the
+    rounds trailed it.)
 
     Once the burst's last round has had its lifetime (CfgAmmo timeToLive)
     to pass the target, a SPOTTING line reports where this burst's rounds
@@ -120,9 +121,10 @@ private _roundLifetime = getNumber (configFile >> "CfgAmmo" >> getText (configFi
         };
     };
 
-    // Re-aim every frame; fire only on target.
-    ([_system, _target, _weaponInfo, "ciws"] call aegism_intercept_fnc_aimWeapon) params ["_aligned"];
-    if (!_aligned) exitWith {};
+    // Fire only on target: the aim aegism_intercept_fnc_ciwsTrack refreshes
+    // every frame.
+    (_system getVariable ["AEGISM_aim_ciws", []]) params [["_angle", 180], ["_tolerance", 0], ["_aimAt", -1e9], ["_aimTarget", objNull], ["_feasible", false], ["_aligned", false]];
+    if (_aimTarget != _target || {!_aligned} || {time - _aimAt > AEGISM_AIM_STALE}) exitWith {};
 
     private _barrelElevation = asin (((([_system, _turretPath, _weaponClass] call aegism_intercept_fnc_barrelDirection) select 2) max -1) min 1);
     if (_barrelElevation < _minElevation) exitWith {
