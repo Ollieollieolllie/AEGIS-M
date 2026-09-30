@@ -8,11 +8,15 @@ Description:
     fnc_selectTarget) share.
 
         launcher - the target is inside the missile's envelope NOW (lock
-            range, doctrine limits: aegism_intercept_fnc_inEnvelope), the
-            missile can actually catch it (a feasible intercept from its
-            real speed profile, aegism_intercept_fnc_computeLeadPoint), and
-            the turret can point at that intercept, or within the missile's
-            own lock cone of it (aegism_intercept_fnc_turretCanPoint).
+            range, doctrine limits: aegism_intercept_fnc_inEnvelope), and a
+            missile can be put onto it (aegism_intercept_fnc_launchSolution):
+            it can catch it on its real speed profile, launched along the
+            closest direction the turret can reach -- straight, or off-bore
+            within the missile's post-launch cone and turn (a vertical
+            launch cell, a turret at its limit). Against an incoming
+            munition, the turret's swing plus the missile's flight must
+            beat its impact -- or, only when that's too late, a launch now,
+            before the turret is round.
         ciws - a feasible intercept exists, and the INTERCEPT point (where
             the rounds would meet the target) is inside the gun's envelope
             -- its range, the target's height THERE, and the minimum
@@ -80,19 +84,27 @@ if (!_isCiws) then {
     if !([_settings, _weaponInfo, _currentDistance, _height, _role, _elevation] call aegism_intercept_fnc_inEnvelope) exitWith {
         [false, [_currentDistance, _height, _elevation] call _fnEnvelopeReason]
     };
-    ([_system, _origin, _target, _weaponInfo, _role, false] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "_flightTime"];
-    if (!_feasible) exitWith {
-        [false, format ["missile cannot catch it (%1m, receding)", round _currentDistance]]
-    };
-    // The launcher has to be able to point at the intercept -- or within the
-    // missile's own lock cone of it: the Spartan's RAM turret stops at 40
-    // degrees, with a 3-degree lock cone, and was given rockets on a high arc
-    // whose intercept sat above that; it sat on each one SLEWING until the
+    // How a missile gets onto it (aegism_intercept_fnc_launchSolution):
+    // straight, after the turret swings to the closest direction it can
+    // reach; or off-bore -- a vertical launch cell, a turret at its limit --
+    // only if the missile can still be guided onto it after launch, and turn
+    // in time. The Spartan's RAM turret stops at 40 degrees and was given
+    // rockets on a high arc above that: it sat on each one SLEWING until the
     // 15s never-fired timeout while its queue waited behind it.
-    ([_system, _weaponInfo select 0, _origin vectorFromTo _aimPoint] call aegism_intercept_fnc_turretCanPoint) params ["_canPoint", "_aimElevation", "_minElevation", "_maxElevation"];
-    private _lockCone = ([_weaponInfo select 1, _weaponInfo select 2] call aegism_intercept_fnc_weaponKinematics) select 8;
-    if (!_canPoint && {_aimElevation > _maxElevation + _lockCone || {_aimElevation < _minElevation - _lockCone}}) exitWith {
-        [false, format ["intercept at %1 deg elevation, beyond the turret's %2 to %3 deg and the missile's %4 deg lock cone", round _aimElevation, _minElevation, _maxElevation, _lockCone]]
+    // Against an incoming munition it has to get there in time: the
+    // turret's swing plus the missile's flight, before it comes down --
+    // or, when swinging first is too late, firing now and letting the
+    // missile turn (the last resort, see launchSolution).
+    private _targetClass = [_target] call aegism_detect_fnc_classifyTarget;
+    private _timeToImpact = if (_targetClass in ["missile", "rocket", "bomb", "artilleryShell"]) then {
+        [_target, _targetClass, [getPosASL _system]] call aegism_intercept_fnc_timeToImpact
+    } else { 1e10 };
+    private _muzzle = ([_system, _weaponInfo select 0, _role] call aegism_intercept_fnc_turretPoints) select 0;
+    ([_system, _weaponInfo, _target, _muzzle, true, true, false, 0, false, _timeToImpact] call aegism_intercept_fnc_launchSolution)
+        params ["_launchable", "_reason", "", "", "_flightTime", "_slewTime"];
+    if (!_launchable) exitWith { [false, _reason] };
+    if (_timeToImpact < 1e9 && {_slewTime + (_flightTime max 0) >= _timeToImpact}) exitWith {
+        [false, format ["can't get a missile onto it in time (turret swing %1s + missile flight %2s vs impact in %3s)", round (_slewTime * 10) / 10, round (_flightTime * 10) / 10, round (_timeToImpact * 10) / 10]]
     };
     [true, "", _flightTime max 0]
 } else {
@@ -141,11 +153,11 @@ if (!_isCiws) then {
     if !([_settings, _weaponInfo, _interceptDistance, _interceptHeight, _role, _elevation] call aegism_intercept_fnc_inEnvelope) exitWith {
         [false, [_interceptDistance, _interceptHeight, _elevation] call _fnEnvelopeReason]
     };
-    // A gun can't hit what its turret can't point at: past its elevation
-    // limit the barrel stops short and never comes on target.
-    ([_system, _weaponInfo select 0, _origin vectorFromTo _aimPoint] call aegism_intercept_fnc_turretCanPoint) params ["_canPoint", "_aimElevation", "_minElevation", "_maxElevation"];
+    // A gun can't hit what its turret can't point at: past its elevation or
+    // traverse limit the barrel stops short and never comes on target.
+    ([_system, _weaponInfo select 0, _origin vectorFromTo _aimPoint] call aegism_intercept_fnc_turretCanPoint) params ["_canPoint", "_aimElevation", "_minElevation", "_maxElevation", "", "_aimTurn", "_minTurn", "_maxTurn"];
     if (!_canPoint) exitWith {
-        [false, format ["beyond the turret's elevation limits (aim %1 deg, turret %2 to %3 deg)", round _aimElevation, _minElevation, _maxElevation]]
+        [false, format ["beyond the turret's limits (aim %1 deg elevation, %2 deg traverse; turret %3 to %4 deg elevation, %5 to %6 deg traverse)", round _aimElevation, round _aimTurn, _minElevation, _maxElevation, _minTurn, _maxTurn]]
     };
     // It has to get there in time: swing the barrel onto the intercept
     // (aegism_intercept_fnc_turretSlewTime, the turret's own rates) and fly

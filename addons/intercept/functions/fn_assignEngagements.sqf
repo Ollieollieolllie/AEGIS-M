@@ -455,21 +455,21 @@ private _fnPlanShot = {
         private _origin = eyePos _candSystem;
         private _p0 = getPosASL _object;
         private _v = velocity _object;
-        private _lockCone = ([_weaponInfo select 1, _weaponInfo select 2] call aegism_intercept_fnc_weaponKinematics) select 8;
+        private _muzzle = ([_candSystem, _weaponInfo select 0, "launcher"] call aegism_intercept_fnc_turretPoints) select 0;
         private _shots = [];
         for "_t" from 0 to _tti step AEGISM_RESERVE_PLAN_STEP do {
             private _p = (_p0 vectorAdd (_v vectorMultiply _t)) vectorDiff [0, 0, _drop * _t * _t];
             private _distance = _origin distance _p;
             private _height = (ASLToAGL _p) select 2;
             if (_distance >= _minRange && {_distance <= _maxRange} && {_height >= _minAltitude} && {_maxAltitude <= 0 || {_height <= _maxAltitude}}) then {
-                ([_candSystem, _origin, _object, _weaponInfo, "launcher", false, _t, _ballistic] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "_flightTime"];
-                // Only a shot the turret can point at (or within the missile's
-                // lock cone of): a RAM planned onto rockets above its 40-degree
-                // limit held the Patriots in reserve for kills it couldn't make.
-                if (_feasible && {_t + (_flightTime max 0) < _tti} && {
-                    ([_candSystem, _weaponInfo select 0, _origin vectorFromTo _aimPoint] call aegism_intercept_fnc_turretCanPoint) params ["_canPoint", "_aimElevation", "_minElevation", "_maxElevation"];
-                    _canPoint || {_aimElevation <= _maxElevation + _lockCone && {_aimElevation >= _minElevation - _lockCone}}
-                }) then {
+                // Only a shot a missile can be put onto (aegism_intercept_fnc_
+                // launchSolution, the turret having had time to swing): a RAM
+                // planned onto rockets above its 40-degree limit held the
+                // Patriots in reserve for kills it couldn't make. A vertical
+                // launch cell's shots are off-bore, with the missile's turn.
+                ([_candSystem, _weaponInfo, _object, _muzzle, false, false, false, _t, _ballistic] call aegism_intercept_fnc_launchSolution)
+                    params ["_launchable", "", "", "", "_flightTime"];
+                if (_launchable && {_t + (_flightTime max 0) < _tti}) then {
                     _shots pushBack [time + _t, time + _t + (_flightTime max 0)];
                 };
             };

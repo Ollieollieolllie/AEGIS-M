@@ -268,6 +268,7 @@ class Cfg3DEN
                     AEGISM_OVR_NUMBER(AEGISM_ovr_maxRange,"AEGISM_ovr_maxRange","if (_value != '') then {_this setVariable ['AEGISM_ovr_maxRange', parseNumber _value]};","Max Range (m)","0 = the missile's own config reach. Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_salvoSize,"AEGISM_ovr_salvoSize","if (_value != '') then {_this setVariable ['AEGISM_ovr_salvoSize', parseNumber _value]};","Missiles per Target","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_minShotInterval,"AEGISM_ovr_minShotInterval","if (_value != '') then {_this setVariable ['AEGISM_ovr_minShotInterval', parseNumber _value]};","Seconds Between Missiles","0 = Auto: this launcher's own config fire rate. Blank = Site setting.");
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_maxOffBore,"AEGISM_ovr_maxOffBore","if (_value != '') then {_this setVariable ['AEGISM_ovr_maxOffBore', parseNumber _value]};","Max Off-Bore Launch (deg)","The most this launcher may fire away from the intercept and leave the missile to turn. A fixed mount is exempt. Blank = Site setting.");
 
                     // --------------------------------------------------- CIWS
                     class AEGISM_ovr_section_ciws

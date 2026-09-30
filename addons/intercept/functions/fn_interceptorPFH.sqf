@@ -29,9 +29,21 @@ Description:
     fuse (CfgAmmo proximityExplosionDistance, set on most vanilla SAMs) may
     detonate the missile first; this handler then simply sees it gone.
 
+    Turn rate: a guided missile's body direction is followed every frame,
+    and its rotation summed over AEGISM_TURN_WINDOW s windows -- the fastest
+    window is the flight's fastest SUSTAINED turn (a window that long
+    averages out frame-to-frame jitter and a last-instant jink). The body
+    direction, not the velocity: gravity bends a slow missile's path just
+    off the rail without it steering at all. At the end of the flight it's
+    folded into the missile's turn rate (aegism_intercept_fnc_
+    recordMissileTurn, MISSILE-TURN) -- what an off-bore launch is planned
+    with (aegism_intercept_fnc_launchSolution).
+
 Parameters:
     _projectile - the missile <OBJECT>
     _target - the target it was fired at <OBJECT>
+    _launch - optional, its launch plan [off-bore deg, predicted flight s,
+        fired at] (aegism_intercept_fnc_fireWeapon) <ARRAY>
 
 Returns:
     Nothing
@@ -43,7 +55,10 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["_projectile", "_target"];
+// Turn-rate measurement window, seconds (see header).
+#define AEGISM_TURN_WINDOW 0.5
+
+params ["_projectile", "_target", ["_launch", []]];
 
 if (isNull _projectile || {isNull _target}) exitWith {};
 
@@ -59,10 +74,27 @@ private _launchPos = getPosASLVisual _projectile;
 
 [{
     params ["_args", "_pfhHandle"];
-    _args params ["_projectile", "_target", "_hitRadius", "_armDistance", "_isGuided", "_launchPos", "_isMunitionTarget", "_lastProjPos", "_lastTargetPos", "_lastSeparation", "_hasClosed"];
+    _args params ["_projectile", "_target", "_hitRadius", "_armDistance", "_isGuided", "_launchPos", "_isMunitionTarget", "_lastProjPos", "_lastTargetPos", "_lastSeparation", "_hasClosed",
+        "_ammoClass", "_launch", "_turn"];
+    // Turn measurement (see header): [last direction, last time, window
+    // angle, window time, fastest window deg/s].
+    _turn params ["_lastDir", "_lastTime", "_windowAngle", "_windowTime", "_peakRate"];
 
     if (isNull _projectile || {!alive _projectile} || {isNull _target} || {!alive _target}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+        if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, -1] call aegism_intercept_fnc_recordMissileTurn; };
+    };
+
+    if (_isGuided) then {
+        private _dir = vectorDirVisual _projectile;
+        _windowAngle = _windowAngle + acos (((_dir vectorCos _lastDir) min 1) max -1);
+        _windowTime = _windowTime + (time - _lastTime);
+        if (_windowTime >= AEGISM_TURN_WINDOW) then {
+            _peakRate = _peakRate max (_windowAngle / _windowTime);
+            _windowAngle = 0;
+            _windowTime = 0;
+        };
+        _args set [13, [_dir, time, _windowAngle, _windowTime, _peakRate]];
     };
 
     private _projPos = getPosASLVisual _projectile;
@@ -80,6 +112,7 @@ private _launchPos = getPosASLVisual _projectile;
 
     if (_minDistance <= _hitRadius && {(_launchPos distance _projPos) >= _armDistance}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+        if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, time - (_launch param [2, time])] call aegism_intercept_fnc_recordMissileTurn; };
         [_projectile, _target, _isMunitionTarget, _minDistance, _hitRadius] call aegism_intercept_fnc_interceptHit;
     };
 
@@ -91,4 +124,5 @@ private _launchPos = getPosASLVisual _projectile;
     _args set [8, _targetPos];
     _args set [9, _separation];
     _args set [10, _hasClosed];
-}, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosASLVisual _target, _launchPos distance (getPosASLVisual _target), false]] call CBA_fnc_addPerFrameHandler;
+}, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosASLVisual _target, _launchPos distance (getPosASLVisual _target), false,
+    typeOf _projectile, _launch, [vectorDirVisual _projectile, time, 0, 0, 0]]] call CBA_fnc_addPerFrameHandler;

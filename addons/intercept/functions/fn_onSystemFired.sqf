@@ -9,7 +9,8 @@ Description:
 
     aegism_intercept_fnc_fireWeapon writes a capture context on the firing
     TURRET ("capture" in aegism_intercept_fnc_turretState: [target, role,
-    interceptors, expiresAt, targetIsMunition, turretPath, weapon]) and this
+    interceptors, expiresAt, targetIsMunition, turretPath, weapon, launch
+    plan [off-bore deg, predicted flight s, fired at]]) and this
     handler consumes it for the rounds that turret actually produces. The
     turret is found from the Fired event's gunner; if that doesn't lead to a
     context for this weapon, the turret whose context names this weapon.
@@ -21,7 +22,8 @@ Description:
             seeker finds), recorded in the assignment's interceptors list
             (so aegism_intercept_fnc_assignEngagements can tell "still in
             flight" from "missed"), and handed to its proximity fuse
-            (aegism_intercept_fnc_interceptorPFH). Context cleared after.
+            (aegism_intercept_fnc_interceptorPFH), with its launch plan for
+            the turn measurement. Context cleared after.
         ciws - every round of the burst, until the context expires, goes to
             the gun's round tracker (aegism_intercept_fnc_ciwsRounds): fuzed
             against a MUNITION target, and every AEGISM_SPOT_EVERY-th round
@@ -71,7 +73,7 @@ if (_context isEqualTo []) then {
     } forEach _turrets;
 };
 if (_context isEqualTo []) exitWith {};
-_context params ["_target", "_role", "_interceptors", "_expiresAt", "_targetIsMunition", "_turretPath"];
+_context params ["_target", "_role", "_interceptors", "_expiresAt", "_targetIsMunition", "_turretPath", "", ["_launch", []]];
 
 if (time > _expiresAt) exitWith { _ts deleteAt "capture"; };
 
@@ -86,7 +88,7 @@ if (_role == "launcher") exitWith {
         _projectile setMissileTarget _target;
     };
     _interceptors pushBack _projectile;
-    [_projectile, _target] call aegism_intercept_fnc_interceptorPFH;
+    [_projectile, _target, _launch] call aegism_intercept_fnc_interceptorPFH;
 };
 
 if (isNull _target || {!alive _target}) exitWith {};

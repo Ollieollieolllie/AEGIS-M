@@ -469,6 +469,16 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "0";
             };
+            class MaxOffBore
+            {
+                displayName = "Max Off-Bore Launch (deg)";
+                tooltip = "The most a launcher may fire away from the intercept and leave the missile to turn onto it: firing before its turret has swung round (when the missile's turn gets there sooner), or from a turret stopped at its limit. Also never beyond what the missile itself can be guided through after launch. Default 15. A fixed mount -- a vertical launch cell, a hull-fixed launcher -- is exempt: launching off the target is the only way it can fire.";
+                property = "maxOffBore";
+                control = "Edit";
+                expression = "_this setVariable ['maxOffBore', _value];";
+                typeName = "NUMBER";
+                defaultValue = "15";
+            };
 
             // ========================================================== CIWS
             class Section_Ciws

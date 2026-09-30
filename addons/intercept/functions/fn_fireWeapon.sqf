@@ -61,6 +61,10 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+// aegism_intercept_fnc_launchSolution's own on-bore tolerance: off by more,
+// a launch is off-bore (OFFBORE-LAUNCH).
+#define AEGISM_LAUNCH_ON_BORE 2
+
 params ["_system", "_target", "_weaponInfo", "_reliability", "_role", ["_interceptors", []], ["_burstDuration", 0]];
 _weaponInfo params ["_turretPath", "_weaponClass", "_magazineClass"];
 
@@ -119,16 +123,34 @@ if !(_system getVariable ["AEGISM_firedEhAdded", false]) then {
 // command; a CIWS burst lasts its own duration.
 private _targetIsMunition = ([_target] call aegism_detect_fnc_classifyTarget) in ["missile", "rocket", "bomb", "artilleryShell"];
 private _contextLifetime = [2, _burstDuration + 0.5] select _isCiws;
-_ts set ["capture", [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition, _turretPath, _weaponClass]];
+// A missile's launch plan (aegism_intercept_fnc_aimWeapon's, for this
+// target): how far off the intercept it leaves, and the predicted flight --
+// checked against the real one in flight (aegism_intercept_fnc_
+// interceptorPFH, MISSILE-TURN).
+(_ts getOrDefault ["launchPlan", []]) params [["_planTarget", objNull], ["_way", ""], ["_offBore", 0], ["_turnTime", 0], ["_predictedFlight", -1], ["_calibrated", true]];
+if (_planTarget != _target) then { _way = ""; _offBore = 0; _turnTime = 0; _predictedFlight = -1; };
+_ts set ["capture", [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition, _turretPath, _weaponClass, [_offBore, _predictedFlight, time]]];
 
 if (_isCiws) then {
     diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
     [_system, _target, _weaponInfo, _burstDuration] call aegism_intercept_fnc_ciwsBurst;
 } else {
-    // Launch angle: barrel vs aim point at the alignment check this shot
-    // passed (aegism_intercept_fnc_aimWeapon's record).
-    private _launchAngle = (_ts getOrDefault ["aim_launcher", [-1]]) select 0;
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) fires %3 (%4, %5 rounds left) at %6 (%7) -- %8, barrel %9 deg off aim point.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _role, round (_launchAngle * 10) / 10];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) fires %3 (%4, %5 rounds left) at %6 (%7) -- %8, launched %9, %10 deg off the intercept.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _role,
+        switch (_way) do {
+            case "onBore": { "on it" };
+            case "slew": { "as close as the turret gets" };
+            case "now": { "before the turret is round (swinging first would be too late to intercept)" };
+            case "fixed": { "from a fixed mount" };
+            default { "" };
+        }, round (_offBore * 10) / 10];
+    if (_offBore > AEGISM_LAUNCH_ON_BORE) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OFFBORE-LAUNCH: %1 turret %2 -- %3 deg off the intercept on %4: %5.", _system, _turretPath, round _offBore, _target,
+            if (_calibrated) then {
+                format ["predicted turn %1s, flight %2s", round (_turnTime * 10) / 10, round (_predictedFlight * 10) / 10]
+            } else {
+                format ["its turn rate isn't measured yet, so its flight (%1s) is predicted as if straight -- this flight measures it", round (_predictedFlight * 10) / 10]
+            }];
+    };
     [_system, _weaponClass, _turretPath] call BIS_fnc_fire;
 };
 

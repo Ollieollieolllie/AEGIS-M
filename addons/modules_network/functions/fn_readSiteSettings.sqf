@@ -40,6 +40,7 @@ private _allowlist = [];
         ["targetPriority", _logic getVariable ["targetPriority", "soonestImpact"]],
         ["salvoSize", _logic getVariable ["salvoSize", 1]],
         ["minShotInterval", _logic getVariable ["minShotInterval", 0]],
+        ["maxOffBore", _logic getVariable ["maxOffBore", 15]],
         ["ciwsBurstMin", _logic getVariable ["ciwsBurstMin", 3]],
         ["ciwsBurstMax", _logic getVariable ["ciwsBurstMax", 5]],
         ["ciwsBurstPause", _logic getVariable ["ciwsBurstPause", 1]],

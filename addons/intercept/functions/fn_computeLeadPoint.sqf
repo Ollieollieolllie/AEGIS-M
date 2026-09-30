@@ -36,6 +36,19 @@ Description:
             missile is guided. Pointing the launcher at this point instead of
             the target's current position saves the missile a hard turn
             right off the rail.
+        missile launched OFF-BORE (_launchDir given, with the missile's turn
+            rate, aegism_intercept_fnc_missileAgility) - a vertical launch
+            cell, a turret at its limit, or one fired before it's round: the
+            missile first turns from _launchDir onto the intercept at its
+            turn rate, then flies straight at it. The turn is an arc in the
+            plane of the launch direction and the intercept, through the
+            angle between the launch direction and the line from the turn's
+            END to the intercept (iterated: the turn carries it sideways),
+            covering what the missile flies in that time on its own speed
+            profile. Its flight time is the arc plus the straight run. A
+            target inside the turn -- the arc carries the missile past it --
+            has no solution: an off-bore shot's minimum range, which grows
+            with the angle and the missile's speed.
 
     FEASIBLE only if the solution converges inside the weapon's own reach
     (weaponInfo maxRange, from config) and within the round's own lifetime
@@ -71,6 +84,11 @@ Parameters:
     _leadBias - optional, seconds added to the time the target is projected
         forward (not to the round's flight time): a CIWS gun's spotting
         correction, aegism_intercept_fnc_ciwsSpot. Default 0 <NUMBER>
+    _launchDir - optional, missile only: world direction it leaves along,
+        for an off-bore launch (see header). Default [] = straight at the
+        intercept <ARRAY>
+    _turnRate - optional, with _launchDir: the missile's turn rate, deg/s.
+        0 = unknown: flown as if launched straight <NUMBER>
 
 Returns:
     [aimPoint ASL <ARRAY>, feasible <BOOLEAN>, timeOfFlight s <NUMBER>
@@ -78,7 +96,8 @@ Returns:
      [position ASL, velocity, acceleration] the target was projected from
      <ARRAY> -- CIWS spotting replays it (aegism_intercept_fnc_ciwsSpot),
      interceptPoint ASL: where the target is met (the aim point before the
-     gun's drop is added) <ARRAY>]
+     gun's drop is added) <ARRAY>, off-bore turn [angle deg, time s, ASL
+     position where it ends] ([0, 0, origin] if none) <ARRAY>]
 
 Examples:
     [_cheetah, eyePos gunner _cheetah, _heli, _weaponInfo, "ciws"] call aegism_intercept_fnc_computeLeadPoint;
@@ -94,8 +113,14 @@ Author:
 // exp() argument above which a gun's drag makes the flight time absurd
 // (e^30 ~ 1e13) -- treated as "can't get there" rather than overflowing.
 #define AEGISM_MAX_DRAG_EXPONENT 30
+// Off-bore turn solve: iterations, and the change in the turn angle (deg)
+// between two iterations that counts as converged. Below the minimum angle
+// the launch is straight.
+#define AEGISM_TURN_SOLVE_ITERATIONS 8
+#define AEGISM_TURN_SOLVE_TOLERANCE 0.25
+#define AEGISM_TURN_MIN_ANGLE 0.01
 
-params ["_system", "_origin", "_target", "_weaponInfo", "_role", ["_useAcceleration", true], ["_delay", 0], ["_ballistic", false], ["_leadBias", 0]];
+params ["_system", "_origin", "_target", "_weaponInfo", "_role", ["_useAcceleration", true], ["_delay", 0], ["_ballistic", false], ["_leadBias", 0], ["_launchDir", []], ["_turnRate", 0]];
 _weaponInfo params ["", "_weaponClass", "_magazineClass", "", "", ["_maxRange", 0]];
 
 private _targetPos = getPosASLVisual _target;
@@ -131,7 +156,54 @@ private _fnTimeOfFlight = if (_isGun) then {
 // nor thrust): nothing to predict with, so aim at the target and don't
 // block the engagement -- the old behaviour -- rather than calling every
 // target unreachable.
-if ((_isGun && {_v0 <= 0}) || {!_isGun && {_burnSpeed <= 0}}) exitWith { [_targetPos, true, -1, _currentDistance, [_targetPos, velocity _target, [0, 0, 0]], _targetPos] };
+if ((_isGun && {_v0 <= 0}) || {!_isGun && {_burnSpeed <= 0}}) exitWith { [_targetPos, true, -1, _currentDistance, [_targetPos, velocity _target, [0, 0, 0]], _targetPos, [0, 0, _origin]] };
+
+// Off-bore launch (see header): the turn onto a point, recorded as
+// [angle deg, time s, where it ends] by the flight time below.
+private _turning = !_isGun && {_launchDir isNotEqualTo []} && {_turnRate > 0};
+private _turn = [0, 0, _origin];
+
+// Distance a missile covers in its first _t s: the inverse of its flight time.
+private _fnDistanceAt = {
+    params ["_t"];
+    if (_thrust > 0 && {_t <= _accelTime}) exitWith { _v0 * _t + 0.5 * _thrust * _t * _t };
+    _accelDist + _burnSpeed * (_t - _accelTime)
+};
+
+// Flight time to a point: straight, or turning onto it first; -1 = it can't.
+private _fnPathTime = {
+    params ["_point"];
+    private _toPoint = _point vectorDiff _origin;
+    private _distance = vectorMagnitude _toPoint;
+    if (!_turning) exitWith { [_distance] call _fnTimeOfFlight };
+    private _theta = acos (((_launchDir vectorCos _toPoint) min 1) max -1);
+    if (_theta < AEGISM_TURN_MIN_ANGLE) exitWith { _turn = [0, 0, _origin]; [_distance] call _fnTimeOfFlight };
+    // The turn's plane: the launch direction and the point. Dead astern has
+    // none.
+    private _perp = _toPoint vectorDiff (_launchDir vectorMultiply (_toPoint vectorDotProduct _launchDir));
+    if ((vectorMagnitude _perp) < 0.001) exitWith { -1 };
+    private _side = vectorNormalized _perp;
+    private _fnTurnEnd = {
+        params ["_angle"];
+        if (_angle < AEGISM_TURN_MIN_ANGLE) exitWith { [0, _origin] };
+        private _arc = [_angle / _turnRate] call _fnDistanceAt;
+        private _radius = _arc / (rad _angle);
+        [_arc, _origin vectorAdd (_launchDir vectorMultiply (_radius * sin _angle)) vectorAdd (_side vectorMultiply (_radius * (1 - cos _angle)))]
+    };
+    private _converged = false;
+    for "_i" from 1 to AEGISM_TURN_SOLVE_ITERATIONS do {
+        private _rest = _point vectorDiff (([_theta] call _fnTurnEnd) select 1);
+        // Carried past it sideways: it's inside the turn.
+        if ((_rest vectorDotProduct _side) < 0) exitWith {};
+        private _next = acos (((_launchDir vectorCos _rest) min 1) max -1);
+        if (abs (_next - _theta) <= AEGISM_TURN_SOLVE_TOLERANCE) exitWith { _theta = _next; _converged = true; };
+        _theta = _next;
+    };
+    if (!_converged || {_theta >= 180}) exitWith { -1 };
+    ([_theta] call _fnTurnEnd) params ["_arc", "_turnEnd"];
+    _turn = [_theta, _theta / _turnRate, _turnEnd];
+    [_arc + (_point vectorDistance _turnEnd)] call _fnTimeOfFlight
+};
 
 private _targetVelocity = velocity _target;
 private _targetAcceleration = [0, 0, 0];
@@ -181,7 +253,7 @@ private _fnDrop = {
     (AEGISM_GRAVITY / (2 * _a)) * (_t + 0.5 * _at * _t - (ln (1 + _at)) / _a)
 };
 
-private _timeToGo = [_currentDistance] call _fnTimeOfFlight;
+private _timeToGo = [_targetPos] call _fnPathTime;
 private _interceptPoint = _targetPos;
 private _interceptDistance = _currentDistance;
 private _aimPoint = _targetPos;
@@ -203,16 +275,17 @@ if (_feasible) then {
     for "_i" from 1 to AEGISM_LEAD_SOLVE_ITERATIONS do {
         [_timeToGo] call _fnSolveAt;
         // The round covers the distance to the aim point along its launch
-        // line (for a gun that's the raised point, see header).
-        _timeToGo = [_origin distance _aimPoint] call _fnTimeOfFlight;
+        // line (for a gun that's the raised point, see header); an off-bore
+        // missile turns onto it first.
+        _timeToGo = [_aimPoint] call _fnPathTime;
         if ([_interceptDistance, _timeToGo] call _fnOutOfReach) exitWith { _feasible = false; };
     };
 };
 
 private _track = [_targetPos, _targetVelocity, _targetAcceleration];
 
-if (!_feasible) exitWith { [_targetPos, false, -1, _interceptDistance, _track, _targetPos] };
+if (!_feasible) exitWith { [_targetPos, false, -1, _interceptDistance, _track, _targetPos, [0, 0, _origin]] };
 
 [_timeToGo] call _fnSolveAt;
 
-[_aimPoint, true, _timeToGo, _interceptDistance, _track, _interceptPoint]
+[_aimPoint, true, _timeToGo, _interceptDistance, _track, _interceptPoint, _turn]

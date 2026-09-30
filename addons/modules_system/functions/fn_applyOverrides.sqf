@@ -45,7 +45,7 @@ private _keys = if (_kind == "crew") then {
     ["skillTier", "temperament", "costValueJudgment", "crewOnAutomated"]
 } else {
     ["targetPriority", "minAltitude", "maxAltitude", "engageFriendlyThreats", "engageOnlyThreats", "friendlyThreatRadius",
-     "minRange", "maxRange", "salvoSize", "minShotInterval",
+     "minRange", "maxRange", "salvoSize", "minShotInterval", "maxOffBore",
      "ciwsMaxRange", "ciwsMinElevation", "ciwsOpenFireChance", "ciwsBurstMin", "ciwsBurstMax", "ciwsBurstPause", "ciwsLastResort"]
 };
 

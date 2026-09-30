@@ -236,16 +236,57 @@ lives; the contact is then freed for reassignment -- to the same System
 again, a different/better-fit weapon, or CIWS. Two weapons sharing a turret
 are never assigned to different targets.
 
-**Only what a weapon can actually reach.** A launcher is only given a
-target its turret can point at: the intercept point has to be inside the
-turret's own elevation and traverse limits (with the missile's lock cone as
-slack) -- a RAM launcher limited to 40 deg elevation isn't queued a
-high-arc rocket it could never lock, which used to freeze its whole queue
-until a timeout. A gun is only given a target it can slew onto and reach
-before impact: its turret's own rotation rates (config, logged once as
-`TURRET-RATE`) give the slew time, the round's flight time is added, and a
-target that would impact first is released (`can't get on it in time`), so
-the gun moves on to one it can still kill.
+**Only what a weapon can actually reach.** Every turret's elevation and
+traverse limits, rotation rates and mount type (trainable, fixed bearing,
+fixed elevation, or fixed -- a vertical launch cell or a hull-fixed
+launcher) come from its config (`TURRET-RATE`). A gun is only given a
+target it can slew onto and reach before impact: slew time from its
+rates, plus the round's flight, must beat the impact, or it's released
+(`can't get on it in time`) and the gun moves on to one it can still kill.
+
+**Launching off-bore.** A missile doesn't have to leave pointing at its
+target: a vertical launch cell can't point at all, a turret stops at its
+limits, and one still swinging round could fire now and let the missile
+turn. For every launcher and target AEGIS-M works out how to launch:
+- **swing, then launch** (the normal way): the turret goes to the closest
+  direction it can reach -- straight at the intercept if it can -- and the
+  swing time counts. At the start of an engagement, with time in hand, it
+  always swings fully first.
+- **launch now**, before the turret is round: a last resort, only for an
+  intercept it otherwise couldn't make -- swinging first would get the
+  missile there after the target comes down.
+- **fixed mount**: along its barrel, whatever it points at.
+
+A launcher that can move never fires more than **Max Off-Bore Launch**
+(15 deg by default) off the intercept -- it swings round instead; a fixed
+mount is only limited by its missile. And a launch more than 2 deg off the
+intercept needs the missile to be able to get there after launch (`AGILITY`
+in the RPT, once per missile):
+- **Its post-launch cone**: vanilla `missileKeepLockedCone` (MIM-145 120
+  deg, RIM-116 180 deg); for ACE-guided missiles 180 deg when they lock on
+  after launch, or their seeker angle when they must lock before (ACE's RAM:
+  45 deg).
+- **Its turn rate**: ACE's own configured rate for ACE-guided missiles
+  (Patriot 30 deg/s, S-400 25, ESSM 15, RAM 50). Missiles the game guides
+  have no turn rate in config, so it's **measured**: every AEGIS-M missile's
+  body rotation is followed in flight, and the fastest sustained turn on a
+  flight that had to turn becomes that missile's rate (`MISSILE-TURN`, with
+  predicted vs actual flight time). Until one has been seen turning, an
+  off-bore shot is only taken where there's no better choice, flown as if
+  straight -- and that flight measures it.
+- A missile ACE hands to its own guidance (`maneuvrability` 0) can't be
+  steered at all when ACE isn't guiding AI shots, so it's only launched
+  straight.
+
+With a turn rate, the flight is modelled as a turn onto the intercept at
+that rate, then a straight run: honest flight times, and a minimum range
+inside which the missile can't turn in time. Against an incoming munition
+the swing plus the flight must beat its impact (`can't get a missile onto
+it in time`), so a launcher isn't queued something it can't kill -- a RAM
+launcher limited to 40 deg elevation used to freeze its whole queue on
+high-arc rockets it could never lock. An off-bore launch's first leg must
+be clear (`LAUNCH-PATH-BLOCKED`). Each off-bore shot is logged as
+`OFFBORE-LAUNCH` with its predicted turn and flight.
 
 Syncing or unsyncing a vehicle to a Site, or editing the Site's own
 Attributes, takes effect live -- nothing requires re-placing modules or
@@ -374,6 +415,7 @@ envelope, and all threat classes are engaged.
 | Max Range (m) | 0 | 0 = the missile's own reach (MIM-145: 16000 m). |
 | Missiles per Target | 1 | Missiles fired before waiting for the result; re-engages if all miss. |
 | Seconds Between Missiles | 0 | Minimum gap between missiles from one launcher. 0 = Auto: each launcher's own fire rate, the `reloadTime` of its weapon's fire mode, which scales with the missile (MIM-145 Defender 4 s, Mk49 Spartan 2 s, Mk21 Centurion 1 s). The RPT logs each launcher's rate as `FIRE-RATE`. |
+| Max Off-Bore Launch (deg) | 15 | The most a launcher that can move may fire away from the intercept and leave the missile to turn (firing before its turret is round, or from a turret at its limit). A fixed mount -- a vertical launch cell -- is exempt: it can only fire off-bore. See **Launching off-bore**. |
 
 **CIWS (Guns)**
 

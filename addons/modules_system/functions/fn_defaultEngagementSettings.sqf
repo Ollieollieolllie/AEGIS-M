@@ -25,6 +25,10 @@ Returns:
         minShotInterval - seconds between two missiles from one launcher;
             0 = Auto, each launcher's own config fire rate (aegism_intercept_
             fnc_launcherInterval) <NUMBER>
+        maxOffBore - degrees; the most a launcher that can move may launch
+            off the intercept and leave the missile to turn (aegism_
+            intercept_fnc_launchSolution). A fixed mount -- a vertical
+            launch cell -- is exempt: it can't do otherwise <NUMBER>
         ciwsBurstMin, ciwsBurstMax - CIWS sustained-burst length, seconds;
             each burst picks a random length in this range <NUMBER>
         ciwsBurstPause - seconds a CIWS gun pauses between bursts <NUMBER>
@@ -60,6 +64,7 @@ createHashMapFromArray [
     ["targetPriority", "soonestImpact"],
     ["salvoSize", 1],
     ["minShotInterval", 0],
+    ["maxOffBore", 15],
     ["ciwsBurstMin", 3],
     ["ciwsBurstMax", 5],
     ["ciwsBurstPause", 1],

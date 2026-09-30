@@ -237,7 +237,15 @@ private _fnExecute = {
         _state set ["status", "noSolution"];
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " NO-SOLUTION: %1 (%2) holding on %3 -- no intercept inside the weapon's reach (target receding faster than the round can close, or meeting point beyond range).", _system, _role, _target];
+            // A launcher's own reason (aegism_intercept_fnc_launchSolution):
+            // its missile can't catch it, can't be guided onto it from where
+            // it would leave, or can't turn onto it in time.
+            private _why = "no intercept inside the weapon's reach (target receding faster than the round can close, or meeting point beyond range)";
+            if (!_isCiws) then {
+                _why = (_ts getOrDefault ["launchPlan", []]) param [6, ""];
+                if (_why == "") then { _why = "no launch solution"; };
+            };
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " NO-SOLUTION: %1 (%2) holding on %3 -- %4.", _system, _role, _target, _why];
         };
     };
 
@@ -263,13 +271,22 @@ private _fnExecute = {
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
             _state set ["lastSlewLog", time];
             // Why a turret can't get there: its aim point past the turret's own
-            // elevation limits (aegism_intercept_fnc_turretCanPoint).
-            ([_system, _turretPath, _weaponPos vectorFromTo _aimPoint] call aegism_intercept_fnc_turretCanPoint) params ["_canPoint", "_aimElevation", "_minElevation", "_maxElevation"];
+            // limits (aegism_intercept_fnc_turretCanPoint). A launcher's aim
+            // point is already the closest it can reach (a missile launched
+            // there turns the rest of the way).
+            ([_system, _turretPath, _weaponPos vectorFromTo _aimPoint] call aegism_intercept_fnc_turretCanPoint) params ["_canPoint", "_aimElevation", "_minElevation", "_maxElevation", "", "_aimTurn", "_minTurn", "_maxTurn"];
             private _limitNote = if (_canPoint) then { "" } else {
-                format [" -- aim point at %1 deg elevation, beyond the turret's %2 to %3 deg", round _aimElevation, _minElevation, _maxElevation]
+                format [" -- aim point at %1 deg elevation, %2 deg traverse, beyond the turret's %3 to %4 deg elevation, %5 to %6 deg traverse", round _aimElevation, round _aimTurn, _minElevation, _maxElevation, _minTurn, _maxTurn]
+            };
+            if (!_isCiws) then {
+                (_ts getOrDefault ["launchPlan", []]) params [["_planTarget", objNull], ["_way", ""], ["_offBore", 0], ["_turnTime", 0], "", ["_calibrated", true]];
+                if (_planTarget == _target && {_way == "slew"}) then {
+                    _limitNote = _limitNote + format [" -- as close as the turret gets, the missile turns the last %1 deg%2", round _offBore,
+                        [" (its turn rate not measured yet)", format [" (%1s)", round (_turnTime * 10) / 10]] select _calibrated];
+                };
             };
             diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6%7.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
-                ["", " (or the turret settled inside the missile's lock cone)"] select !_isCiws, _limitNote];
+                ["", " (or the turret settled, within the missile's post-launch cone)"] select !_isCiws, _limitNote];
         };
     };
 
