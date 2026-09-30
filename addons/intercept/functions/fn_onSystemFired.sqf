@@ -78,7 +78,9 @@ _context params ["_target", "_role", "_interceptors", "_expiresAt", "_targetIsMu
 if (time > _expiresAt) exitWith { _ts deleteAt "capture"; };
 
 // The Site's going-live alarm lasts a while after its last shot (aegism_
-// network_fnc_siteAlarm).
+// network_fnc_siteAlarm), and its crews are in combat meanwhile (aegism_
+// intercept_fnc_engagementLoop) -- a vehicle with no Site by its own.
+_vehicle setVariable ["AEGISM_lastShotAt", time];
 private _site = _vehicle getVariable ["AEGISM_network", objNull];
 if (!isNull _site) then { _site setVariable ["AEGISM_lastShotAt", time]; };
 

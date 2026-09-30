@@ -333,18 +333,40 @@ it as a System at all, so a misconfigured or unrecognized vehicle goes
 quiet rather than fighting uncontrolled.
 
 **Debug 3D draw** (CBA setting "AEGIS-M > Debug > Enable Debug 3D Draw",
-off by default, client-side/no gameplay effect) draws pooled contacts,
-radar range, and every active engagement -- Site-wide assignments or a
-standalone System's own acquired target, including live LOS state --
-directly from the same variables the detection/intercept pipeline itself
-reads and writes. Every System also shows a live status label (networked/
-standalone, contact source, per-role ammo, ASSIGNED, and live barrel
-alignment while aiming). Every engagement -- including each munition
-queued on a launcher -- is drawn and labelled in the colour of its own
-state: queued (blue), assigned (green), reacting / slewing (amber),
-reloading (orange), range hold (teal), firing (red), in flight (gold), no LOS
-/ no solution (purple), crew failed / fire held / no ammo (grey). An
-assigned weapon that isn't firing always logs why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
+off by default, client-side/no gameplay effect) draws what AEGIS-M is doing,
+straight from the variables its detection/intercept pipeline reads and
+writes, laid out to be read at a glance -- one colour scheme, one label per
+thing, labels stacked rather than drawn over each other:
+- **Colour** is always an engagement's state: queued (blue), assigned
+  (green), reacting / slewing (amber), reloading (orange), range hold (teal),
+  firing (red), in flight (gold), no LOS / no solution (purple), crew failed
+  / fire held / no ammo (grey).
+- **Contacts**: one icon each (plane, helicopter, or a target mark for a
+  munition or drone), white until something is on it, then the colour of
+  the most urgent engagement on it. Label: its class and, for an incoming
+  munition, seconds to impact.
+- **Engagements**: a line from weapon to target in its state's colour.
+  Waiting ones (queued behind the launcher's current target, missiles in
+  flight, held) are faint, so a launcher's queue doesn't drown out what
+  it's actually doing. A CIWS held back by Last Resort Only is dashed orange.
+- **Vehicles**: a shield (a radar mark for a radar-only vehicle) and three
+  lines:
+  1. its name;
+  2. network and radar status, in light blue: its own radar's reach and
+     arc, and whether it's emitting (munitions are found by AEGIS-M's own
+     check either way; aircraft only while an active radar emits), then
+     its Site's radars and tracked contacts (`RADAR 16km 360 emitting  |
+     SITE: 2 radars, 7 tracks`), or `STANDALONE` with its own tracks.
+     `NO RADAR ON SITE` in orange if it's networked but no vehicle of its
+     Site has a radar;
+  3. each weapon with rounds left and what it's doing (`MSL 4: firing +3
+     queued`, `GUN 680: slewing`), or `NO AMMO` in red.
+
+  Name and weapons are in the vehicle's most urgent engagement's colour,
+  grey while idle.
+- **Radars**: a faint ring at each one's detection range.
+
+An assigned weapon that isn't firing always logs why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
 `ASSIGN-CLEAR` with a reason. Every AEGIS-M RPT line carries the mission's
 game time (`[AEGIS-M] t=123.4 ...`): the RPT's own timestamp is wall-clock
 time, which keeps running while the game is paused.
@@ -394,6 +416,7 @@ envelope, and all threat classes are engaged.
 | Target Priority | Soonest Impact | Which contacts get weapons first when threats outnumber free weapons: Soonest Impact (whatever reaches the Site first -- an incoming salvo is worked front to back), Nearest (to any Site vehicle), Fastest Closing, or Highest Value (missile > bomb > aircraft > drone/rocket > artillery). |
 | Crew Skill | Regular | Reaction time and reliability: Green 4.0 s / 55 %, Regular 2.5 s / 70 %, Veteran 1.2 s / 85 %, Elite 0.5 s / 95 %. Reliability is rolled once per missile or CIWS burst; CIWS reaction is capped at 1 s. |
 | Crew Temperament | Standard | Scales reaction, reliability and the pause between shots (Cautious / Standard / Aggressive / Nervous). |
+| Reaction Once in Combat (%) | 50 | Once the Site is in combat (it fired within Warning Lasts After Last Shot, 10 s by default), crews are at their stations, weapons free, and take this percentage of their reaction on each new target -- about one skill tier quicker (Regular 2.5 s becomes 1.25 s; a CIWS's 1 s cap becomes 0.5 s). The first target of an engagement always gets the full reaction. 100 = no change. |
 | Crew Skill on Automated Systems | Off | Off: automated systems (crewed by UAV AI -- Phalanx, RAM, MIM-145, radars) ignore Crew Skill and Temperament -- no reaction delay, no skipped fire cycles, no interval scaling. On: they get the same crew model as manned systems. |
 | Save Ammo for Bigger Threats | Off | Hold fire if firing would leave fewer rounds than tracked higher-value contacts. |
 

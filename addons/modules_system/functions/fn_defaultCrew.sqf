@@ -18,6 +18,8 @@ Returns:
         costValueJudgment - optional saturation heuristic toggle <BOOLEAN>
         crewOnAutomated - apply the crew model to automated (UAV-crewed)
             systems too; off = they never hesitate or skip <BOOLEAN>
+        combatReaction - percent of its reaction time a crew takes on each
+            new target once in combat <NUMBER>
 
 Examples:
     [] call aegism_system_fnc_defaultCrew;
@@ -30,5 +32,6 @@ createHashMapFromArray [
     ["skillTier", "regular"],
     ["temperament", "standard"],
     ["costValueJudgment", false],
-    ["crewOnAutomated", false]
+    ["crewOnAutomated", false],
+    ["combatReaction", 50]
 ]

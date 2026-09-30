@@ -159,6 +159,7 @@ class Cfg3DEN
                         };
                     };
 
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_combatReaction,"AEGISM_ovr_combatReaction","if (_value != '') then {_this setVariable ['AEGISM_ovr_combatReaction', parseNumber _value]};","Reaction Once in Combat (%)","Percent of its reaction time this crew takes on each new target once in combat. Blank = Site setting.");
                     class AEGISM_ovr_crewOnAutomated: AEGISM_ovr_costValueJudgment
                     {
                         displayName = "Crew Skill on Automated Systems";

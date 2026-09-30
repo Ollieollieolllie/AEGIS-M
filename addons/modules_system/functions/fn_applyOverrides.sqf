@@ -42,7 +42,7 @@ params ["_vehicle", "_settings", "_kind", ["_changes", []]];
 if !(_vehicle getVariable ["AEGISM_ovr_enabled", false]) exitWith { _settings };
 
 private _keys = if (_kind == "crew") then {
-    ["skillTier", "temperament", "costValueJudgment", "crewOnAutomated"]
+    ["skillTier", "temperament", "costValueJudgment", "crewOnAutomated", "combatReaction"]
 } else {
     ["targetPriority", "minAltitude", "maxAltitude", "engageFriendlyThreats", "engageOnlyThreats", "friendlyThreatRadius",
      "minRange", "maxRange", "salvoSize", "minShotInterval", "maxOffBore",

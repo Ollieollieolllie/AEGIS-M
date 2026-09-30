@@ -56,6 +56,7 @@ private _allowlist = [];
         ["skillTier", _logic getVariable ["skillTier", "regular"]],
         ["temperament", _logic getVariable ["temperament", "standard"]],
         ["costValueJudgment", _logic getVariable ["costValueJudgment", false]],
-        ["crewOnAutomated", _logic getVariable ["crewOnAutomated", false]]
+        ["crewOnAutomated", _logic getVariable ["crewOnAutomated", false]],
+        ["combatReaction", _logic getVariable ["combatReaction", 50]]
     ]
 ]

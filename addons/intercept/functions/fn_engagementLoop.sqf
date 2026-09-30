@@ -30,7 +30,11 @@ Description:
            moment of assignment, so the turret is already on target when the
            crew finishes reacting.
         2. Crew reaction time since assignment (CIWS capped at
-           AEGISM_CIWS_REACTION_CAP: automated fire control).
+           AEGISM_CIWS_REACTION_CAP: automated fire control). Once in
+           combat -- the vehicle or its Site has fired within the Site's
+           live window (Warning Lasts After Last Shot) -- scaled by the
+           crew's Reaction Once in Combat: the first target of an
+           engagement gets the full reaction, each next one less.
         3. Fire cadence:
              launcher - doctrine salvoSize per engagement, the launcher's
                  shot interval between shots (aegism_intercept_fnc_
@@ -78,6 +82,9 @@ Author:
 #include "..\..\main\perf.hpp"
 
 #define AEGISM_CIWS_REACTION_CAP 1
+// The Site's Warning Lasts After Last Shot default: how long after its last
+// shot a vehicle with no Site counts as still in combat.
+#define AEGISM_LIVE_WINDOW_DEFAULT 10
 #define AEGISM_SLEW_LOG_INTERVAL 5
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
 #define AEGISM_TURRET_RELEASE 1.5
@@ -149,6 +156,19 @@ private _weaponPos = eyePos _system;
 
 private _reactionTime = _crewMods get "reactionTime";
 if (_isCiws) then { _reactionTime = _reactionTime min AEGISM_CIWS_REACTION_CAP; };
+// In combat -- this vehicle or its Site fired within the Site's own "live"
+// window (Warning Lasts After Last Shot, alarmHold; its default for a
+// vehicle with no Site) -- the crew is at its stations, weapons free, and
+// quicker onto each next target (crew setting Reaction Once in Combat).
+// The first target of an engagement gets the full reaction.
+private _lastShotAt = _system getVariable ["AEGISM_lastShotAt", -1e9];
+private _liveWindow = AEGISM_LIVE_WINDOW_DEFAULT;
+if (!isNull _network) then {
+    _lastShotAt = _lastShotAt max (_network getVariable ["AEGISM_lastShotAt", -1e9]);
+    _liveWindow = _network getVariable ["alarmHold", AEGISM_LIVE_WINDOW_DEFAULT];
+};
+private _inCombat = time - _lastShotAt <= _liveWindow;
+if (_inCombat) then { _reactionTime = _reactionTime * (_crewMods getOrDefault ["combatReactionMult", 1]); };
 private _salvoSize = _engagementSettings getOrDefault ["salvoSize", 1];
 
 // Runs the aim/gate/fire sequence for one engagement (see header).
@@ -183,7 +203,8 @@ private _fnExecute = {
         _state set ["status", "reacting"];
         if !(_state getOrDefault ["reactionLogged", false]) then {
             _state set ["reactionLogged", true];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " REACTING: %1 (%2) on %3 -- crew reaction %4s, turret slewing meanwhile.", _system, _role, _target, _reactionTime];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " REACTING: %1 (%2) on %3 -- crew reaction %4s%5, turret slewing meanwhile.", _system, _role, _target, round (_reactionTime * 100) / 100,
+                ["", " (in combat)"] select _inCombat];
         };
     };
 

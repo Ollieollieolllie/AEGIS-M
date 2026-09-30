@@ -317,7 +317,10 @@ private _ttiByKey = createHashMap;
 {
     private _object = _y getOrDefault ["object", objNull];
     if (!isNull _object && {alive _object}) then {
-        _ttiByKey set [_x, [_object, _y get "class", _memberPositions] call aegism_intercept_fnc_timeToImpact];
+        private _tti = [_object, _y get "class", _memberPositions] call aegism_intercept_fnc_timeToImpact;
+        _ttiByKey set [_x, _tti];
+        // Kept on the contact for the debug overlays (aegism_fnc_debugDraw).
+        _y set ["tti", [_tti, time]];
     };
 } forEach _pool;
 

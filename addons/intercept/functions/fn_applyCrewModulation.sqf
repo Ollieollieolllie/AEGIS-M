@@ -43,6 +43,10 @@ Returns:
             aegism_intercept_fnc_engagementLoop) <NUMBER>
         shotIntervalMult - multiplier applied to the doctrine's
             minShotInterval <NUMBER>
+        combatReactionMult - multiplier on reactionTime once the crew is
+            in combat (crew setting combatReaction, percent: a crew already
+            at its stations, weapons free, is quicker onto each next target;
+            aegism_intercept_fnc_engagementLoop) <NUMBER>
 
 Examples:
     [_crew, _samLauncher] call aegism_intercept_fnc_applyCrewModulation;
@@ -57,7 +61,8 @@ if (!isNull _system && {unitIsUAV _system} && {!(_crew getOrDefault ["crewOnAuto
     createHashMapFromArray [
         ["reactionTime", 0],
         ["reliability", 1],
-        ["shotIntervalMult", 1]
+        ["shotIntervalMult", 1],
+        ["combatReactionMult", 1]
     ]
 };
 
@@ -84,5 +89,6 @@ _temperamentMods params ["_reactionMult", "_reliabilityMult", "_shotIntervalMult
 createHashMapFromArray [
     ["reactionTime", _baseReactionTime * _reactionMult],
     ["reliability", (_baseReliability * _reliabilityMult) min 1],
-    ["shotIntervalMult", _shotIntervalMult]
+    ["shotIntervalMult", _shotIntervalMult],
+    ["combatReactionMult", ((_crew getOrDefault ["combatReaction", 50]) max 0) / 100]
 ]

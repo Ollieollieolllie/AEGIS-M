@@ -2,88 +2,63 @@
 Function: aegism_fnc_debugDraw
 
 Description:
-    Per-frame 3D debug visualisation of AEGIS-M's live detection/engagement
-    state: pooled contacts, network claims, and each
-    System's acquired target + LOS check, all drawn directly from the same
-    variables the real detection/intercept pipeline reads and writes, so
-    what's on screen is exactly what the mod is actually doing, not a
-    separate simulation of it.
+    Per-frame 3D debug overlay of AEGIS-M's live detection/engagement
+    state, drawn straight from the variables the pipeline itself reads and
+    writes -- what's on screen is what the mod is doing, not a separate
+    simulation of it. CBA setting "aegism_main_debugDraw" (client-side, no
+    gameplay effect). Only has data where the engagement pipeline runs
+    (singleplayer, Eden Preview, a hosted game's host).
 
-    Gated entirely by the "aegism_main_debugDraw" CBA setting (client-side,
-    no gameplay effect either way) and by drawing only when a debug 3D
-    context is actually open (findDisplay 46/312, i.e. Zeus or the 3DEN
-    equivalent) OR unconditionally in the main 3D view -- drawIcon3D/
-    drawLine3D silently no-op outside a valid 3D draw context, so no extra
-    guard is needed beyond the setting check itself.
+    Built to be read at a glance: one colour scheme, one label per thing,
+    labels stacked (at a spacing that scales with distance, so they stay
+    apart at any range) rather than drawn on top of each other.
 
-    Reads (never writes) only plain getVariable state already maintained
-    elsewhere, deliberately with NO calls into aegism_system_fnc_X, aegism_
-    intercept_fnc_X, or aegism_detect_fnc_X functions -- this lives in
-    aegism_main, which every other AEGIS-M addon depends on, not the other
-    way around, so this file must stay a pure reader of the variable
-    contract those addons already publish (AEGISM_allPoolOwners, AEGISM_
-    allSystems, AEGISM_system, AEGISM_pooledContacts, AEGISM_claims,
-    AEGISM_assigned, AEGISM_withheldCiws, and each System's AEGISM_turrets:
-    per turret, its aim records "aim_<role>" and a standalone System's
-    engagement states "standalone_<role>") rather than a dependent of them.
-    Only draws where the engagement pipeline runs (singleplayer, Eden
-    Preview, a hosted game's host).
+        Colour = an engagement's state (aegism_fnc_statusStyle): queued
+            blue, assigned green, reacting / slewing amber, reloading
+            orange, range hold teal, firing red, in flight gold, no LOS /
+            no solution purple, crew failed / fire held / no ammo grey.
 
-    Two separate top-level loops, over two separate lists, NOT one: every
-    recognized System (AEGISM_allSystems, aegism_system_fnc_moduleInit) gets
-    its own persistent live state label (see below), but only a System with
-    real radar capability, or a Network/Site logic, ever appears in
-    AEGISM_allPoolOwners (that list is scoped to "has a pool worth
-    scanning") -- so a pure launcher/CIWS System with no radar of its own
-    would otherwise never be visited by this function at all, and never
-    show a label, despite being exactly the kind of System "why doesn't
-    this launcher ever engage" debugging most needs to see.
+        Contact - one icon per contact, however many pools hold it: a
+            plane, a helicopter, or a target mark for a munition or drone.
+            White while nothing is on it, otherwise the colour of the most
+            urgent engagement on it. One short label: its class and, for an
+            incoming munition, seconds to impact (the coordinator's own
+            figure, aegism_intercept_fnc_assignEngagements).
 
-    Per System (AEGISM_allSystems): a persistent live state label at its own
-    position -- ACE missileguidance-style continuous status, always visible
-    while debug draw is on, rather than a one-shot command you have to think
-    to run: whether it's networked or standalone, its resolvedContactSource
-    (the single most useful field for diagnosing "why doesn't this launcher
-    ever engage" -- see aegism_system_fnc_resolveContactSource's own doc
-    comment), and per-role live ammo/assignment status (launcherWeapons/
-    ciwsWeapons count with live rounds, and whether AEGISM_claims currently
-    has an assignment for this System in that role). Colour follows the
-    same readiness signal: red if this System has zero live ammo across
-    every discovered weapon (nothing it could do even if assigned), orange
-    if networked but resolvedContactSource doesn't include "network" (synced
-    to a Site with no radar-capable member -- exactly the failure this was
-    built to surface), white otherwise.
+        Engagement - a line from the weapon to its target in the state's
+            colour. Waiting ones (queued behind the launcher's current
+            target, missiles already in flight, held) are faint, so a
+            launcher's queue doesn't drown out what it's actually doing. A
+            CIWS held back by Last Resort Only is a dashed orange line.
 
-    Per pool owner (System with radar, or Network, from AEGISM_allPoolOwners):
-        - A System with hasRadar draws a thin circle at its detection range
-          (radarRange, unscaled -- the real native sensor reach) around its
-          position.
-        - Every pooled contact (AEGISM_pooledContacts) draws an icon3D + text
-          label (class, age since firstSeen) at the contact's position,
-          coloured red if currently claimed/assigned to some System (per the
-          owning pool owner's own AEGISM_claims, if any) or white if not.
-        - For a Network/Site: every assignment record in its own AEGISM_
-          claims (aegism_intercept_fnc_assignEngagements' output) draws a
-          line from the assigned System's weapon-ish position (eyePos) to
-          the contact, coloured by that engagement's own state (aegism_fnc_
-          statusStyle: queued, reacting, slewing, range hold, firing, in
-          flight, ...), labelled with the weapon, that state, shots or
-          bursts fired and the distance. Every entry in the Site's own AEGISM_
-          withheldCiws (a CIWS eligible for this contact but held back by
-          the "CIWS Engages as Last Resort Only" doctrine gate) draws a
-          dashed-look (short-segment) orange line instead, labeled "CIWS
-          WITHHELD (last resort)" -- distinct from an active assignment so
-          a withheld-on-purpose CIWS doesn't read as simply idle/incapable.
-        - For a STANDALONE System (no Network -- each weapon turret's own
-          engagement state, since it never appears as a claims assignee):
-          the same line/label and colours.
+        System - a shield over each AEGIS-M vehicle (a radar mark for a
+            radar-only one), and stacked labels:
+            1. its name
+            2. network and radar status (light blue): its own radar -- reach,
+               arc, emitting or silent (munitions are found by AEGIS-M's own
+               check either way; aircraft only while an active radar emits)
+               -- and its Site's radars and tracks, or STANDALONE with its
+               own tracks. NO RADAR ON SITE in orange when networked but no
+               member of its Site has a radar (aegism_system_fnc_
+               resolveContactSource).
+            3. each weapon role with rounds left and what it's doing ("MSL
+               4: firing +3 queued", "GUN 680: slewing"), or NO AMMO (red)
+            Name and weapons in its most urgent engagement's colour; grey
+            while idle.
+
+        Radar - a faint ring at each radar's own detection range.
+
+    Reads only published state (AEGISM_allPoolOwners, AEGISM_allSystems,
+    AEGISM_system, AEGISM_pooledContacts, AEGISM_claims, AEGISM_
+    withheldCiws, each System's AEGISM_turrets "standalone_<role>" states)
+    and calls no function of the addons that publish it: this lives in
+    aegism_main, which they all depend on.
 
 Parameters:
-    None (reads the CBA setting and global pool-owner list itself)
+    None
 
 Returns:
-    Nothing (intended to be wrapped in a CBA_fnc_addPerFrameHandler, added
-    once from aegism's XEH_postInit)
+    Nothing (run every frame from aegism's XEH_postInit)
 
 Examples:
     [] call aegism_fnc_debugDraw;
@@ -95,233 +70,227 @@ Author:
 if !("aegism_main_debugDraw" call CBA_settings_fnc_get) exitWith {};
 
 #define AEGISM_DEBUG_CIRCLE_SEGMENTS 36
+// Vanilla task icons (ui_f_data, IGUI\Cfg\simpleTasks\types).
+#define AEGISM_ICON_PLANE "\a3\ui_f\data\igui\cfg\simpleTasks\types\plane_ca.paa"
+#define AEGISM_ICON_HELI "\a3\ui_f\data\igui\cfg\simpleTasks\types\heli_ca.paa"
+#define AEGISM_ICON_TARGET "\a3\ui_f\data\igui\cfg\simpleTasks\types\target_ca.paa"
+#define AEGISM_ICON_SHIELD "\a3\ui_f\data\igui\cfg\simpleTasks\types\defend_ca.paa"
+#define AEGISM_ICON_RADAR "\a3\ui_f\data\igui\cfg\simpleTasks\types\radio_ca.paa"
+// A stacked label's spacing, as a fraction of its distance from the camera:
+// about one text line on screen at any range.
+#define AEGISM_LINE_SPACING 0.022
+#define AEGISM_TEXT_SIZE 0.032
+#define AEGISM_SMALL_TEXT 0.027
+// A waiting engagement's line alpha.
+#define AEGISM_FAINT 0.3
 
-private _fnDrawRangeCircle = {
-    params ["_center", "_radius", "_color"];
-    private _prevPos = [];
+private _camera = positionCameraToWorld [0, 0, 0];
+// AGL position _lines text lines above _position (AGL).
+private _fnStacked = {
+    params ["_position", "_lines"];
+    _position vectorAdd [0, 0, (_camera distance _position) * AEGISM_LINE_SPACING * _lines]
+};
+private _fnText = {
+    params ["_position", "_text", "_color", "_size"];
+    drawIcon3D ["", _color, _position, 0, 0, 0, _text, 2, _size, "RobotoCondensedBold", "center"];
+};
+private _grey = [0.75, 0.75, 0.75, 0.9];
+private _white = [1, 1, 1, 0.95];
+
+// --- Gather: contacts (one per key across every pool), engagements, radars ---
+private _contacts = createHashMap;  // key -> [object, class, [tti, at]]
+private _engagements = [];          // [system, target, contact key, role, status]
+private _withheld = [];             // [system, target]
+private _radars = [];               // [position ASL, range]
+{
+    private _owner = _x;
+    if (!isNull _owner) then {
+        private _system = _owner getVariable "AEGISM_system";
+        private _isSystem = !isNil "_system";
+        if (_isSystem && {_system get "hasRadar"}) then { _radars pushBack [getPosASL _owner, _system get "radarRange"]; };
+
+        private _pool = _owner getVariable ["AEGISM_pooledContacts", createHashMap];
+        {
+            private _object = _y getOrDefault ["object", objNull];
+            // One per contact; the Site's entry carries its time to impact.
+            if (!isNull _object && {!(_x in _contacts) || {(((_contacts get _x) select 2) select 0) >= 1e9}}) then {
+                _contacts set [_x, [_object, _y getOrDefault ["class", ""], _y getOrDefault ["tti", [1e10, time]]]];
+            };
+        } forEach _pool;
+
+        if (_isSystem) then {
+            // Standalone: each weapon turret's own engagement state.
+            {
+                private _turretState = _y;
+                {
+                    private _state = _turretState getOrDefault ["standalone_" + _x, createHashMap];
+                    private _target = _state getOrDefault ["target", objNull];
+                    if (!isNull _target) then { _engagements pushBack [_owner, _target, [_target] call aegism_fnc_contactKey, _x, _state getOrDefault ["status", ""]]; };
+                } forEach ["launcher", "ciws"];
+            } forEach (_owner getVariable ["AEGISM_turrets", createHashMap]);
+        } else {
+            // A Site: every assignment record across the battery.
+            {
+                private _contactKey = _x;
+                {
+                    private _target = _x getOrDefault ["target", objNull];
+                    private _assigned = _x getOrDefault ["system", objNull];
+                    if (!isNull _target && {!isNull _assigned}) then {
+                        _engagements pushBack [_assigned, _target, _contactKey, _x get "role", _x getOrDefault ["status", ""]];
+                    };
+                } forEach _y;
+            } forEach (_owner getVariable ["AEGISM_claims", createHashMap]);
+            {
+                _x params ["_contactKey", "_heldSystem"];
+                private _target = (_pool getOrDefault [_contactKey, createHashMap]) getOrDefault ["object", objNull];
+                if (!isNull _target && {!isNull _heldSystem}) then { _withheld pushBack [_heldSystem, _target]; };
+            } forEach (_owner getVariable ["AEGISM_withheldCiws", []]);
+        };
+    };
+} forEach (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
+
+// --- Radar rings ---
+{
+    _x params ["_center", "_radius"];
+    private _previous = [];
     for "_i" from 0 to AEGISM_DEBUG_CIRCLE_SEGMENTS do {
         private _angle = (_i % AEGISM_DEBUG_CIRCLE_SEGMENTS) * (360 / AEGISM_DEBUG_CIRCLE_SEGMENTS);
-        private _pos = _center vectorAdd [(_radius * sin _angle), (_radius * cos _angle), 0];
-        if (_i > 0) then {
-            drawLine3D [ASLToAGL _prevPos, ASLToAGL _pos, _color];
-        };
-        _prevPos = _pos;
+        private _point = ASLToAGL (_center vectorAdd [_radius * sin _angle, _radius * cos _angle, 0]);
+        if (_i > 0) then { drawLine3D [_previous, _point, [0.3, 0.6, 1, 0.25]]; };
+        _previous = _point;
     };
-};
+} forEach _radars;
 
-// Persistent live state label for one System -- see this function's own
-// doc comment for what each field means and why. Reads only plain
-// getVariable state, same as everything else in this file. Called for
-// EVERY recognized System (AEGISM_allSystems, below), not just pool owners
-// -- a pure launcher/CIWS System with no radar of its own never joins
-// AEGISM_allPoolOwners (that list is scoped to "has a pool worth scanning",
-// see aegism_system_fnc_moduleInit's own doc comment on AEGISM_allSystems),
-// but this diagnostic needs to reach it too, since "why isn't this launcher
-// engaging" is exactly the question this label exists to answer.
-private _fnDrawSystemLabel = {
-    params ["_vehicle", "_system"];
+// --- Engagement lines; per target and per system role, the most urgent ---
+// (Keyed by contact key and vehicle netId: a HashMap can't key on objects.)
+private _byTarget = createHashMap;  // contact key -> [urgency, colour]
+private _byRole = createHashMap;    // [system netId, role] -> [urgency, label, queued count, colour]
+{
+    _x params ["_system", "_target", "_contactKey", "_role", "_status"];
+    ([_status] call aegism_fnc_statusStyle) params ["_label", "_color", "", "_urgency"];
+    private _waiting = _status in ["queued", "inFlight", "held", "crewFailed", "noAmmo"];
+    private _lineColor = +_color;
+    if (_waiting) then { _lineColor set [3, AEGISM_FAINT]; };
+    drawLine3D [ASLToAGL eyePos _system, ASLToAGL getPosASLVisual _target, _lineColor];
 
-    private _network = _vehicle getVariable ["AEGISM_network", objNull];
-    private _contactSource = _vehicle getVariable ["AEGISM_resolvedContactSource", []];
-    private _launcherWeapons = _system get "launcherWeapons";
-    private _ciwsWeapons = _system get "ciwsWeapons";
+    if (_urgency > ((_byTarget getOrDefault [_contactKey, [-1]]) select 0)) then { _byTarget set [_contactKey, [_urgency, _color]]; };
+    private _roleKey = [netId _system, _role];
+    (_byRole getOrDefault [_roleKey, [-1, "", 0, _grey]]) params ["_best", "_bestLabel", "_queued", "_bestColor"];
+    if (_status == "queued") then { _queued = _queued + 1; };
+    if (_status != "queued" && {_urgency > _best}) then { _best = _urgency; _bestLabel = _label; _bestColor = _color; };
+    _byRole set [_roleKey, [_best, _bestLabel, _queued, _bestColor]];
+} forEach _engagements;
 
-    private _fnRoleStatus = {
-        params ["_vehicle", "_network", "_weapons", "_role"];
-        if (_weapons isEqualTo []) exitWith { "" };
-        private _liveRounds = 0;
-        { _x params ["_turretPath", "", "_magClass"]; _liveRounds = _liveRounds + (_vehicle magazineTurretAmmo [_magClass, _turretPath]); } forEach _weapons;
-
-        private _turrets = _vehicle getVariable ["AEGISM_turrets", createHashMap];
-        private _assigned = if (isNull _network) then {
-            (_weapons findIf {
-                !isNull (((_turrets getOrDefault [_x select 0, createHashMap]) getOrDefault ["standalone_" + _role, createHashMap]) getOrDefault ["target", objNull])
-            }) != -1
-        } else {
-            ((_vehicle getVariable ["AEGISM_assigned", createHashMap]) getOrDefault [_role, []]) isNotEqualTo []
-        };
-
-        // Live barrel alignment (the first weapon turret's aim record),
-        // shown only while fresh (the loop is actually aiming this role).
-        private _aimText = "";
-        private _aim = (_turrets getOrDefault [(_weapons select 0) select 0, createHashMap]) getOrDefault ["aim_" + _role, []];
-        if (_aim isNotEqualTo [] && {_assigned} && {time - (_aim select 2) < 1}) then {
-            _aimText = format [",aim %1/%2", round ((_aim select 0) * 10) / 10, round ((_aim select 1) * 100) / 100];
-        };
-
-        format [" %1x%2(%3rnd%4%5)", count _weapons, _role, _liveRounds, ["", ",ASSIGNED"] select _assigned, _aimText]
+// Last Resort Only: dashed orange.
+{
+    _x params ["_system", "_target"];
+    private _from = ASLToAGL eyePos _system;
+    private _span = (ASLToAGL getPosASLVisual _target) vectorDiff _from;
+    for "_i" from 0 to 5 step 2 do {
+        drawLine3D [_from vectorAdd (_span vectorMultiply (_i / 6)), _from vectorAdd (_span vectorMultiply ((_i + 1) / 6)), [1, 0.5, 0, 0.8]];
     };
+} forEach _withheld;
 
-    private _statusLine = format [
-        "%1 contactSrc=%2%3%4",
-        ["STANDALONE", "NETWORKED"] select !isNull _network,
-        _contactSource,
-        [_vehicle, _network, _launcherWeapons, "launcher"] call _fnRoleStatus,
-        [_vehicle, _network, _ciwsWeapons, "ciws"] call _fnRoleStatus
-    ];
-
-    private _totalLiveAmmo = 0;
-    { _x params ["_turretPath", "", "_magClass"]; _totalLiveAmmo = _totalLiveAmmo + (_vehicle magazineTurretAmmo [_magClass, _turretPath]); } forEach (_launcherWeapons + _ciwsWeapons);
-
-    // Orange: networked but the resolved contact source doesn't include
-    // "network" -- synced to a Site with no radar-capable member, the
-    // exact silent-dead-end this overlay exists to surface (see
-    // aegism_system_fnc_resolveContactSource's own doc comment). Red:
-    // zero live ammo anywhere -- nothing this System could do even if
-    // assigned. White otherwise.
-    private _statusColor = if (_totalLiveAmmo <= 0) then {
-        [1, 0.2, 0.2, 1]
-    } else {
-        if (!isNull _network && {!("network" in _contactSource)}) then { [1, 0.6, 0, 1] } else { [1, 1, 1, 1] }
+// --- Contacts ---
+{
+    _y params ["_object", "_class", "_ttiInfo"];
+    _ttiInfo params ["_tti", "_ttiAt"];
+    private _position = ASLToAGL getPosASLVisual _object;
+    private _color = (_byTarget getOrDefault [_x, [-1, _white]]) select 1;
+    private _icon = switch (_class) do {
+        case "fixedWing": { AEGISM_ICON_PLANE };
+        case "helicopter": { AEGISM_ICON_HELI };
+        default { AEGISM_ICON_TARGET };
     };
+    drawIcon3D [_icon, _color, _position, 0.6, 0.6, 0, "", 2];
+    private _remaining = _tti - (time - _ttiAt);
+    private _text = toUpper _class;
+    if (_tti < 1e9) then { _text = format ["%1  %2s", _text, (round (_remaining * 10) / 10) max 0]; };
+    [[_position, -1.4] call _fnStacked, _text, _color, AEGISM_SMALL_TEXT] call _fnText;
+} forEach _contacts;
 
-    // Reuses attack_ca.paa (already proven to load without warning
-    // elsewhere in this same file, below) rather than a plausible-looking
-    // but non-existent path -- an earlier version of this used
-    // ".../simpleTasks/types/dot_ca.paa", which doesn't actually exist at
-    // that path and flooded the RPT with "Cannot load texture" warnings
-    // every single frame for every System.
-    drawIcon3D [
-        "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
-        _statusColor, (ASLToAGL getPosASLVisual _vehicle) vectorAdd [0, 0, 2], 0.4, 0.4, 0,
-        _statusLine,
-        1, 0.03, "TahomaB"
-    ];
-};
-
-private _fnDrawPoolOwner = {
-    params ["_poolOwner"];
-    if (isNull _poolOwner) exitWith {};
-
-    private _system = _poolOwner getVariable "AEGISM_system";
-    private _isSystem = !isNil "_system";
-
-    // --- Radar range ring (System only -- a Network logic has no sensor) ---
-    if (_isSystem && {_system get "hasRadar"}) then {
-        [getPosASL _poolOwner, _system get "radarRange", [0, 0.6, 1, 0.5]] call _fnDrawRangeCircle;
-    };
-
-    // --- Pooled contacts ---
-    private _claims = _poolOwner getVariable ["AEGISM_claims", createHashMap];
-    private _pool = _poolOwner getVariable ["AEGISM_pooledContacts", createHashMap];
-    {
-        private _entry = _y;
-        private _object = _entry get "object";
-        if (!isNull _object) then {
-            private _claimRecords = _claims getOrDefault [_x, []];
-            private _claimed = count _claimRecords > 0;
-            private _color = if (_claimed) then { [1, 0.2, 0.2, 1] } else { [1, 1, 1, 0.9] };
-
-            drawIcon3D [
-                "\a3\ui_f\data\igui\cfg\simpleTasks\types\destroy_ca.paa",
-                _color, ASLToAGL getPosASLVisual _object, 1, 1, 0,
-                format ["%1 (%2s)%3", _entry get "class", round (time - (_entry get "firstSeen")), ["", " [CLAIMED]"] select _claimed],
-                1, 0.035, "TahomaB"
-            ];
-        };
-    } forEach _pool;
-
-    // --- Active engagements, per role ---
-    if (_isSystem) then {
-        // Standalone: each weapon turret's own engagement state (it can
-        // never appear as a claims assignee, having no Network). LOS is the
-        // engagement loop's own last check.
-        private _weaponPos = eyePos _poolOwner; // already ASL
-        {
-            private _turretState = _y;
-            {
-                private _role = _x;
-                private _state = _turretState getOrDefault ["standalone_" + _role, createHashMap];
-                private _target = _state getOrDefault ["target", objNull];
-                if (!isNull _target) then {
-                    private _targetPos = getPosASL _target;
-                    private _roundsFired = _state getOrDefault ["roundsFired", 0];
-                    ([_state getOrDefault ["status", ""]] call aegism_fnc_statusStyle) params ["_statusText", "_color"];
-                    private _isGun = _role == "ciws";
-
-                    drawLine3D [ASLToAGL _weaponPos, ASLToAGL _targetPos, _color];
-                    drawIcon3D [
-                        "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
-                        _color, ASLToAGL _targetPos, 1, 1, 0,
-                        format ["%1: %2, %3 %4, %5m", ["missile", "gun"] select _isGun, _statusText, _roundsFired, ["shot(s)", "burst(s)"] select _isGun,
-                            round (_weaponPos distance _targetPos)],
-                        1, 0.035, "TahomaB"
-                    ];
-                };
-            } forEach ["launcher", "ciws"];
-        } forEach (_poolOwner getVariable ["AEGISM_turrets", createHashMap]);
-    } else {
-        // Networked (Site): every current assignment record across the
-        // whole battery, from aegism_intercept_fnc_assignEngagements.
-        {
-            private _contactKey = _x;
-            {
-                private _record = _x;
-                private _target = _record getOrDefault ["target", objNull];
-                private _assignedSystem = _record get "system";
-                if (!isNull _target && {!isNull _assignedSystem}) then {
-                        private _weaponPos = eyePos _assignedSystem; // already ASL
-                        private _targetPos = getPosASL _target;
-                        private _roundsFired = _record get "roundsFired";
-                        // Each engagement in its own state's colour (aegism_fnc_
-                        // statusStyle): a launcher's queue shows which one it's
-                        // on, which wait behind it, and which have missiles up.
-                        ([_record getOrDefault ["status", ""]] call aegism_fnc_statusStyle) params ["_statusText", "_color"];
-                        private _isGun = (_record get "role") == "ciws";
-
-                        // Which weapon, and how far: a vehicle with both
-                        // missiles and a gun (a Cheetah) draws both from the
-                        // same spot.
-                        drawLine3D [ASLToAGL _weaponPos, ASLToAGL _targetPos, _color];
-                        drawIcon3D [
-                            "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
-                            _color, ASLToAGL _targetPos, 1, 1, 0,
-                            format ["%1 %2: %3, %4 %5, %6m", ["missile", "gun"] select _isGun, (_record get "weaponInfo") select 1, _statusText, _roundsFired,
-                                ["shot(s)", "burst(s)"] select _isGun, round (_weaponPos distance _targetPos)],
-                            1, 0.035, "TahomaB"
-                        ];
-                };
-            } forEach (_claims get _contactKey);
-        } forEach (keys _claims);
-
-        // Doctrine-withheld CIWS: eligible but held back this tick by the
-        // "CIWS Engages as Last Resort Only" gate -- drawn distinctly from
-        // an active assignment so it doesn't read as simply idle/incapable.
-        {
-            _x params ["_contactKey", "_withheldSystem"];
-            private _target = (_pool getOrDefault [_contactKey, createHashMap]) getOrDefault ["object", objNull];
-            if (!isNull _target && {!isNull _withheldSystem}) then {
-                private _weaponPos = eyePos _withheldSystem; // already ASL
-                private _targetPos = getPosASL _target;
-                private _segments = 6;
-                for "_i" from 0 to (_segments - 1) do {
-                    if (_i % 2 == 0) then {
-                        private _from = _weaponPos vectorAdd ((_targetPos vectorDiff _weaponPos) vectorMultiply (_i / _segments));
-                        private _to = _weaponPos vectorAdd ((_targetPos vectorDiff _weaponPos) vectorMultiply ((_i + 1) / _segments));
-                        drawLine3D [ASLToAGL _from, ASLToAGL _to, [1, 0.5, 0, 1]];
-                    };
-                };
-                drawIcon3D [
-                    "\a3\ui_f\data\igui\cfg\simpleTasks\types\attack_ca.paa",
-                    [1, 0.5, 0, 1], ASLToAGL _weaponPos, 1, 1, 0,
-                    "CIWS WITHHELD (last resort)",
-                    1, 0.035, "TahomaB"
-                ];
-            };
-        } forEach (_poolOwner getVariable ["AEGISM_withheldCiws", []]);
-    };
-};
-
-{ [_x] call _fnDrawPoolOwner; } forEach (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
-
-// Separate list, separate loop -- see _fnDrawSystemLabel's own comment for
-// why this can't just reuse AEGISM_allPoolOwners above (that list excludes
-// any System with no radar of its own, launchers included).
+// --- Systems ---
 private _allSystems = (missionNamespace getVariable ["AEGISM_allSystems", []]) select { !isNull _x && {alive _x} };
 missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
+// Per Site, once a frame: [radar-capable live members, contacts in its pool].
+private _siteStats = createHashMap;
+private _fnSiteStats = {
+    params ["_site"];
+    private _key = netId _site;
+    private _stats = _siteStats get _key;
+    if (isNil "_stats") then {
+        private _radars = { alive _x && {((_x getVariable ["AEGISM_system", createHashMap]) getOrDefault ["hasRadar", false])} } count (_site getVariable ["AEGISM_networkMembers", []]);
+        _stats = [_radars, count (_site getVariable ["AEGISM_pooledContacts", createHashMap])];
+        _siteStats set [_key, _stats];
+    };
+    _stats
+};
 {
-    private _system = _x getVariable "AEGISM_system";
+    private _vehicle = _x;
+    private _system = _vehicle getVariable "AEGISM_system";
     if (!isNil "_system") then {
-        [_x, _system] call _fnDrawSystemLabel;
+        private _network = _vehicle getVariable ["AEGISM_network", objNull];
+        private _position = (ASLToAGL getPosASLVisual _vehicle) vectorAdd [0, 0, 3];
+
+        // Network and radar status (the middle line): the vehicle's own
+        // radar -- its reach and arc, and whether it's emitting (munitions
+        // are found by AEGIS-M's own check either way; aircraft only while
+        // an active radar emits, through the game's sensors) -- and where
+        // its contacts come from: its Site (radars, contacts in the Site's
+        // picture) or, standalone, its own radar alone.
+        private _statusParts = [];
+        private _statusColor = [0.55, 0.8, 1, 0.9];
+        if (_system getOrDefault ["hasRadar", false]) then {
+            _statusParts pushBack format ["RADAR %1km %2 %3", (round ((_system get "radarRange") / 100)) / 10,
+                [format ["%1deg", round (_system get "radarArc")], "360"] select ((_system get "radarArc") >= 360),
+                ["silent", "emitting"] select (isVehicleRadarOn _vehicle)];
+        };
+        if (isNull _network) then {
+            _statusParts pushBack format ["STANDALONE, %1 tracks", count (_vehicle getVariable ["AEGISM_pooledContacts", createHashMap])];
+        } else {
+            ([_network] call _fnSiteStats) params ["_siteRadars", "_siteTracks"];
+            private _siteName = vehicleVarName _network;
+            private _siteTag = ["SITE " + _siteName, "SITE"] select (_siteName == "");
+            if (!("network" in (_vehicle getVariable ["AEGISM_resolvedContactSource", []]))) then {
+                _statusColor = [1, 0.6, 0, 1];
+                _statusParts pushBack (_siteTag + ": NO RADAR ON SITE");
+            } else {
+                _statusParts pushBack format ["%1: %2 radar%3, %4 tracks", _siteTag, _siteRadars, ["s", ""] select (_siteRadars == 1), _siteTracks];
+            };
+        };
+        private _status = _statusParts joinString "  |  ";
+
+        private _roles = [];
+        private _totalAmmo = 0;
+        private _best = -1;
+        private _color = _grey;
+        {
+            _x params ["_role", "_tag"];
+            private _weapons = _system getOrDefault [["launcherWeapons", "ciwsWeapons"] select (_role == "ciws"), []];
+            if (_weapons isNotEqualTo []) then {
+                private _rounds = 0;
+                { _x params ["_turretPath", "", "_magClass"]; _rounds = _rounds + (_vehicle magazineTurretAmmo [_magClass, _turretPath]); } forEach _weapons;
+                _totalAmmo = _totalAmmo + _rounds;
+                (_byRole getOrDefault [[netId _vehicle, _role], [-1, "", 0, _grey]]) params ["_urgency", "_label", "_queued", "_roleColor"];
+                private _text = format ["%1 %2", _tag, _rounds];
+                if (_label != "") then { _text = _text + ": " + _label; };
+                if (_queued > 0) then { _text = _text + format [" +%1 queued", _queued]; };
+                _roles pushBack _text;
+                if (_urgency > _best) then { _best = _urgency; _color = _roleColor; };
+            };
+        } forEach [["launcher", "MSL"], ["ciws", "GUN"]];
+
+        // Top to bottom: name, network and radar status, weapons (a
+        // radar-only vehicle has no weapons line).
+        private _hasWeapons = _roles isNotEqualTo [];
+        if (_hasWeapons && {_totalAmmo <= 0}) then { _color = [1, 0.25, 0.25, 1]; _roles = ["NO AMMO"]; };
+        private _line = [0.8, 1.6] select _hasWeapons;
+
+        drawIcon3D [[AEGISM_ICON_RADAR, AEGISM_ICON_SHIELD] select _hasWeapons, _color, _position, 0.5, 0.5, 0, "", 2];
+        [[_position, _line + 0.8] call _fnStacked, getText (configOf _vehicle >> "displayName"), _color, AEGISM_TEXT_SIZE] call _fnText;
+        [[_position, _line] call _fnStacked, _status, _statusColor, AEGISM_SMALL_TEXT] call _fnText;
+        if (_hasWeapons) then {
+            [[_position, 0.8] call _fnStacked, _roles joinString "   ", _color, AEGISM_SMALL_TEXT] call _fnText;
+        };
     };
 } forEach _allSystems;

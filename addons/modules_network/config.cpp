@@ -269,6 +269,16 @@ class CfgVehicles
                     };
                 };
             };
+            class CombatReaction
+            {
+                displayName = "Reaction Once in Combat (%)";
+                tooltip = "Once the Site is in combat -- it has fired within Warning Lasts After Last Shot (Alarms, 10s by default) -- its crews are at their stations, weapons free, and react to each new target in this percentage of their Crew Skill reaction time (the first target of an engagement always gets the full reaction). Default 50: about one skill tier quicker (Regular 2.5s becomes 1.25s, near Veteran's 1.2s; a CIWS's 1s cap becomes 0.5s). 100 = no change.";
+                property = "combatReaction";
+                control = "Edit";
+                expression = "_this setVariable ['combatReaction', _value];";
+                typeName = "NUMBER";
+                defaultValue = "50";
+            };
             class CrewOnAutomated
             {
                 displayName = "Crew Skill on Automated Systems";
@@ -617,7 +627,7 @@ class CfgVehicles
             class AlarmHold
             {
                 displayName = "Warning Lasts After Last Shot (s)";
-                tooltip = "How long the Going-Live Warning keeps sounding after the Site's last shot (missile or gun), once no weapon is assigned any more.";
+                tooltip = "How long the Site counts as live after its last shot (missile or gun): the Going-Live Warning keeps sounding (once no weapon is assigned any more), and its crews stay in combat -- quicker onto each new target (Reaction Once in Combat).";
                 property = "alarmHold";
                 control = "Edit";
                 expression = "_this setVariable ['alarmHold', _value];";

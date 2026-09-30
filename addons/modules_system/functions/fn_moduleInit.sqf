@@ -148,14 +148,17 @@ if ("ownRadar" in _contactSource) then {
 
     [{
         params ["_args", "_pfhHandle"];
-        _args params ["_vehicle"];
+        _args params ["_vehicle", "_lastTime"];
         if (isNull _vehicle || {!alive _vehicle}) exitWith {
             private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
             missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners - [_vehicle]];
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
+        // Paused (game time not moving): nothing to detect.
+        if (time == _lastTime) exitWith {};
+        _args set [1, time];
         [_vehicle] call aegism_detect_fnc_confidenceLoop;
-    }, 1, [_vehicle]] call CBA_fnc_addPerFrameHandler;
+    }, 1, [_vehicle, -1]] call CBA_fnc_addPerFrameHandler;
 };
 
 // Every weapon ticks at 0.1s: its turret has to keep re-aiming at a moving
@@ -167,12 +170,15 @@ if ((_capabilities get "ciwsWeapons") isNotEqualTo []) then { _activeWeaponRoles
 {
     [{
         params ["_args", "_pfhHandle"];
-        _args params ["_vehicle", "_role"];
+        _args params ["_vehicle", "_role", "_lastTime"];
         if (isNull _vehicle || {!alive _vehicle}) exitWith {
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
+        // Paused (game time not moving): nothing to do.
+        if (time == _lastTime) exitWith {};
+        _args set [2, time];
         [_vehicle, _role] call aegism_intercept_fnc_engagementLoop;
-    }, 0.1, [_vehicle, _x]] call CBA_fnc_addPerFrameHandler;
+    }, 0.1, [_vehicle, _x, -1]] call CBA_fnc_addPerFrameHandler;
 } forEach _activeWeaponRoles;
 
 diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " System initialized on %1 -- hasRadar=%2 launcherWeapons=%3 ciwsWeapons=%4 contactSource=%5", _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];

@@ -243,14 +243,18 @@ private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_syst
 if (isServer) then {
     [{
         params ["_args", "_pfhHandle"];
-        _args params ["_logic", "_alarm"];
+        _args params ["_logic", "_alarm", "_lastTime"];
         if (isNull _logic) exitWith {
             { deleteVehicle _x; } forEach (_alarm select 2);
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
+        // Paused (game time not moving): nothing has changed. A paused
+        // game used to keep the coordinator running twice a second.
+        if (time == _lastTime) exitWith {};
+        _args set [2, time];
         [_logic] call aegism_intercept_fnc_assignEngagements;
         [_logic, _alarm] call aegism_network_fnc_siteAlarm;
-    }, 0.5, [_logic, ["", "", []]]] call CBA_fnc_addPerFrameHandler;
+    }, 0.5, [_logic, ["", "", []], -1]] call CBA_fnc_addPerFrameHandler;
 };
 
 diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];
