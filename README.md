@@ -22,10 +22,11 @@ Early development.
 ## How it works
 
 **A vehicle's role is discovered, never declared.** AEGIS-M reads a
-vehicle's own native config and current loadout: if it has a real radar
-sensor, it has a radar; if it has guided missiles, it's a launcher; if it
-also has a high-rate-of-fire gun (a SHORAD or Tigris-style all-in-one
-vehicle), it's also a CIWS/CRAM. There is no role checkbox, no detection
+vehicle's own native config and current loadout: every sensor it has
+(active radar, IR, visual, passive radar -- with each one's own reach, arc
+and whether it turns with a turret); if it has guided missiles, it's a
+launcher; if it also has a high-rate-of-fire gun (a SHORAD or Tigris-style
+all-in-one vehicle), it's also a CIWS/CRAM. There is no role checkbox, no detection
 range/arc, no missile count, no guidance speed, no ammo classname to set
 anywhere -- all of that is either read live from the vehicle's real
 sensors/magazines, or is simply the game's own weapon simulation once
@@ -33,12 +34,14 @@ AEGIS-M tells it to fire. Only air-capable weapons count (ammo `airLock` >= 1),
 and every weapon engages within its own real envelope read from config
 (missile lock min/max distance, gun fire-mode ranges).
 
-**Which vehicles AEGIS-M controls.** Any vehicle synced to an AEGIS-M Site.
-Unsynced vehicles are only adopted if they are a self-contained AA platform
--- their own radar plus their own AA weapons (Cheetah, Tigris) -- and the
-"Standalone Air Defence" CBA setting is on (default). Aircraft and infantry
-are never adopted, so an attack helicopter or an IFV with ATGMs keeps its
-normal AI.
+**Which vehicles AEGIS-M controls.** Any vehicle synced to an AEGIS-M Site
+-- including one whose only use is a sensor (an IFV's IR sight feeds the
+Site what it sees). Unsynced vehicles are only adopted if they are a
+self-contained AA platform -- a sensor of their own (radar, IR or visual)
+plus their own AA weapons (Cheetah, Tigris, or a Spartan with its
+launcher-mounted IR) -- and the "Standalone Air Defence" CBA setting is on
+(default). Aircraft and infantry are never adopted, so an attack helicopter
+or an IFV with ATGMs keeps its normal AI.
 
 **IFF and threats.** Hostile contacts (mission side relations) are engaged,
 including munitions -- but a hostile munition only while it's a threat to a
@@ -62,14 +65,32 @@ tracked through their submunition handoff.
 
 **Detection is hybrid, by necessity.** Aircraft/helicopters/drones are read
 straight off the vehicle's own native sensors (getSensorTargets) -- the
-same radar/IR/visual/datalink simulation already running against its real
-CfgVehicles config. Incoming missiles/rockets/shells can't use that path:
-a fired projectile has none of the target-size properties that make a
-CfgVehicles object sensor-visible, so it's never a valid getSensorTargets
-result no matter how good the radar is. Those are tracked by a dedicated
-Fired-event pipeline instead, gated by the same radar's own real detection
-range/arc (read from its config, not a made-up number) plus a line-of-
-sight check. **Firing commands the vehicle's own real weapon** with its
+same radar/IR/visual/passive/datalink simulation already running against
+its real CfgVehicles config -- on any vehicle with a radar, IR or visual
+sensor of its own; each contact records which kinds of sensor saw it
+(`DETECT` in the RPT, once per new contact). Incoming missiles/rockets/
+shells can't use that path: a fired projectile has none of the target-size
+properties that make a CfgVehicles object sensor-visible, so it's never a
+valid getSensorTargets result no matter how good the sensor is. Those are
+tracked by a dedicated Fired-event pipeline instead, from the vehicle's
+own sensor config, plus a line-of-sight check:
+- **Active radar**: within its reach and arc. It sees munitions whether
+  or not the AI has it emitting.
+- **IR**: within its reach and arc, for the munition's whole flight -- a
+  rocket or missile is hot from its motor, a shell from firing, and all of
+  them from the air they push through, against the cold sky. Vanilla IR
+  has no ground clutter (`groundNoiseDistanceCoef` -1), so there's no
+  difference against the ground. Its reach is capped at the view distance
+  (`viewDistanceLimitCoef`, as the game caps it for aircraft -- on a
+  dedicated server, the server's view distance), and it's blind in fog
+  past its `maxFogSeeThrough`.
+- **Visual and passive radar** don't find munitions.
+
+A sensor that turns with a turret (`animDirection`) has its arc measured
+from where that turret points: the Spartan's IR looks along its launcher,
+and the vanilla radar's 120 deg arc follows its antenna. Vertical coverage
+isn't checked. `TRACKING` in the RPT names the sensors that found a
+munition. **Firing commands the vehicle's own real weapon** with its
 actual loaded ammo, so ballistics, guidance, and damage are entirely the
 game's simulation, not a scripted projectile AEGIS-M spawns and steers
 itself. Aiming and firing themselves are scripted directly (lockCameraTo on
@@ -302,8 +323,8 @@ state (its sound sources) and Zeus edits. On the server:
   threat munitions go further.
 - Incoming munitions are tracked by one shared tracker, twice a second
   each, spread over frames. A Site stops looking for a munition once one of
-  its radars has it, and each radar re-traces its line of sight to a
-  munition at most every 2 s.
+  its vehicles has it; a vehicle's line of sight is only traced once one
+  of its sensors covers the munition, and re-traced at most every 2 s.
 - A CIWS gun's rounds in flight are tracked by one handler per gun, and a
   round is only examined once it's close to the target. The gun solves its
   full aim 20 times a second and steers between solves.
@@ -343,22 +364,26 @@ thing, labels stacked rather than drawn over each other:
   / fire held / no ammo (grey).
 - **Contacts**: one icon each (plane, helicopter, or a target mark for a
   munition or drone), white until something is on it, then the colour of
-  the most urgent engagement on it. Label: its class and, for an incoming
-  munition, seconds to impact.
+  the most urgent engagement on it. Label: its class, for an incoming
+  munition seconds to impact, and the kinds of sensor that saw it in the
+  last 3 s (`[RDR IR]`: active radar, IR, `VIS` visual, `PAS` passive
+  radar, `DL` datalink).
 - **Engagements**: a line from weapon to target in its state's colour.
   Waiting ones (queued behind the launcher's current target, missiles in
   flight, held) are faint, so a launcher's queue doesn't drown out what
   it's actually doing. A CIWS held back by Last Resort Only is dashed orange.
-- **Vehicles**: a shield (a radar mark for a radar-only vehicle) and three
+- **Vehicles**: a shield (a radar mark for a sensor-only vehicle) and three
   lines:
   1. its name;
-  2. network and radar status, in light blue: its own radar's reach and
-     arc, and whether it's emitting (munitions are found by AEGIS-M's own
-     check either way; aircraft only while an active radar emits), then
-     its Site's radars and tracked contacts (`RADAR 16km 360 emitting  |
-     SITE: 2 radars, 7 tracks`), or `STANDALONE` with its own tracks.
-     `NO RADAR ON SITE` in orange if it's networked but no vehicle of its
-     Site has a radar;
+  2. network and sensor status, in light blue: its own sensors, the
+     longest of each kind -- reach, arc, `turret` if it turns with one, and
+     for a radar whether it's emitting (munitions are found by AEGIS-M's
+     own check either way; aircraft only while an active radar emits) --
+     then its Site's sensor vehicles and tracked contacts (`RADAR 16km
+     120deg turret emitting  PASSIVE 16km 360  |  SITE: 2 radars + 4
+     IR/visual, 7 tracks`), or `STANDALONE` with its own tracks. `NO SENSOR
+     ON SITE` in orange if it's networked but no vehicle of its Site has a
+     sensor of its own;
   3. each weapon with rounds left and what it's doing (`MSL 4: firing +3
      queued`, `GUN 680: slewing`), or `NO AMMO` in red.
 
@@ -366,10 +391,12 @@ thing, labels stacked rather than drawn over each other:
   grey while idle.
 - **Radars**: a faint ring at each one's detection range.
 - **Not active**: a vehicle AEGIS-M found capable but hasn't activated is
-  grey with `NOT ACTIVE:` and why -- e.g. a launcher with no radar of its
-  own placed without a Site (`no radar of its own -- sync it to a Site with
-  a radar`). Only a vehicle with its own radar and its own AA weapons works
-  standalone.
+  grey with `NOT ACTIVE:` and why -- e.g. a launcher with no sensor of its
+  own placed without a Site (`no sensor of its own -- sync it to a Site with
+  a radar`). Only a vehicle with a sensor of its own and its own AA weapons
+  works standalone. A vehicle whose only capability is an IR or visual
+  sensor (most tanks and IFVs) isn't shown: it's only used synced to a
+  Site.
 
 An assigned weapon that isn't firing always logs why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
 `ASSIGN-CLEAR` with a reason. Every AEGIS-M RPT line carries the mission's
@@ -378,14 +405,15 @@ time, which keeps running while the game is paused.
 
 **Site status hint** (CBA setting "AEGIS-M > Debug > Site Status Hint", off
 by default) shows a live board in the hint box: the nearest Site's vehicles
-with their roles, colour-coded status (READY, TRACKING, REACTING, SLEWING,
-ENGAGING, FIRING, NO SOLUTION, LOS BLOCKED, NO AMMO, DESTROYED), target and
-ammo, with each weapon's worked engagements in their state colours (and how
-many more are queued); then other Sites and standalone Systems in summary;
-then **Not active** vehicles with why (e.g. a launcher with no radar placed
-without a Site); and last the nearest Site's contacts and which weapons are
-on each (coloured the same way) -- the longest section, so it's the one a
-full hint box cuts off. It shows data wherever AEGIS-M runs its engagement
+with their roles (`R` radar, `I` IR, `V` visual sensor, `L` launcher, `C`
+CIWS), colour-coded status (READY, TRACKING, REACTING, SLEWING, ENGAGING,
+FIRING, NO SOLUTION, LOS BLOCKED, NO AMMO, DESTROYED), target and ammo,
+with each weapon's worked engagements in their state colours (and how many
+more are queued); then other Sites and standalone Systems in summary; then
+**Not active** vehicles with why (e.g. a launcher with no sensor placed
+without a Site); and last the nearest Site's contacts, the sensors that saw
+each, and which weapons are on each (coloured the same way) -- the longest
+section, so it's the one a full hint box cuts off. It shows data wherever AEGIS-M runs its engagement
 logic: singleplayer, Eden Preview, or a hosted game's host.
 
 **RPT performance summary** (CBA setting "AEGIS-M > Debug > RPT Performance

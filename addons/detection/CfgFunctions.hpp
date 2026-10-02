@@ -18,6 +18,8 @@ class CfgFunctions
             class trackMunition {};
             class munitionTracker {};
             class munitionCheck {};
+            class sensorAxis {};
+            class sensorSees {};
         };
     };
 };

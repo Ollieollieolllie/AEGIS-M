@@ -16,7 +16,10 @@ Description:
     sensors decide detected-or-not); the field is kept for the entry's shape.
 
     Re-adding an already-pooled contact updates it in place, so "firstSeen"
-    stays accurate across refreshes. Every add/refresh stamps "lastSeen".
+    stays accurate across refreshes. Every add/refresh stamps "lastSeen",
+    and "sources" (HashMap: which sensor kinds saw it -- "activeradar",
+    "ir", "visual", "passiveradar", "datalink" ... -> when each last did;
+    the debug overlays show the recent ones).
     Pools are pruned by EXPIRY (aegism_detect_fnc_pruneStaleContacts), not by
     any single sensor deciding it can no longer see something -- one radar
     losing sight of a contact another radar still holds must not delete it.
@@ -28,6 +31,8 @@ Parameters:
     _contactClass - pre-classified target class, from aegism_detect_fnc_
         classifyTarget <STRING>
     _confidence - always 1 in current callers <NUMBER>
+    _sources - the sensor kinds that saw it this time, lower case
+        <ARRAY of STRING, default []>
 
 Returns:
     True if the contact was added (class was allowlisted), false if it was
@@ -40,7 +45,7 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params ["_poolOwner", "_contactObject", "_contactClass", "_confidence"];
+params ["_poolOwner", "_contactObject", "_contactClass", "_confidence", ["_sources", []]];
 
 if (isNull _contactObject || {_contactClass == ""}) exitWith { false };
 
@@ -65,18 +70,25 @@ private _key = [_contactObject] call aegism_fnc_contactKey;
 
 private _existing = _pool get _key;
 if (isNil "_existing") then {
-    _pool set [_key, createHashMapFromArray [
+    _existing = createHashMapFromArray [
         ["object", _contactObject],
         ["class", _contactClass],
         ["confidence", _confidence],
         ["firstSeen", time],
         ["lastSeen", time],
-        ["isMunition", _contactClass in ["missile", "rocket", "bomb", "artilleryShell"]]
-    ]];
+        ["isMunition", _contactClass in ["missile", "rocket", "bomb", "artilleryShell"]],
+        ["sources", createHashMap]
+    ];
+    _pool set [_key, _existing];
 } else {
     _existing set ["class", _contactClass];
     _existing set ["confidence", _confidence];
     _existing set ["lastSeen", time];
+};
+if (_sources isNotEqualTo []) then {
+    private _seen = _existing getOrDefault ["sources", createHashMap];
+    { _seen set [_x, time]; } forEach _sources;
+    _existing set ["sources", _seen];
 };
 
 true

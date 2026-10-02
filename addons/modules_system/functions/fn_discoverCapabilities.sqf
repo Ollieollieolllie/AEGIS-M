@@ -11,26 +11,35 @@ Description:
     everything here points back at the vehicle's real turrets/weapons/
     magazines, used later via BIS_fnc_fire and magazineTurretAmmo.
 
-    Radar: true if the vehicle's CfgVehicles config (its own top-level
-    sensor config, or any turret's at any nesting depth) contains a sensor
-    component whose componentType is ActiveRadarSensorComponent (or,
-    failing that, PassiveRadarSensorComponent) -- whatever the component
-    class itself is called. This is exactly the config the
-    engine's own getSensorTargets already reads from, so a vehicle
-    qualifying here is guaranteed to get real platform detections from it
-    -- but getSensorTargets only reaches CfgVehicles-based objects with
-    real target-size properties (radarTargetSize/irTargetSize/
-    visualTargetSize); a fired CfgAmmo projectile has none of these (not
-    even vanilla CfgAmmo entries define them), so it is never itself a
-    valid getSensorTargets result. Munitions are detected
-    by a separate, dedicated pipeline instead (see aegism_detect_fnc_
-    trackMunition), which needs this radar's own real detection reach --
-    radarRange/radarArc below are read from the SAME ActiveRadar/
-    PassiveRadarSensorComponent config getSensorTargets itself reads
-    (maxRange across its target-type sub-classes, angleRangeHorizontal),
-    not a mission-designer-set number, so a vehicle with a genuinely
-    narrow or short-ranged radar behaves like one for munition tracking
-    too.
+    Sensors: every sensor component in the vehicle's CfgVehicles config
+    (its own sensor config, and every turret's) whose componentType is one
+    AEGIS-M uses -- whatever the component class itself is called:
+        radar   - ActiveRadarSensorComponent
+        passive - PassiveRadarSensorComponent (sees only what emits: a
+                  radar that's on). Recorded, not yet used for detection.
+        ir      - IRSensorComponent
+        visual  - VisualSensorComponent
+    This is exactly the config the engine's own getSensorTargets reads, so
+    aircraft come from the engine's simulation of these very sensors. A
+    fired CfgAmmo projectile has none of the target-size properties
+    (radarTargetSize/irTargetSize/visualTargetSize) that make an object
+    sensor-visible (not even vanilla CfgAmmo defines them), so it is never
+    a getSensorTargets result: munitions are detected by AEGIS-M's own
+    pipeline (aegism_detect_fnc_munitionCheck) from these sensors' own
+    config -- an active radar or an IR sensor by its reach and arc (a
+    munition is hot for its whole flight).
+
+    Each sensor's reach is its AirTarget maxRange (the largest maxRange of
+    any target-type sub-class if it has no AirTarget), and its arc its
+    angleRangeHorizontal (360 if undefined) -- both inherited from the
+    vanilla templates where the vehicle doesn't set them: the vanilla
+    Radar_System_01's radar is 120 degrees from SensorTemplateActiveRadar.
+    Where it points: a sensor with an animDirection (e.g. "mainGun") turns
+    with the turret whose gun or body is that selection -- the Spartan's
+    IR sensor looks wherever its launcher points -- so its arc is measured
+    from that turret's live direction (aegism_detect_fnc_sensorAxis).
+    Without one it's fixed to the hull, or, inside a turret's own config,
+    treated as all-round.
 
     The sensor component actually lives under "Components >>
     SensorsManagerComponent >> Components" in every vanilla Arma 3 vehicle
@@ -77,11 +86,23 @@ Parameters:
 
 Returns:
     HashMap. Keys:
-        hasRadar - <BOOLEAN>
-        radarRange - real detection reach read from the qualifying sensor
-            component's own config, metres (0 if hasRadar is false) <NUMBER>
-        radarArc - real detection arc in degrees, from angleRangeHorizontal
-            (360/omnidirectional if the sensor doesn't define one) <NUMBER>
+        sensors - every sensor, longest reach first, each [type, range, arc,
+            aim, viewDistanceCoef, maxFog, component]:
+            type - "radar" / "passive" / "ir" / "visual"
+            range - reach, metres; arc - horizontal arc, degrees
+            aim - turret path it turns with, or [] for the hull
+            viewDistanceCoef - AirTarget viewDistanceLimitCoef: reach is
+                capped at the view distance times this (IR, visual: 1);
+                -1 = no cap
+            maxFog - maxFogSeeThrough, -1 if undefined
+            component - its config class name
+        munitionSensors - those that can see a munition (radar, ir), radars
+            first
+        hasRadar - an active radar <BOOLEAN>
+        hasSensor - a sensor of its own that finds aircraft: an active
+            radar, IR or visual <BOOLEAN>
+        radarRange / radarArc - the longest-reaching active radar's reach
+            and arc (0 / 360 if none) <NUMBER>
         launcherWeapons / ciwsWeapons - arrays of weaponInfo:
             [turretPath, weaponClass, magazineClass, size, minRange,
              maxRange, burstTime]
@@ -105,11 +126,11 @@ params ["_vehicle", ["_quiet", false]];
 private _vehicleConfig = configOf _vehicle;
 
 // Given a vehicle or turret config entry, returns the config holding its
-// ActiveRadarSensorComponent/PassiveRadarSensorComponent classes directly
-// as sub-classes, checking the REAL nesting first (Components >>
-// SensorsManagerComponent >> Components) and falling back to a bare
-// top-level "Sensors" class for any vehicle/mod that still uses the older
-// structure -- configNull (isClass false) if neither exists.
+// sensor component classes directly as sub-classes, checking the REAL
+// nesting first (Components >> SensorsManagerComponent >> Components) and
+// falling back to a bare top-level "Sensors" class for any vehicle/mod that
+// still uses the older structure -- configNull (isClass false) if neither
+// exists.
 private _fnSensorsRoot = {
     private _cfg = _this;
     private _real = _cfg >> "Components" >> "SensorsManagerComponent" >> "Components";
@@ -117,94 +138,85 @@ private _fnSensorsRoot = {
     _cfg >> "Sensors"
 };
 
-// Returns [range, arc] for the best radar among the given sensors-root's
-// direct child classes (see _fnSensorsRoot above), or [] if there is none.
-// A radar is identified by its componentType ("ActiveRadarSensorComponent",
-// falling back to "PassiveRadarSensorComponent" only if no active one
-// exists), NOT by its class name: vanilla happens to name the class after
-// its type, but mods don't -- the POOK AN/TPY-2's radar is class
-// MIM23BCPRadarSensorComponent, so matching by name reported "no radar
-// sensor" for it. Range is the largest maxRange across the component's own
-// target-type sub-classes (AirTarget, GroundTarget, ...); arc is its own
-// angleRangeHorizontal, or 360 if that property isn't defined.
-private _findRadarComponent = {
-    private _sensorsCfg = _this;
-    private _components = configProperties [_sensorsCfg, "isClass _x", true];
-    private _radarCfg = configNull;
-    {
-        private _type = _x;
-        if (isNull _radarCfg) then {
-            private _matches = _components select { (getText (_x >> "componentType")) == _type };
-            if (_matches isNotEqualTo []) then { _radarCfg = _matches select 0; };
-        };
-    } forEach ["ActiveRadarSensorComponent", "PassiveRadarSensorComponent"];
+// Every turret path with its config, including turrets nested inside
+// turrets (e.g. a commander's station on the main turret).
+private _turrets = (allTurrets [_vehicle, false]) apply { [_x, [_vehicle, _x] call CBA_fnc_getTurret] };
 
-    if (!isClass _radarCfg) exitWith { [] };
-
-    // configProperties [configEntry, conditionString, recursive] (unary,
-    // single array argument) lists a config entry's sub-entries matching
-    // condition -- "isClass _x" filters to sub-classes only, e.g. this
-    // component's own AirTarget/GroundTarget target-type blocks (a
-    // component class also carries plain scalar properties, like
-    // angleRangeHorizontal itself, that aren't sub-classes).
-    private _maxRange = 0;
-    {
-        if (isNumber (_x >> "maxRange")) then {
-            _maxRange = _maxRange max (getNumber (_x >> "maxRange"));
-        };
-    } forEach (configProperties [_radarCfg, "isClass _x", true]);
-
-    private _arc = if (isNumber (_radarCfg >> "angleRangeHorizontal")) then {
-        getNumber (_radarCfg >> "angleRangeHorizontal")
-    } else {
-        360
+// The turret a sensor's animDirection selection belongs to: the one whose
+// gun or body is that selection (vanilla: animDirection "mainGun", turret
+// gun "MainGun" -- case differs). [] if none.
+private _fnAimTurret = {
+    private _selection = toLower _this;
+    private _index = _turrets findIf {
+        private _turretCfg = _x select 1;
+        (toLower getText (_turretCfg >> "gun")) == _selection || {(toLower getText (_turretCfg >> "body")) == _selection}
     };
-
-    [_maxRange, _arc]
+    if (_index < 0) exitWith { [] };
+    (_turrets select _index) select 0
 };
 
-private _hasRadar = false;
-private _radarRange = 0;
-private _radarArc = 360;
+// Appends the sensors under one sensors root (see _fnSensorsRoot) to
+// _sensors. A sensor is identified by its componentType, NOT its class
+// name: vanilla happens to name the class after its type, but mods don't
+// -- the POOK AN/TPY-2's radar is class MIM23BCPRadarSensorComponent.
+// _ownerPath is the turret whose config holds it ([] for the vehicle's own).
+private _sensorTypes = createHashMapFromArray [
+    ["activeradarsensorcomponent", "radar"],
+    ["passiveradarsensorcomponent", "passive"],
+    ["irsensorcomponent", "ir"],
+    ["visualsensorcomponent", "visual"]
+];
+private _sensors = [];
+private _fnReadSensors = {
+    params ["_root", "_ownerPath"];
+    if (!isClass _root) exitWith {};
+    {
+        private _componentCfg = _x;
+        private _type = _sensorTypes getOrDefault [toLower getText (_componentCfg >> "componentType"), ""];
+        if (_type != "") then {
+            // configProperties [entry, condition, inherited] lists the
+            // component's own target-type blocks (AirTarget, GroundTarget).
+            private _airCfg = _componentCfg >> "AirTarget";
+            private _range = 0;
+            if (isClass _airCfg) then {
+                _range = getNumber (_airCfg >> "maxRange");
+            } else {
+                { _range = _range max (getNumber (_x >> "maxRange")); } forEach (configProperties [_componentCfg, "isClass _x", true]);
+            };
+            private _viewDistanceCoef = if (isNumber (_airCfg >> "viewDistanceLimitCoef")) then { getNumber (_airCfg >> "viewDistanceLimitCoef") } else { -1 };
+            private _arc = if (isNumber (_componentCfg >> "angleRangeHorizontal")) then { getNumber (_componentCfg >> "angleRangeHorizontal") } else { 360 };
+            private _maxFog = if (isNumber (_componentCfg >> "maxFogSeeThrough")) then { getNumber (_componentCfg >> "maxFogSeeThrough") } else { -1 };
 
-// NOTE: deliberately NOT using `_found params [...]` here -- params always
-// creates a fresh private binding in whatever scope it's called from, which
-// would shadow the outer _radarRange/_radarArc declared above rather than
-// updating them (the assigned values would be lost the moment each if-block
-// exits). Plain `_radarRange = ...` assignment (no `private`) correctly
-// walks up to the existing outer declaration instead.
-private _vehicleSensorsRoot = _vehicleConfig call _fnSensorsRoot;
-if (isClass _vehicleSensorsRoot) then {
-    private _found = _vehicleSensorsRoot call _findRadarComponent;
-    if (_found isNotEqualTo []) then {
-        _hasRadar = true;
-        _radarRange = _found select 0;
-        _radarArc = _found select 1;
-    };
-};
-// Turret-mounted radars, including turrets nested inside turrets (e.g. a
-// commander's station on the main turret) -- the old check only looked one
-// level down. A turret radar's arc is relative to the TURRET, which slews,
-// not to the hull the munition tracker measures bearings from, so it's
-// treated as all-round (360).
-if (!_hasRadar) then {
-    private _turretQueue = if (isClass (_vehicleConfig >> "Turrets")) then { configProperties [_vehicleConfig >> "Turrets", "isClass _x", false] } else { [] };
-    while { !_hasRadar && {_turretQueue isNotEqualTo []} } do {
-        private _turretCfg = _turretQueue deleteAt 0;
-        private _turretSensorsRoot = _turretCfg call _fnSensorsRoot;
-        if (isClass _turretSensorsRoot) then {
-            private _found = _turretSensorsRoot call _findRadarComponent;
-            if (_found isNotEqualTo []) then {
-                _hasRadar = true;
-                _radarRange = _found select 0;
-                _radarArc = 360;
+            // Where it points: with its animDirection's turret; otherwise
+            // the hull (the vehicle's own config) or, inside a turret's own
+            // config, all-round -- that turret slews it, and nothing says
+            // which way.
+            private _animDirection = getText (_componentCfg >> "animDirection");
+            private _aim = if (_animDirection == "") then { [] } else { _animDirection call _fnAimTurret };
+            if (_aim isEqualTo [] && {_ownerPath isNotEqualTo []}) then { _arc = 360; };
+            if (_arc >= 360) then { _aim = []; };
+
+            if (_range > 0) then {
+                _sensors pushBack [_type, _range, _arc min 360, _aim, _viewDistanceCoef, _maxFog, configName _componentCfg];
             };
         };
-        if (isClass (_turretCfg >> "Turrets")) then {
-            _turretQueue append configProperties [_turretCfg >> "Turrets", "isClass _x", false];
-        };
-    };
+    } forEach (configProperties [_root, "isClass _x", true]);
 };
+
+[_vehicleConfig call _fnSensorsRoot, []] call _fnReadSensors;
+{ _x params ["_path", "_turretCfg"]; [_turretCfg call _fnSensorsRoot, _path] call _fnReadSensors; } forEach _turrets;
+_sensors = [_sensors, [], { _x select 1 }, "DESCEND"] call BIS_fnc_sortBy;
+
+private _radars = _sensors select { (_x select 0) == "radar" };
+private _hasRadar = _radars isNotEqualTo [];
+private _radarRange = 0;
+private _radarArc = 360;
+if (_hasRadar) then {
+    _radarRange = (_radars select 0) select 1;
+    _radarArc = (_radars select 0) select 2;
+};
+private _hasSensor = (_sensors findIf { (_x select 0) in ["radar", "ir", "visual"] }) != -1;
+private _munitionSensors = _radars + (_sensors select { (_x select 0) == "ir" });
 
 private _launcherWeapons = [];
 private _ciwsWeapons = [];
@@ -300,7 +312,10 @@ private _fnModeStats = {
 } forEach (magazinesAllTurrets _vehicle);
 
 createHashMapFromArray [
+    ["sensors", _sensors],
+    ["munitionSensors", _munitionSensors],
     ["hasRadar", _hasRadar],
+    ["hasSensor", _hasSensor],
     ["radarRange", _radarRange],
     ["radarArc", _radarArc],
     ["launcherWeapons", _launcherWeapons],

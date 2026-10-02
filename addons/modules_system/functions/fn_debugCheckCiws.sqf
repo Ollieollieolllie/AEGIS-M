@@ -44,7 +44,11 @@ if (isNil "_cachedSystem") then {
 // the CIWS rate-of-fire logic here did drift). Per-weapon rejection reasons
 // are also written to the RPT by discovery itself ("[AEGIS-M] DISCOVERY:").
 private _fresh = [_vehicle] call aegism_system_fnc_discoverCapabilities;
-_lines pushBack format ["Fresh discovery (right now): hasRadar=%1 (range %2m, arc %3)", _fresh get "hasRadar", round (_fresh get "radarRange"), _fresh get "radarArc"];
+_lines pushBack format ["Fresh discovery (right now): hasRadar=%1 (range %2m, arc %3) hasSensor=%4", _fresh get "hasRadar", round (_fresh get "radarRange"), _fresh get "radarArc", _fresh get "hasSensor"];
+{
+    _x params ["_type", "_range", "_arc", "_aim", "_viewDistanceCoef", "_maxFog", "_component"];
+    _lines pushBack format ["  SENSOR %1 (%2): %3m, %4deg, %5, view-distance cap x%6, fog limit %7", _type, _component, round _range, round _arc, ["hull", format ["turret %1", _aim]] select (_aim isNotEqualTo []), _viewDistanceCoef, _maxFog];
+} forEach (_fresh get "sensors");
 {
     _x params ["_turretPath", "_weaponClass", "_magClass", "_size", "_minRange", "_maxRange"];
     _lines pushBack format ["  LAUNCHER turret %1: %2 (%3) -- envelope %4-%5m, warhead radius %6m", _turretPath, _weaponClass, _magClass, round _minRange, round _maxRange, _size];

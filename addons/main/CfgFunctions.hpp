@@ -9,6 +9,7 @@ class CfgFunctions
             class contactKey {};
             class perfLog {};
             class statusStyle {};
+            class sensorTags {};
             class debugDraw {};
             class debugHint {};
             class debugCheckSite {};

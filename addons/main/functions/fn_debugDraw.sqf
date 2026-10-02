@@ -21,9 +21,11 @@ Description:
         Contact - one icon per contact, however many pools hold it: a
             plane, a helicopter, or a target mark for a munition or drone.
             White while nothing is on it, otherwise the colour of the most
-            urgent engagement on it. One short label: its class and, for an
-            incoming munition, seconds to impact (the coordinator's own
-            figure, aegism_intercept_fnc_assignEngagements).
+            urgent engagement on it. One short label: its class, for an
+            incoming munition seconds to impact (the coordinator's own
+            figure, aegism_intercept_fnc_assignEngagements), and the sensor
+            kinds that saw it in the last 3 s ([RDR IR], aegism_fnc_
+            sensorTags).
 
         Engagement - a line from the weapon to its target in the state's
             colour. Waiting ones (queued behind the launcher's current
@@ -34,13 +36,14 @@ Description:
         System - a shield over each AEGIS-M vehicle (a radar mark for a
             radar-only one), and stacked labels:
             1. its name
-            2. network and radar status (light blue): its own radar -- reach,
-               arc, emitting or silent (munitions are found by AEGIS-M's own
-               check either way; aircraft only while an active radar emits)
-               -- and its Site's radars and tracks, or STANDALONE with its
-               own tracks. NO RADAR ON SITE in orange when networked but no
-               member of its Site has a radar (aegism_system_fnc_
-               resolveContactSource).
+            2. network and sensor status (light blue): its own sensors, the
+               longest of each kind -- reach, arc, "turret" if it turns with
+               one, and for a radar emitting or silent (munitions are found
+               by AEGIS-M's own check either way; aircraft only while an
+               active radar emits) -- and its Site's sensor vehicles and
+               tracks, or STANDALONE with its own tracks. NO SENSOR ON SITE
+               in orange when networked but no member of its Site has a
+               sensor of its own (aegism_system_fnc_resolveContactSource).
             3. each weapon role with rounds left and what it's doing ("MSL
                4: firing +3 queued", "GUN 680: slewing"), or NO AMMO (red)
             Name and weapons in its most urgent engagement's colour; grey
@@ -50,7 +53,7 @@ Description:
 
         Not active - a vehicle AEGIS-M found capable but hasn't activated
             (deferred until synced, AEGISM_deferredSystems): grey, with
-            "NOT ACTIVE:" and why -- e.g. a launcher with no radar of its
+            "NOT ACTIVE:" and why -- e.g. a launcher with no sensor of its
             own placed without a Site.
 
     Reads only published state (AEGISM_allPoolOwners, AEGISM_allSystems,
@@ -103,7 +106,7 @@ private _grey = [0.75, 0.75, 0.75, 0.9];
 private _white = [1, 1, 1, 0.95];
 
 // --- Gather: contacts (one per key across every pool), engagements, radars ---
-private _contacts = createHashMap;  // key -> [object, class, [tti, at]]
+private _contacts = createHashMap;  // key -> [object, class, [tti, at], sensor kind -> last seen]
 private _engagements = [];          // [system, target, contact key, role, status]
 private _withheld = [];             // [system, target]
 private _radars = [];               // [position ASL, range]
@@ -117,9 +120,17 @@ private _radars = [];               // [position ASL, range]
         private _pool = _owner getVariable ["AEGISM_pooledContacts", createHashMap];
         {
             private _object = _y getOrDefault ["object", objNull];
-            // One per contact; the Site's entry carries its time to impact.
-            if (!isNull _object && {!(_x in _contacts) || {(((_contacts get _x) select 2) select 0) >= 1e9}}) then {
-                _contacts set [_x, [_object, _y getOrDefault ["class", ""], _y getOrDefault ["tti", [1e10, time]]]];
+            if (!isNull _object) then {
+                private _known = _contacts get _x;
+                if (isNil "_known") then {
+                    _known = [_object, _y getOrDefault ["class", ""], [1e10, time], createHashMap];
+                    _contacts set [_x, _known];
+                };
+                // One per contact; the Site's entry carries its time to impact.
+                if ("tti" in _y && {(((_known select 2) select 0) >= 1e9)}) then { _known set [2, _y get "tti"]; };
+                // The sensor kinds that saw it, from every pool holding it.
+                private _seen = _known select 3;
+                { if (_y > (_seen getOrDefault [_x, -1e9])) then { _seen set [_x, _y]; }; } forEach (_y getOrDefault ["sources", createHashMap]);
             };
         } forEach _pool;
 
@@ -198,7 +209,7 @@ private _byRole = createHashMap;    // [system netId, role] -> [urgency, label, 
 
 // --- Contacts ---
 {
-    _y params ["_object", "_class", "_ttiInfo"];
+    _y params ["_object", "_class", "_ttiInfo", "_seen"];
     _ttiInfo params ["_tti", "_ttiAt"];
     private _position = ASLToAGL getPosASLVisual _object;
     private _color = (_byTarget getOrDefault [_x, [-1, _white]]) select 1;
@@ -211,21 +222,29 @@ private _byRole = createHashMap;    // [system netId, role] -> [urgency, label, 
     private _remaining = _tti - (time - _ttiAt);
     private _text = toUpper _class;
     if (_tti < 1e9) then { _text = format ["%1  %2s", _text, (round (_remaining * 10) / 10) max 0]; };
+    private _tags = [_seen] call aegism_fnc_sensorTags;
+    if (_tags != "") then { _text = format ["%1  [%2]", _text, _tags]; };
     [[_position, -1.4] call _fnStacked, _text, _color, AEGISM_SMALL_TEXT] call _fnText;
 } forEach _contacts;
 
 // --- Systems ---
 private _allSystems = (missionNamespace getVariable ["AEGISM_allSystems", []]) select { !isNull _x && {alive _x} };
 missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
-// Per Site, once a frame: [radar-capable live members, contacts in its pool].
+// Per Site, once a frame: [live members with a radar, live members with
+// another sensor of their own (IR, visual) and no radar, contacts in its pool].
 private _siteStats = createHashMap;
 private _fnSiteStats = {
     params ["_site"];
     private _key = netId _site;
     private _stats = _siteStats get _key;
     if (isNil "_stats") then {
-        private _radars = { alive _x && {((_x getVariable ["AEGISM_system", createHashMap]) getOrDefault ["hasRadar", false])} } count (_site getVariable ["AEGISM_networkMembers", []]);
-        _stats = [_radars, count (_site getVariable ["AEGISM_pooledContacts", createHashMap])];
+        private _members = (_site getVariable ["AEGISM_networkMembers", []]) select { alive _x };
+        private _radars = { ((_x getVariable ["AEGISM_system", createHashMap]) getOrDefault ["hasRadar", false]) } count _members;
+        private _others = {
+            private _memberSystem = _x getVariable ["AEGISM_system", createHashMap];
+            (_memberSystem getOrDefault ["hasSensor", false]) && {!(_memberSystem getOrDefault ["hasRadar", false])}
+        } count _members;
+        _stats = [_radars, _others, count (_site getVariable ["AEGISM_pooledContacts", createHashMap])];
         _siteStats set [_key, _stats];
     };
     _stats
@@ -237,30 +256,41 @@ private _fnSiteStats = {
         private _network = _vehicle getVariable ["AEGISM_network", objNull];
         private _position = (ASLToAGL getPosASLVisual _vehicle) vectorAdd [0, 0, 3];
 
-        // Network and radar status (the middle line): the vehicle's own
-        // radar -- its reach and arc, and whether it's emitting (munitions
+        // Network and sensor status (the middle line): the vehicle's own
+        // sensors, the longest of each kind -- reach, arc, "turret" if it
+        // turns with one, and for a radar whether it's emitting (munitions
         // are found by AEGIS-M's own check either way; aircraft only while
         // an active radar emits, through the game's sensors) -- and where
-        // its contacts come from: its Site (radars, contacts in the Site's
-        // picture) or, standalone, its own radar alone.
+        // its contacts come from: its Site (sensor vehicles, contacts in the
+        // Site's picture) or, standalone, its own sensors alone.
         private _statusParts = [];
         private _statusColor = [0.55, 0.8, 1, 0.9];
-        if (_system getOrDefault ["hasRadar", false]) then {
-            _statusParts pushBack format ["RADAR %1km %2 %3", (round ((_system get "radarRange") / 100)) / 10,
-                [format ["%1deg", round (_system get "radarArc")], "360"] select ((_system get "radarArc") >= 360),
-                ["silent", "emitting"] select (isVehicleRadarOn _vehicle)];
-        };
+        private _sensorParts = [];
+        private _kindsShown = [];
+        {
+            _x params ["_type", "_range", "_arc", "_aim"];
+            if !(_type in _kindsShown) then {
+                _kindsShown pushBack _type;
+                private _text = format ["%1 %2km %3", toUpper _type, (round (_range / 100)) / 10, [format ["%1deg", round _arc], "360"] select (_arc >= 360)];
+                if (_aim isNotEqualTo []) then { _text = _text + " turret"; };
+                if (_type == "radar") then { _text = _text + " " + (["silent", "emitting"] select (isVehicleRadarOn _vehicle)); };
+                _sensorParts pushBack _text;
+            };
+        } forEach (_system getOrDefault ["sensors", []]);
+        if (_sensorParts isNotEqualTo []) then { _statusParts pushBack (_sensorParts joinString "  "); };
         if (isNull _network) then {
             _statusParts pushBack format ["STANDALONE, %1 tracks", count (_vehicle getVariable ["AEGISM_pooledContacts", createHashMap])];
         } else {
-            ([_network] call _fnSiteStats) params ["_siteRadars", "_siteTracks"];
+            ([_network] call _fnSiteStats) params ["_siteRadars", "_siteOthers", "_siteTracks"];
             private _siteName = vehicleVarName _network;
             private _siteTag = ["SITE " + _siteName, "SITE"] select (_siteName == "");
             if (!("network" in (_vehicle getVariable ["AEGISM_resolvedContactSource", []]))) then {
                 _statusColor = [1, 0.6, 0, 1];
-                _statusParts pushBack (_siteTag + ": NO RADAR ON SITE");
+                _statusParts pushBack (_siteTag + ": NO SENSOR ON SITE");
             } else {
-                _statusParts pushBack format ["%1: %2 radar%3, %4 tracks", _siteTag, _siteRadars, ["s", ""] select (_siteRadars == 1), _siteTracks];
+                private _siteSensors = format ["%1 radar%2", _siteRadars, ["s", ""] select (_siteRadars == 1)];
+                if (_siteOthers > 0) then { _siteSensors = _siteSensors + format [" + %1 IR/visual", _siteOthers]; };
+                _statusParts pushBack format ["%1: %2, %3 tracks", _siteTag, _siteSensors, _siteTracks];
             };
         };
         private _status = _statusParts joinString "  |  ";

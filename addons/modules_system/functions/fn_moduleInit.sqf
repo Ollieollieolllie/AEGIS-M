@@ -35,8 +35,9 @@ Description:
           "AEGISM_engagement"/"AEGISM_crew"/"AEGISM_network", which CAN
           change later (a Zeus operator syncing a Site), so a 5-second poll
           re-resolves them.
-        - with its own radar: its own pool ("AEGISM_pooledContacts") and a
-          1-second detection loop (aegism_detect_fnc_confidenceLoop).
+        - with a sensor of its own (radar, IR or visual): its own pool
+          ("AEGISM_pooledContacts") and a 1-second detection loop (aegism_
+          detect_fnc_confidenceLoop).
         - one 0.1-second engagement loop per weapon role (aegism_intercept_
           fnc_engagementLoop).
     Registering the loops on every machine would make every client detect
@@ -72,37 +73,50 @@ if (_vehicle isKindOf "Air" || {_vehicle isKindOf "CAManBase"} || {!(_vehicle is
 
 private _capabilities = [_vehicle] call aegism_system_fnc_discoverCapabilities;
 private _hasWeapons = (_capabilities get "launcherWeapons") isNotEqualTo [] || {(_capabilities get "ciwsWeapons") isNotEqualTo []};
-private _hasAnyCapability = (_capabilities get "hasRadar") || _hasWeapons;
+private _hasSensor = _capabilities get "hasSensor";
+private _hasAnyCapability = (_capabilities get "hasRadar") || _hasSensor || _hasWeapons;
+// For the log: "radar 16000m 120deg on turret [0], passive 16000m 360deg".
+private _sensorText = ((_capabilities get "sensors") apply {
+    _x params ["_type", "_range", "_arc", "_aim"];
+    format ["%1 %2m %3deg%4", _type, round _range, round _arc, ["", format [" on turret %1", _aim]] select (_aim isNotEqualTo [])]
+}) joinString ", ";
+if (_sensorText == "") then { _sensorText = "none"; };
 if (!_hasAnyCapability) exitWith {
     _vehicle setVariable ["AEGISM_systemInitialized", true, false];
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar, IR or visual sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
 };
 
 // Adoption policy: a vehicle synced to a Site is always adopted (the
-// mission designer chose it). An UNSYNCED vehicle is only adopted as a
-// standalone System if standalone air defence is enabled AND it is a
-// self-contained AA platform -- its own radar plus its own AA weapons
-// (a Cheetah/Tigris-style SPAAG). Anything else is deferred, not rejected:
-// aegism_network_fnc_moduleInit re-runs this function when the vehicle is
-// later synced to a Site.
+// mission designer chose it) -- including one whose only capability is a
+// sensor, which then feeds the Site what it sees. An UNSYNCED vehicle is
+// only adopted as a standalone System if standalone air defence is enabled
+// AND it is a self-contained AA platform -- a sensor of its own (radar, IR
+// or visual) plus its own AA weapons (a Cheetah/Tigris-style SPAAG, or a
+// Spartan with its launcher-mounted IR). Anything else is deferred, not
+// rejected: aegism_network_fnc_moduleInit re-runs this function when the
+// vehicle is later synced to a Site.
 private _synced = !isNull (_vehicle getVariable ["AEGISM_network", objNull]);
-private _standaloneEligible = ("aegism_main_standaloneAdoption" call CBA_settings_fnc_get) && {_capabilities get "hasRadar"} && _hasWeapons;
+private _standaloneEligible = ("aegism_main_standaloneAdoption" call CBA_settings_fnc_get) && _hasSensor && _hasWeapons;
 if (!_synced && !_standaloneEligible) exitWith {
     if !(_vehicle getVariable ["AEGISM_systemDeferred", false]) then {
+        _vehicle setVariable ["AEGISM_systemDeferred", true, false];
+        // Nothing but an IR/visual sensor -- most tanks and IFVs: only of
+        // use synced to a Site, so deferred without a word (every armoured
+        // vehicle in a mission would otherwise show up as NOT ACTIVE).
+        if (!_hasWeapons && {!(_capabilities get "hasRadar")}) exitWith {};
         // Why, and what to do about it -- the debug overlays show it on the
         // vehicle (AEGISM_deferredSystems), so one placed on its own doesn't
         // just sit there silently.
         private _reason = switch (true) do {
-            case !(_capabilities get "hasRadar"): { "no radar of its own -- sync it to a Site with a radar" };
+            case !_hasSensor: { "no sensor of its own -- sync it to a Site with a radar" };
             case !_hasWeapons: { "radar only -- sync it to a Site to feed its weapons" };
             default { "Standalone Air Defence is off (CBA setting) -- sync it to a Site" };
         };
-        _vehicle setVariable ["AEGISM_systemDeferred", true, false];
         _vehicle setVariable ["AEGISM_deferReason", _reason, false];
         private _deferred = missionNamespace getVariable ["AEGISM_deferredSystems", []];
         _deferred pushBackUnique _vehicle;
         missionNamespace setVariable ["AEGISM_deferredSystems", _deferred, false];
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has AEGIS-M capability (radar=%3 launchers=%4 ciws=%5) but isn't active: %6. Deferred until synced.", _vehicle, typeOf _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _reason];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has AEGIS-M capability (sensors: %3; launchers=%4 ciws=%5) but isn't active: %6. Deferred until synced.", _vehicle, typeOf _vehicle, _sensorText, count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _reason];
     };
 };
 
@@ -129,10 +143,10 @@ if (_weaponTurretPaths isNotEqualTo []) then {
 // a cleanup handler per System for nothing.
 if (!isServer) exitWith {};
 
-// Every recognized System, radar or not -- distinct from AEGISM_allPoolOwners
-// below, which only ever gains a vehicle with real "ownRadar" capability
-// (that list exists purely so the detection loop knows which vehicles have
-// a pool worth scanning). Read by the debug overlays (aegism_fnc_debugDraw,
+// Every recognized System, sensor or not -- distinct from AEGISM_allPoolOwners
+// below, which only ever gains a vehicle with a sensor of its own
+// ("ownSensor": that list exists purely so the detection loops know which
+// vehicles have a pool worth scanning). Read by the debug overlays (aegism_fnc_debugDraw,
 // aegism_fnc_debugHint), which drop dead entries as they go.
 private _allSystems = missionNamespace getVariable ["AEGISM_allSystems", []];
 _allSystems pushBackUnique _vehicle;
@@ -153,7 +167,7 @@ private _contactSource = _vehicle getVariable "AEGISM_resolvedContactSource";
     [_vehicle] call aegism_system_fnc_resolveSettings;
 }, 5, [_vehicle]] call CBA_fnc_addPerFrameHandler;
 
-if ("ownRadar" in _contactSource) then {
+if ("ownSensor" in _contactSource) then {
     _vehicle setVariable ["AEGISM_pooledContacts", createHashMap, false];
 
     private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
@@ -195,4 +209,4 @@ if ((_capabilities get "ciwsWeapons") isNotEqualTo []) then { _activeWeaponRoles
     }, 0.1, [_vehicle, _x, -1]] call CBA_fnc_addPerFrameHandler;
 } forEach _activeWeaponRoles;
 
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " System initialized on %1 -- hasRadar=%2 launcherWeapons=%3 ciwsWeapons=%4 contactSource=%5", _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];
+diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " System initialized on %1 (%2) -- sensors: %3; launcherWeapons=%4 ciwsWeapons=%5 contactSource=%6", _vehicle, typeOf _vehicle, _sensorText, count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];

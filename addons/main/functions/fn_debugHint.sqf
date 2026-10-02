@@ -6,14 +6,15 @@ Description:
     CBA setting "AEGIS-M > Debug > Site Status Hint" is on:
 
         - the Site nearest the camera, in detail: every member vehicle with
-          its roles ([R]adar [L]auncher [C]IWS), a colour-coded status, its
-          current target and ammo
+          its roles ([R]adar [I]R [V]isual sensor, [L]auncher [C]IWS), a
+          colour-coded status, its current target and ammo
         - every other Site as a one-line summary
         - standalone (unsynced) Systems, one line each
         - not active: vehicles AEGIS-M found capable but hasn't activated
           (deferred until synced to a Site), with why -- e.g. a launcher
-          with no radar of its own placed without a Site
-        - last, the nearest Site's tracked contacts and the weapons on
+          with no sensor of its own placed without a Site
+        - last, the nearest Site's tracked contacts, the sensor kinds that
+          saw each ([RDR IR], aegism_fnc_sensorTags) and the weapons on
           each (the longest section, so it's the one the hint box cuts)
 
     Each engagement shows in its own state's colour (aegism_fnc_statusStyle
@@ -21,7 +22,7 @@ Description:
     behind another on its launcher, amber REACTING/SLEWING, orange
     RELOADING, teal RANGE HOLD, red FIRING, gold IN FLIGHT, purple NO LOS /
     NO SOLUTION, grey CREW FAILED / FIRE HELD / NO AMMO. A vehicle with
-    nothing assigned: green READY, yellow TRACKING (radar with contacts),
+    nothing assigned: green READY, yellow TRACKING (sensor with contacts),
     grey NO AMMO, dark grey DESTROYED.
 
     Reads the same server-side variables the engagement pipeline runs on,
@@ -112,20 +113,23 @@ private _fnSystemStatus = {
     private _anyAmmo = (_weapons findIf { _x params ["_turretPath", "", "_magClass"]; (_system magazineTurretAmmo [_magClass, _turretPath]) > 0 }) != -1;
     if (_weapons isNotEqualTo [] && {!_anyAmmo}) exitWith { ["NO AMMO", COL_EMPTY] };
 
-    // A networked radar feeds its Site's pool (it keeps no munitions of its own).
+    // A networked sensor feeds its Site's pool (it keeps no munitions of its own).
     private _network = _system getVariable ["AEGISM_network", objNull];
     private _contacts = count (([_network, _system] select (isNull _network)) getVariable ["AEGISM_pooledContacts", createHashMap]);
-    if ((_systemData getOrDefault ["hasRadar", false]) && {_contacts > 0}) exitWith { [format ["TRACKING %1 contact(s)", _contacts], COL_TRACK] };
+    if ((_systemData getOrDefault ["hasSensor", false]) && {_contacts > 0}) exitWith { [format ["TRACKING %1 contact(s)", _contacts], COL_TRACK] };
 
     ["READY", COL_READY]
 };
 
-// "[R L C]" role tags and "L 3 | C 540" ammo for one System.
+// "[R I L C]" role tags and "L 3 | C 540" ammo for one System.
 private _fnRolesAndAmmo = {
     params ["_system"];
     private _systemData = _system getVariable ["AEGISM_system", createHashMap];
     private _tags = [];
-    if (_systemData getOrDefault ["hasRadar", false]) then { _tags pushBack "R"; };
+    {
+        _x params ["_type", "_tag"];
+        if (((_systemData getOrDefault ["sensors", []]) findIf { (_x select 0) == _type }) != -1) then { _tags pushBack _tag; };
+    } forEach [["radar", "R"], ["ir", "I"], ["visual", "V"]];
     private _ammo = [];
     {
         _x params ["_key", "_tag"];
@@ -218,10 +222,12 @@ if (_sites isNotEqualTo []) then {
                     if (_urgency > (_urgent select 0)) then { _urgent = [_urgency, _hex]; };
                     [_hex, format ["%1 %2 %3", ["L", "C"] select ((_x get "role") == "ciws"), [_x get "system"] call _fnShortName, _label]] call _fnColour
                 };
-                _contactLines pushBack format ["<t align='left' size='0.75'>  %1 %2 <t color='%3'>%4 %5</t>%6</t><br/>",
+                private _sensorTags = [_entry getOrDefault ["sources", createHashMap]] call aegism_fnc_sensorTags;
+                _contactLines pushBack format ["<t align='left' size='0.75'>  %1 %2 <t color='%3'>%4 %5%7</t>%6</t><br/>",
                     [_urgent select 1, "●"] call _fnColour,
                     [_object] call _fnShortName, COL_DIM, _entry get "class", [_nearest] call _fnRange,
-                    ["", format [" <t color='%1'>&lt;-</t> %2", COL_DIM, _onIt joinString ", "]] select (_onIt isNotEqualTo [])];
+                    ["", format [" <t color='%1'>&lt;-</t> %2", COL_DIM, _onIt joinString ", "]] select (_onIt isNotEqualTo []),
+                    ["", format [" [%1]", _sensorTags]] select (_sensorTags != "")];
             };
         } forEach _sorted;
         if (count _sorted > AEGISM_HINT_MAX_CONTACTS) then {

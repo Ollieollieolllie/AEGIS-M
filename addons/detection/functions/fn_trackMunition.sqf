@@ -13,7 +13,7 @@ Description:
     munition checked every AEGISM_TRACK_INTERVAL s, spread over frames by
     fire time). It used to be one per-frame handler per munition.
 
-    What a check does (radar range/arc/LOS, IFF, whether it threatens a
+    What a check does (sensor range/arc/LOS, IFF, whether it threatens a
     Site): aegism_detect_fnc_munitionCheck.
 
 Parameters:
@@ -44,8 +44,8 @@ if (isNil "_tracked") then {
     _tracked = [];
     missionNamespace setVariable ["AEGISM_trackedMunitions", _tracked];
 };
-// [projectile, class, shooter side, key, pools it's in, next check at, radar
-// LOS memory (radar netId -> last clear), flags (HashMap)]
+// [projectile, class, shooter side, key, pools it's in, next check at, sensor
+// LOS memory (vehicle netId -> last clear), flags (HashMap)]
 _tracked pushBack [_projectile, _class, _shooterSide, _key, [], time, createHashMap, createHashMap];
 
 if !(missionNamespace getVariable ["AEGISM_munitionTrackerRunning", false]) then {

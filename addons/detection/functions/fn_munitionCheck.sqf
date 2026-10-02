@@ -3,28 +3,33 @@ Function: aegism_detect_fnc_munitionCheck
 
 Description:
     One check of one tracked munition (aegism_detect_fnc_munitionTracker)
-    against every radar-capable pool owner (AEGISM_allPoolOwners). Site
-    logics are never checked directly -- they have no sensor or facing of
-    their own; a Site only receives a munition from a member radar that
-    genuinely sees it.
+    against every pool owner (AEGISM_allPoolOwners) with a sensor that can
+    see a munition (aegism_system_fnc_discoverCapabilities
+    "munitionSensors": active radars, and IR sensors). Site logics are never
+    checked directly -- they have no sensor or facing of their own; a Site
+    only receives a munition from a member that genuinely sees it.
 
-    Detection by a radar: within its own discovered range (aegism_system_
-    fnc_discoverCapabilities radarRange -- the same sensor config
-    getSensorTargets reads, not scaled), inside its arc (radarArc), and in
-    its line of sight (lineIntersectsSurfaces: a munition behind a ridge
-    isn't seen). A radar that had clear sight of it within the last
-    AEGISM_LOS_REUSE s isn't re-traced: the rays, several km long, were most
-    of the tracker's cost in a salvo. Two seconds sits inside the pools' 3s
-    contact expiry, so a munition that goes behind a ridge still drops out
-    within a few seconds.
+    Detection: one of the vehicle's sensors covers it (aegism_detect_fnc_
+    sensorSees -- within its own config reach, inside its arc measured from
+    where it looks, not blinded by fog; a munition is hot for its whole
+    flight, so IR sees it as radar does), and the vehicle has line of sight
+    to it (lineIntersectsSurfaces: a munition
+    behind a ridge isn't seen). The ray is only traced once a sensor covers
+    it, and not again within AEGISM_LOS_REUSE s of a clear one: the rays,
+    several km long, were most of the tracker's cost in a salvo. Two
+    seconds sits inside the pools' 3s contact expiry, so a munition that
+    goes behind a ridge still drops out within a few seconds. An active
+    radar sees munitions whether or not the AI has it emitting (as before);
+    the contact records which sensors saw it ("activeradar", "ir").
 
     Where it goes:
-        standalone radar - its own pool
-        networked radar - its Site's pool (if the class is one this radar's
-            own settings engage). Once one radar of a Site has seen the
-            munition, the Site's other radars are skipped for this check:
-            they could only add it again. (A networked radar's own pool
-            isn't kept: nothing engages from it.)
+        standalone vehicle - its own pool
+        networked vehicle - its Site's pool (if the class is one this
+            vehicle's own settings engage). Once one member of a Site has
+            seen the munition, the Site's other members are skipped for
+            this check: they could only add it again. (A networked
+            vehicle's own pool isn't kept for munitions: nothing engages
+            from it.)
 
     IFF and threat:
         hostile shooter - tracked outright, unless the Site's doctrine
@@ -72,8 +77,9 @@ private _sitesDone = [];
     private _poolOwner = _x;
     private _system = _poolOwner getVariable "AEGISM_system";
     private _network = _poolOwner getVariable ["AEGISM_network", objNull];
+    private _sensors = if (isNil "_system") then { [] } else { _system getOrDefault ["munitionSensors", []] };
 
-    if (!isNil "_system" && {_system get "hasRadar"} && {isNull _network || {!(_network in _sitesDone)}}) then {
+    if (_sensors isNotEqualTo [] && {isNull _network || {!(_network in _sitesDone)}}) then {
         private _hostile = [side _poolOwner, _shooterSide] call aegism_detect_fnc_isHostile;
         private _settings = _poolOwner getVariable "AEGISM_resolvedEngagementSettings";
         if (isNil "_settings") then { _settings = [_poolOwner] call aegism_system_fnc_resolveEngagementSettings; };
@@ -85,23 +91,28 @@ private _sitesDone = [];
         } else {
             _settings getOrDefault ["engageFriendlyThreats", true]
         };
-        if ((_hostile || {_needsThreat && {!_fromSystem}}) && {(_poolOwner distance2D _projectile) <= (_system get "radarRange")}) then {
-            // Line of sight, re-traced at most every AEGISM_LOS_REUSE s per radar.
-            private _radarKey = netId _poolOwner;
-            private _losClear = time - (_losSeen getOrDefault [_radarKey, -1e9]) <= AEGISM_LOS_REUSE;
-            if (!_losClear) then {
-                PERF_INC(PERF_LOS_RAYS);
-                _losClear = (lineIntersectsSurfaces [eyePos _poolOwner, _pos, _poolOwner, _projectile, true, 1]) isEqualTo [];
-                if (_losClear) then { _losSeen set [_radarKey, time]; };
-            };
-            private _detected = _losClear;
+        if (_hostile || {_needsThreat && {!_fromSystem}}) then {
+            // Which of its sensors cover it -- reach, arc, fog -- before any
+            // ray.
+            private _seenBy = [];
+            {
+                if ([_poolOwner, _x, _pos] call aegism_detect_fnc_sensorSees) then {
+                    _seenBy pushBackUnique (["activeradar", "ir"] select ((_x select 0) == "ir"));
+                };
+            } forEach _sensors;
+            private _detected = _seenBy isNotEqualTo [];
             private _threat = [];
 
-            private _radarArc = _system get "radarArc";
-            if (_detected && {_radarArc < 360}) then {
-                private _relBearing = _poolOwner getRelDir _projectile;
-                if (_relBearing > 180) then { _relBearing = _relBearing - 360; };
-                _detected = abs _relBearing <= (_radarArc / 2);
+            // Line of sight, re-traced at most every AEGISM_LOS_REUSE s per vehicle.
+            if (_detected) then {
+                private _losKey = netId _poolOwner;
+                private _losClear = time - (_losSeen getOrDefault [_losKey, -1e9]) <= AEGISM_LOS_REUSE;
+                if (!_losClear) then {
+                    PERF_INC(PERF_LOS_RAYS);
+                    _losClear = (lineIntersectsSurfaces [eyePos _poolOwner, _pos, _poolOwner, _projectile, true, 1]) isEqualTo [];
+                    if (_losClear) then { _losSeen set [_losKey, time]; };
+                };
+                _detected = _losClear;
             };
 
             if (_detected && {_needsThreat}) then {
@@ -130,11 +141,12 @@ private _sitesDone = [];
 
             if (_detected) then {
                 if (isNull _network) then {
-                    if ([_poolOwner, _projectile, _class, 1] call aegism_detect_fnc_addContact) then { _addedTo pushBackUnique _poolOwner; };
+                    if ([_poolOwner, _projectile, _class, 1, _seenBy] call aegism_detect_fnc_addContact) then { _addedTo pushBackUnique _poolOwner; };
                 } else {
-                    // Reported to the Site only if this radar's own settings
+                    // Reported to the Site only if this vehicle's own settings
                     // engage the class, so a radar's per-vehicle override
-                    // controls what it reports.
+                    // controls what it reports. The Site records the sensors
+                    // of the first member that saw it this check.
                     _sitesDone pushBack _network;
                     // The Site's incoming alarm (aegism_network_fnc_siteAlarm):
                     // a munition threatening it, engaged or not. Judged here
@@ -145,13 +157,13 @@ private _sitesDone = [];
                     };
                     if (_threat isNotEqualTo []) then { _network setVariable ["AEGISM_incomingAt", time]; };
                     if (_class in (_settings getOrDefault ["targetClassAllowlist", []])
-                        && {[_network, _projectile, _class, 1] call aegism_detect_fnc_addContact}) then {
+                        && {[_network, _projectile, _class, 1, _seenBy] call aegism_detect_fnc_addContact}) then {
                         _addedTo pushBackUnique _network;
                     };
                 };
                 if (_firstDetection && {_addedTo isNotEqualTo []}) then {
                     _firstDetection = false;
-                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TRACKING: %1 (%2, %3) detected by %4 at %5m.", typeOf _projectile, _class, _key, _poolOwner, round (_poolOwner distance _projectile)];
+                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TRACKING: %1 (%2, %3) detected by %4 at %5m (%6).", typeOf _projectile, _class, _key, _poolOwner, round (_poolOwner distance _projectile), _seenBy joinString ", "];
                 };
             };
         };

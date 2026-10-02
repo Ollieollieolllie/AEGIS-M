@@ -153,10 +153,11 @@ missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
 // Re-run discovery now that AEGISM_network is set: a synced vehicle that
 // isn't a standalone-eligible AA platform (e.g. a radar-less SAM launcher)
 // was deferred by its first scan pass, and would otherwise never become a
-// System. No-op if already initialized. Radar vehicles first, so a
-// launcher's contact-source check already sees its radar siblings.
-private _radarFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_system_fnc_discoverCapabilities) get "hasRadar") }, "ASCEND"] call BIS_fnc_sortBy;
-{ [_x] call aegism_system_fnc_moduleInit; } forEach _radarFirst;
+// System. No-op if already initialized. Vehicles with a sensor of their own
+// first, so a launcher's contact-source check already sees its sensor
+// siblings.
+private _sensorsFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_system_fnc_discoverCapabilities) get "hasSensor") }, "ASCEND"] call BIS_fnc_sortBy;
+{ [_x] call aegism_system_fnc_moduleInit; } forEach _sensorsFirst;
 
 [
     _logic,

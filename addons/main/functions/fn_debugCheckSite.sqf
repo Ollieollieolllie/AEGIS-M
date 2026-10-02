@@ -17,12 +17,12 @@ Description:
     AEGISM_network actually points back at this Site (catches a vehicle that
     LOOKS synced in Eden's sync-line view but whose module init never ran or
     targeted a different Site, e.g. from a stale isGlobal netId issue), and
-    its discovered capability (hasRadar/radarRange, launcher weapon count,
-    CIWS weapon count) -- or "NOT AN AEGIS-M SYSTEM" if aegism_system_fnc_
-    moduleInit never found it to have any qualifying capability at all (the
-    single most common reason "nothing happens": a vehicle synced to the
-    Site that AEGIS-M itself never recognized, e.g. wrong vehicle, no real
-    radar/missile/CIWS loadout).
+    its discovered capability (its sensors with reach and arc, launcher
+    weapon count, CIWS weapon count) -- or "NOT AN AEGIS-M SYSTEM" if
+    aegism_system_fnc_moduleInit never found it to have any qualifying
+    capability at all (the single most common reason "nothing happens": a
+    vehicle synced to the Site that AEGIS-M itself never recognized, e.g.
+    wrong vehicle, no real sensor/missile/CIWS loadout).
 
     Prints to hint (visible in-game immediately) AND diag_log (so it's also
     captured in the RPT for later reference) -- deliberately not gated
@@ -82,9 +82,10 @@ if (_sites isEqualTo []) exitWith {
         _lines pushBack _line;
 
         if (isNil "_system") then {
-            _lines pushBack "      NOT AN AEGIS-M SYSTEM -- aegism_system_fnc_discoverCapabilities found no real radar sensor, no missile/rocket magazine, and no high-rate-of-fire gun magazine on this vehicle's current loadout. Check the RPT for a matching '[AEGIS-M] DISCOVERY:' line, or that this is really the vehicle you intended to sync.";
+            _lines pushBack "      NOT AN AEGIS-M SYSTEM -- aegism_system_fnc_discoverCapabilities found no radar, IR or visual sensor, no missile/rocket magazine, and no high-rate-of-fire gun magazine on this vehicle's current loadout. Check the RPT for a matching '[AEGIS-M] DISCOVERY:' line, or that this is really the vehicle you intended to sync.";
         } else {
-            _lines pushBack format ["      hasRadar=%1 (range=%2m) launcherWeapons=%3 ciwsWeapons=%4", _system get "hasRadar", round (_system get "radarRange"), count (_system get "launcherWeapons"), count (_system get "ciwsWeapons")];
+            private _sensorText = ((_system getOrDefault ["sensors", []]) apply { format ["%1 %2m %3deg", _x select 0, round (_x select 1), round (_x select 2)] }) joinString ", ";
+            _lines pushBack format ["      sensors: %1; launcherWeapons=%2 ciwsWeapons=%3", [_sensorText, "none"] select (_sensorText == ""), count (_system get "launcherWeapons"), count (_system get "ciwsWeapons")];
         };
     } forEach _members;
 
