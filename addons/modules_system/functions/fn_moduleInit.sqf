@@ -89,13 +89,27 @@ private _synced = !isNull (_vehicle getVariable ["AEGISM_network", objNull]);
 private _standaloneEligible = ("aegism_main_standaloneAdoption" call CBA_settings_fnc_get) && {_capabilities get "hasRadar"} && _hasWeapons;
 if (!_synced && !_standaloneEligible) exitWith {
     if !(_vehicle getVariable ["AEGISM_systemDeferred", false]) then {
+        // Why, and what to do about it -- the debug overlays show it on the
+        // vehicle (AEGISM_deferredSystems), so one placed on its own doesn't
+        // just sit there silently.
+        private _reason = switch (true) do {
+            case !(_capabilities get "hasRadar"): { "no radar of its own -- sync it to a Site with a radar" };
+            case !_hasWeapons: { "radar only -- sync it to a Site to feed its weapons" };
+            default { "Standalone Air Defence is off (CBA setting) -- sync it to a Site" };
+        };
         _vehicle setVariable ["AEGISM_systemDeferred", true, false];
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has AEGIS-M capability (radar=%3 launchers=%4 ciws=%5) but is not synced to a Site and is not a self-contained AA platform (or standalone adoption is disabled) -- deferred until synced.", _vehicle, typeOf _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons")];
+        _vehicle setVariable ["AEGISM_deferReason", _reason, false];
+        private _deferred = missionNamespace getVariable ["AEGISM_deferredSystems", []];
+        _deferred pushBackUnique _vehicle;
+        missionNamespace setVariable ["AEGISM_deferredSystems", _deferred, false];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has AEGIS-M capability (radar=%3 launchers=%4 ciws=%5) but isn't active: %6. Deferred until synced.", _vehicle, typeOf _vehicle, _capabilities get "hasRadar", count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _reason];
     };
 };
 
 _vehicle setVariable ["AEGISM_systemInitialized", true, false];
 _vehicle setVariable ["AEGISM_systemDeferred", false, false];
+private _deferred = missionNamespace getVariable ["AEGISM_deferredSystems", []];
+if (_vehicle in _deferred) then { missionNamespace setVariable ["AEGISM_deferredSystems", _deferred - [_vehicle], false]; };
 _vehicle setVariable ["AEGISM_system", _capabilities, false];
 
 // Suppress the crew's own independent targeting/engagement on every

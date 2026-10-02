@@ -7,10 +7,14 @@ Description:
 
         - the Site nearest the camera, in detail: every member vehicle with
           its roles ([R]adar [L]auncher [C]IWS), a colour-coded status, its
-          current target and ammo; then that Site's tracked contacts and
-          which weapons are on each
+          current target and ammo
         - every other Site as a one-line summary
         - standalone (unsynced) Systems, one line each
+        - not active: vehicles AEGIS-M found capable but hasn't activated
+          (deferred until synced to a Site), with why -- e.g. a launcher
+          with no radar of its own placed without a Site
+        - last, the nearest Site's tracked contacts and the weapons on
+          each (the longest section, so it's the one the hint box cuts)
 
     Each engagement shows in its own state's colour (aegism_fnc_statusStyle
     -- the state the engagement loop records on it every tick): blue QUEUED
@@ -149,9 +153,16 @@ private _fnSiteName = {
     format ["%1 (grid %2)", _name, mapGridPosition _site]
 };
 
-private _lines = [format ["<t size='1.2' font='PuristaBold' color='%1'>AEGIS-M</t><br/>", COL_HEAD]];
+// Found capable but not activated: deferred until synced to a Site
+// (aegism_system_fnc_moduleInit's adoption policy).
+private _deferred = (missionNamespace getVariable ["AEGISM_deferredSystems", []]) select { !isNull _x && {alive _x} && {_x getVariable ["AEGISM_systemDeferred", false]} };
 
-if (_sites isEqualTo [] && {_standalone isEqualTo []}) then {
+private _lines = [format ["<t size='1.2' font='PuristaBold' color='%1'>AEGIS-M</t><br/>", COL_HEAD]];
+// The nearest Site's contacts go last: the vehicle-level sections come
+// first, so they aren't the ones pushed off the bottom of the hint box.
+private _contactLines = [];
+
+if (_sites isEqualTo [] && {_standalone isEqualTo []} && {_deferred isEqualTo []}) then {
     _lines pushBack format ["<t size='0.85' color='%1'>No Site or System active.</t>", COL_DIM];
 };
 
@@ -183,7 +194,7 @@ if (_sites isNotEqualTo []) then {
 
     // Contacts, nearest first, with the weapons on each.
     if (count _pool > 0) then {
-        _lines pushBack format ["<br/><t align='left' size='0.8' font='PuristaSemibold' color='%1'>Contacts</t><br/>", COL_HEAD];
+        _contactLines pushBack format ["<br/><t align='left' size='0.8' font='PuristaSemibold' color='%1'>Contacts</t><br/>", COL_HEAD];
         // [key, entry] of every live contact.
         private _entries = [];
         { if (!isNull (_y getOrDefault ["object", objNull])) then { _entries pushBack [_x, _y]; }; } forEach _pool;
@@ -207,14 +218,14 @@ if (_sites isNotEqualTo []) then {
                     if (_urgency > (_urgent select 0)) then { _urgent = [_urgency, _hex]; };
                     [_hex, format ["%1 %2 %3", ["L", "C"] select ((_x get "role") == "ciws"), [_x get "system"] call _fnShortName, _label]] call _fnColour
                 };
-                _lines pushBack format ["<t align='left' size='0.75'>  %1 %2 <t color='%3'>%4 %5</t>%6</t><br/>",
+                _contactLines pushBack format ["<t align='left' size='0.75'>  %1 %2 <t color='%3'>%4 %5</t>%6</t><br/>",
                     [_urgent select 1, "●"] call _fnColour,
                     [_object] call _fnShortName, COL_DIM, _entry get "class", [_nearest] call _fnRange,
                     ["", format [" <t color='%1'>&lt;-</t> %2", COL_DIM, _onIt joinString ", "]] select (_onIt isNotEqualTo [])];
             };
         } forEach _sorted;
         if (count _sorted > AEGISM_HINT_MAX_CONTACTS) then {
-            _lines pushBack format ["<t align='left' size='0.7' color='%1'>  +%2 more</t><br/>", COL_DIM, count _sorted - AEGISM_HINT_MAX_CONTACTS];
+            _contactLines pushBack format ["<t align='left' size='0.7' color='%1'>  +%2 more</t><br/>", COL_DIM, count _sorted - AEGISM_HINT_MAX_CONTACTS];
         };
     };
 
@@ -260,4 +271,14 @@ if (_standalone isNotEqualTo []) then {
     } forEach _standalone;
 };
 
+// --- Not active: why, and what to do ---
+if (_deferred isNotEqualTo []) then {
+    _lines pushBack format ["<br/><t align='left' size='0.8' font='PuristaSemibold' color='%1'>Not active</t><br/>", COL_HEAD];
+    {
+        _lines pushBack format ["<t align='left' size='0.8'>%1 %2</t><br/><t align='left' size='0.75'>    <t color='%3'>%4</t></t><br/>",
+            [COL_EMPTY, "●"] call _fnColour, [_x] call _fnShortName, COL_ENGAGE, _x getVariable ["AEGISM_deferReason", "deferred until synced to a Site"]];
+    } forEach _deferred;
+};
+
+_lines append _contactLines;
 hintSilent parseText (_lines joinString "");

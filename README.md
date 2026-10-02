@@ -365,6 +365,11 @@ thing, labels stacked rather than drawn over each other:
   Name and weapons are in the vehicle's most urgent engagement's colour,
   grey while idle.
 - **Radars**: a faint ring at each one's detection range.
+- **Not active**: a vehicle AEGIS-M found capable but hasn't activated is
+  grey with `NOT ACTIVE:` and why -- e.g. a launcher with no radar of its
+  own placed without a Site (`no radar of its own -- sync it to a Site with
+  a radar`). Only a vehicle with its own radar and its own AA weapons works
+  standalone.
 
 An assigned weapon that isn't firing always logs why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
 `ASSIGN-CLEAR` with a reason. Every AEGIS-M RPT line carries the mission's
@@ -375,11 +380,13 @@ time, which keeps running while the game is paused.
 by default) shows a live board in the hint box: the nearest Site's vehicles
 with their roles, colour-coded status (READY, TRACKING, REACTING, SLEWING,
 ENGAGING, FIRING, NO SOLUTION, LOS BLOCKED, NO AMMO, DESTROYED), target and
-ammo, then each weapon's worked engagements in their state colours (and how
-many more are queued), then its contacts and which weapons are on each
-(coloured the same way); other Sites and
-standalone Systems in summary. It shows data wherever AEGIS-M runs its
-engagement logic: singleplayer, Eden Preview, or a hosted game's host.
+ammo, with each weapon's worked engagements in their state colours (and how
+many more are queued); then other Sites and standalone Systems in summary;
+then **Not active** vehicles with why (e.g. a launcher with no radar placed
+without a Site); and last the nearest Site's contacts and which weapons are
+on each (coloured the same way) -- the longest section, so it's the one a
+full hint box cuts off. It shows data wherever AEGIS-M runs its engagement
+logic: singleplayer, Eden Preview, or a hosted game's host.
 
 **RPT performance summary** (CBA setting "AEGIS-M > Debug > RPT Performance
 Summary", on by default) -- every 10 s, while AEGIS-M is doing anything, the

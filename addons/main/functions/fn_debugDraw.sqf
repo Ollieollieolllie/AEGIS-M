@@ -48,6 +48,11 @@ Description:
 
         Radar - a faint ring at each radar's own detection range.
 
+        Not active - a vehicle AEGIS-M found capable but hasn't activated
+            (deferred until synced, AEGISM_deferredSystems): grey, with
+            "NOT ACTIVE:" and why -- e.g. a launcher with no radar of its
+            own placed without a Site.
+
     Reads only published state (AEGISM_allPoolOwners, AEGISM_allSystems,
     AEGISM_system, AEGISM_pooledContacts, AEGISM_claims, AEGISM_
     withheldCiws, each System's AEGISM_turrets "standalone_<role>" states)
@@ -294,3 +299,15 @@ private _fnSiteStats = {
         };
     };
 } forEach _allSystems;
+
+// --- Not active: found capable, but deferred until synced to a Site (aegism_
+// system_fnc_moduleInit's adoption policy) -- e.g. a launcher with no radar
+// placed on its own. Grey, with why and what to do.
+private _deferred = (missionNamespace getVariable ["AEGISM_deferredSystems", []]) select { !isNull _x && {alive _x} && {_x getVariable ["AEGISM_systemDeferred", false]} };
+missionNamespace setVariable ["AEGISM_deferredSystems", _deferred, false];
+{
+    private _position = (ASLToAGL getPosASLVisual _x) vectorAdd [0, 0, 3];
+    drawIcon3D [AEGISM_ICON_SHIELD, [0.6, 0.6, 0.6, 0.7], _position, 0.5, 0.5, 0, "", 2];
+    [[_position, 1.6] call _fnStacked, getText (configOf _x >> "displayName"), [0.7, 0.7, 0.7, 0.9], AEGISM_TEXT_SIZE] call _fnText;
+    [[_position, 0.8] call _fnStacked, "NOT ACTIVE: " + (_x getVariable ["AEGISM_deferReason", "deferred until synced to a Site"]), [1, 0.6, 0, 1], AEGISM_SMALL_TEXT] call _fnText;
+} forEach _deferred;
