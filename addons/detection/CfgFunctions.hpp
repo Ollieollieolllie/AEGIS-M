@@ -18,8 +18,9 @@ class CfgFunctions
             class trackMunition {};
             class munitionTracker {};
             class munitionCheck {};
-            class sensorAxis {};
-            class sensorSees {};
+            class proxyCreate {};
+            class proxyCheckAttach {};
+            class proxyFollow {};
         };
     };
 };

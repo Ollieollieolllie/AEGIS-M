@@ -3,24 +3,19 @@ Function: aegism_detect_fnc_munitionCheck
 
 Description:
     One check of one tracked munition (aegism_detect_fnc_munitionTracker)
-    against every pool owner (AEGISM_allPoolOwners) with a sensor that can
-    see a munition (aegism_system_fnc_discoverCapabilities
-    "munitionSensors": active radars, and IR sensors). Site logics are never
-    checked directly -- they have no sensor or facing of their own; a Site
-    only receives a munition from a member that genuinely sees it.
+    against every AEGIS-M vehicle with a sensor of its own (AEGISM_
+    allPoolOwners). Site logics are never checked directly -- they have no
+    sensor of their own; a Site only receives a munition from a member that
+    genuinely sees it.
 
-    Detection: one of the vehicle's sensors covers it (aegism_detect_fnc_
-    sensorSees -- within its own config reach, inside its arc measured from
-    where it looks, not blinded by fog; a munition is hot for its whole
-    flight, so IR sees it as radar does), and the vehicle has line of sight
-    to it (lineIntersectsSurfaces: a munition
-    behind a ridge isn't seen). The ray is only traced once a sensor covers
-    it, and not again within AEGISM_LOS_REUSE s of a clear one: the rays,
-    several km long, were most of the tracker's cost in a salvo. Two
-    seconds sits inside the pools' 3s contact expiry, so a munition that
-    goes behind a ridge still drops out within a few seconds. An active
-    radar sees munitions whether or not the AI has it emitting (as before);
-    the contact records which sensors saw it ("activeradar", "ir").
+    Detection is the game's: the vehicle's own sensors held the munition's
+    sensor proxy (aegism_detect_fnc_trackMunition) on their last read
+    (aegism_detect_fnc_confidenceLoop, "AEGISM_seenMunitions", once a
+    second; a read older than AEGISM_SEEN_FRESH s doesn't count). So radar,
+    IR and visual each by their own range, arc, line of sight, fog, night
+    and speed limits, an active radar only while it emits, and what
+    datalink shares from other vehicles. The contact records the sensor
+    kinds that saw it ("activeradar", "ir", "datalink" ...).
 
     Where it goes:
         standalone vehicle - its own pool
@@ -62,12 +57,13 @@ Author:
 
 #include "..\..\main\perf.hpp"
 
-#define AEGISM_LOS_REUSE 2
+// How old a vehicle's last sensor read may be and still count: its reads
+// come once a second, plus a frame or two.
+#define AEGISM_SEEN_FRESH 1.5
 
 params ["_entry", "_owners"];
-_entry params ["_projectile", "_class", "_shooterSide", "_key", "_addedTo", "", "_losSeen", "_flags"];
+_entry params ["_projectile", "_class", "_shooterSide", "_key", "_addedTo", "", "", "_flags"];
 
-private _pos = getPosASL _projectile;
 private _firstDetection = _addedTo isEqualTo [];
 private _fromSystem = _projectile getVariable ["AEGISM_fromSystem", false];
 // Sites this munition already reached this check.
@@ -77,9 +73,8 @@ private _sitesDone = [];
     private _poolOwner = _x;
     private _system = _poolOwner getVariable "AEGISM_system";
     private _network = _poolOwner getVariable ["AEGISM_network", objNull];
-    private _sensors = if (isNil "_system") then { [] } else { _system getOrDefault ["munitionSensors", []] };
 
-    if (_sensors isNotEqualTo [] && {isNull _network || {!(_network in _sitesDone)}}) then {
+    if (!isNil "_system" && {isNull _network || {!(_network in _sitesDone)}}) then {
         private _hostile = [side _poolOwner, _shooterSide] call aegism_detect_fnc_isHostile;
         private _settings = _poolOwner getVariable "AEGISM_resolvedEngagementSettings";
         if (isNil "_settings") then { _settings = [_poolOwner] call aegism_system_fnc_resolveEngagementSettings; };
@@ -92,28 +87,12 @@ private _sitesDone = [];
             _settings getOrDefault ["engageFriendlyThreats", true]
         };
         if (_hostile || {_needsThreat && {!_fromSystem}}) then {
-            // Which of its sensors cover it -- reach, arc, fog -- before any
-            // ray.
-            private _seenBy = [];
-            {
-                if ([_poolOwner, _x, _pos] call aegism_detect_fnc_sensorSees) then {
-                    _seenBy pushBackUnique (["activeradar", "ir"] select ((_x select 0) == "ir"));
-                };
-            } forEach _sensors;
-            private _detected = _seenBy isNotEqualTo [];
+            // Its sensors' last read: the sensor kinds that saw this
+            // munition's proxy, if they did.
+            (_poolOwner getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_seenMunitions"];
+            private _detected = time - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions};
+            private _seenBy = if (_detected) then { _seenMunitions get _key } else { [] };
             private _threat = [];
-
-            // Line of sight, re-traced at most every AEGISM_LOS_REUSE s per vehicle.
-            if (_detected) then {
-                private _losKey = netId _poolOwner;
-                private _losClear = time - (_losSeen getOrDefault [_losKey, -1e9]) <= AEGISM_LOS_REUSE;
-                if (!_losClear) then {
-                    PERF_INC(PERF_LOS_RAYS);
-                    _losClear = (lineIntersectsSurfaces [eyePos _poolOwner, _pos, _poolOwner, _projectile, true, 1]) isEqualTo [];
-                    if (_losClear) then { _losSeen set [_losKey, time]; };
-                };
-                _detected = _losClear;
-            };
 
             if (_detected && {_needsThreat}) then {
                 _threat = [_projectile, _class, _poolOwner, _settings getOrDefault ["friendlyThreatRadius", 0]] call aegism_detect_fnc_munitionThreat;

@@ -63,34 +63,41 @@ artillery/mortar rounds (`artilleryLock`) count as artillery threats; tank
 main-gun rounds don't, and multi-stage rounds (e.g. MLRS rockets) stay
 tracked through their submunition handoff.
 
-**Detection is hybrid, by necessity.** Aircraft/helicopters/drones are read
-straight off the vehicle's own native sensors (getSensorTargets) -- the
-same radar/IR/visual/passive/datalink simulation already running against
-its real CfgVehicles config -- on any vehicle with a radar, IR or visual
-sensor of its own; each contact records which kinds of sensor saw it
-(`DETECT` in the RPT, once per new contact). Incoming missiles/rockets/
-shells can't use that path: a fired projectile has none of the target-size
-properties that make a CfgVehicles object sensor-visible, so it's never a
-valid getSensorTargets result no matter how good the sensor is. Those are
-tracked by a dedicated Fired-event pipeline instead, from the vehicle's
-own sensor config, plus a line-of-sight check:
-- **Active radar**: within its reach and arc. It sees munitions whether
-  or not the AI has it emitting.
-- **IR**: within its reach and arc, for the munition's whole flight -- a
-  rocket or missile is hot from its motor, a shell from firing, and all of
-  them from the air they push through, against the cold sky. Vanilla IR
-  has no ground clutter (`groundNoiseDistanceCoef` -1), so there's no
-  difference against the ground. Its reach is capped at the view distance
-  (`viewDistanceLimitCoef`, as the game caps it for aircraft -- on a
-  dedicated server, the server's view distance), and it's blind in fog
-  past its `maxFogSeeThrough`.
-- **Visual and passive radar** don't find munitions.
+**Detection is the game's own sensors.** Every vehicle with a radar, IR or
+visual sensor of its own reads what its sensors hold (getSensorTargets) --
+the same radar/IR/visual/passive/datalink simulation already running
+against its real CfgVehicles config, with each sensor's own range, arc,
+line of sight, fog, night and speed limits, ground clutter, and an active
+radar only while it's emitting (the AI decides that). Each contact records
+which kinds of sensor saw it.
+- **Aircraft, helicopters, drones** are read directly (`DETECT` in the
+  RPT, once per new contact). A target's own size scales a sensor's range
+  (`radarTargetSize` 0.1 on a Darter: a 9 km radar sees it at 900 m).
+- **Missiles, rockets, shells, bombs** can't be: a fired projectile has
+  none of the target-size properties that make an object sensor-visible.
+  So every tracked munition carries an invisible **sensor proxy** -- a
+  vehicle on the supply-drop crate's model with its texture blanked (a
+  sensor target needs real geometry: with an empty model nothing saw it),
+  size 1 on radar, IR and visual (seen at each sensor's full configured
+  range), and hot (`setVehicleTIPars`) -- that the sensors see instead.
+  It's created half a second after launch (at the muzzle its geometry is
+  inside the launching vehicle) and attached 5 m behind its munition, so
+  the engine carries it; an ammo type that doesn't carry an attached object
+  (`PROXY-ATTACH` in the RPT, once per type -- the MLRS carrier stage
+  `R_230mm_HE` doesn't) has its proxies moved every frame instead, at the
+  munition's own velocity. It's deleted with its munition. There's one
+  proxy class per kind of munition (`AEGISM_MunitionProxy_missile` /
+  `_rocket` / `_bomb` / `_artilleryShell`), so each can carry its own
+  signature. A cluster carrier's bomblets get none (they're not followed at
+  all), nor does an AEGIS-M interceptor unless an AEGIS-M vehicle is
+  hostile to its side. `TRACKING` in the RPT names the sensors that found
+  a munition.
 
-A sensor that turns with a turret (`animDirection`) has its arc measured
-from where that turret points: the Spartan's IR looks along its launcher,
-and the vanilla radar's 120 deg arc follows its antenna. Vertical coverage
-isn't checked. `TRACKING` in the RPT names the sensors that found a
-munition. **Firing commands the vehicle's own real weapon** with its
+Datalink counts: a vehicle sees what its side's datalink shares. The
+proxies exist on the server only, so a vehicle whose crew is simulated
+elsewhere (a headless client, a player gunner) doesn't see munitions.
+
+**Firing commands the vehicle's own real weapon** with its
 actual loaded ammo, so ballistics, guidance, and damage are entirely the
 game's simulation, not a scripted projectile AEGIS-M spawns and steers
 itself. Aiming and firing themselves are scripted directly (lockCameraTo on
@@ -322,9 +329,12 @@ state (its sound sources) and Zeus edits. On the server:
 - Every round fired in the mission passes through one cached lookup; only
   threat munitions go further.
 - Incoming munitions are tracked by one shared tracker, twice a second
-  each, spread over frames. A Site stops looking for a munition once one of
-  its vehicles has it; a vehicle's line of sight is only traced once one
-  of its sensors covers the munition, and re-traced at most every 2 s.
+  each, spread over frames. Sensor proxies are attached, so the engine
+  carries them; only those of an ammo type that doesn't carry attachments
+  are moved by the tracker each frame (two commands each). A Site stops looking for a
+  munition once one of its vehicles has it. Each sensor vehicle reads its
+  sensors once a second, for aircraft and munitions alike; seeing them is
+  the game's own sensor simulation.
 - A CIWS gun's rounds in flight are tracked by one handler per gun, and a
   round is only examined once it's close to the target. The gun solves its
   full aim 20 times a second and steers between solves.
@@ -377,8 +387,7 @@ thing, labels stacked rather than drawn over each other:
   1. its name;
   2. network and sensor status, in light blue: its own sensors, the
      longest of each kind -- reach, arc, `turret` if it turns with one, and
-     for a radar whether it's emitting (munitions are found by AEGIS-M's
-     own check either way; aircraft only while an active radar emits) --
+     for a radar whether it's emitting (it sees nothing while silent) --
      then its Site's sensor vehicles and tracked contacts (`RADAR 16km
      120deg turret emitting  PASSIVE 16km 360  |  SITE: 2 radars + 4
      IR/visual, 7 tracks`), or `STANDALONE` with its own tracks. `NO SENSOR
@@ -422,8 +431,10 @@ server writes one `PERF` line: coordinator runs and time (total and worst),
 engagement ticks with work, aim solves and per-frame steers, CIWS rounds
 tracked / checked near the target / skipped in flight / time, engageability
 checks, standalone target re-evaluations, Fired events seen / threats among
-them / munitions ignored as landing clear, munition tracker checks / line-
-of-sight rays / time, reserve-plan cache hits and rebuilds, and server FPS.
+them / munitions ignored as landing clear, munition tracker checks / time
+(proxies created and moved included), sensor reads: munitions seen / time, reserve-plan cache hits and
+rebuilds, and the server's frames over the whole interval: average fps,
+worst frame and frames slower than 50 ms (paused time isn't counted).
 Idle, it writes nothing. The timings come from a 32-bit clock that only
 resolves to about 0.25 ms after an hour of game time, so treat them as
 rough. Each weapon's config values are logged once when first used

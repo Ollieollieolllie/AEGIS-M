@@ -24,7 +24,7 @@
 [
     "aegism_main_standaloneAdoption",
     "CHECKBOX",
-    ["Standalone Air Defence", "Adopt UNSYNCED self-contained AA vehicles (own radar + own AA weapons, e.g. Cheetah/Tigris) as standalone AEGIS-M Systems. Vehicles synced to an AEGIS-M Site are always adopted regardless. Aircraft and infantry are never adopted."],
+    ["Standalone Air Defence", "Adopt UNSYNCED self-contained AA vehicles (a sensor of their own -- radar, IR or visual -- plus their own AA weapons, e.g. Cheetah, Tigris, Spartan) as standalone AEGIS-M Systems. Vehicles synced to an AEGIS-M Site are always adopted regardless. Aircraft and infantry are never adopted."],
     ["AEGIS-M", "General"],
     true,
     1

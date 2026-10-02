@@ -19,15 +19,12 @@ Description:
                   radar that's on). Recorded, not yet used for detection.
         ir      - IRSensorComponent
         visual  - VisualSensorComponent
-    This is exactly the config the engine's own getSensorTargets reads, so
-    aircraft come from the engine's simulation of these very sensors. A
-    fired CfgAmmo projectile has none of the target-size properties
-    (radarTargetSize/irTargetSize/visualTargetSize) that make an object
-    sensor-visible (not even vanilla CfgAmmo defines them), so it is never
-    a getSensorTargets result: munitions are detected by AEGIS-M's own
-    pipeline (aegism_detect_fnc_munitionCheck) from these sensors' own
-    config -- an active radar or an IR sensor by its reach and arc (a
-    munition is hot for its whole flight).
+    This is exactly the config the engine's own getSensorTargets reads, and
+    the engine does all the detecting -- aircraft directly, munitions
+    through the sensor proxy each one carries (aegism_detect_fnc_
+    trackMunition). What's read here says what a vehicle has: whether it
+    has a radar, or any sensor of its own (for adoption, aegism_system_fnc_
+    moduleInit), and each sensor's reach and arc for the debug overlays.
 
     Each sensor's reach is its AirTarget maxRange (the largest maxRange of
     any target-type sub-class if it has no AirTarget), and its arc its
@@ -36,10 +33,8 @@ Description:
     Radar_System_01's radar is 120 degrees from SensorTemplateActiveRadar.
     Where it points: a sensor with an animDirection (e.g. "mainGun") turns
     with the turret whose gun or body is that selection -- the Spartan's
-    IR sensor looks wherever its launcher points -- so its arc is measured
-    from that turret's live direction (aegism_detect_fnc_sensorAxis).
-    Without one it's fixed to the hull, or, inside a turret's own config,
-    treated as all-round.
+    IR sensor looks wherever its launcher points. Without one it's fixed to
+    the hull, or, inside a turret's own config, treated as all-round.
 
     The sensor component actually lives under "Components >>
     SensorsManagerComponent >> Components" in every vanilla Arma 3 vehicle
@@ -91,13 +86,11 @@ Returns:
             type - "radar" / "passive" / "ir" / "visual"
             range - reach, metres; arc - horizontal arc, degrees
             aim - turret path it turns with, or [] for the hull
-            viewDistanceCoef - AirTarget viewDistanceLimitCoef: reach is
-                capped at the view distance times this (IR, visual: 1);
-                -1 = no cap
+            viewDistanceCoef - its AirTarget viewDistanceLimitCoef: reach is
+                capped at the view distance times this where it's above 0
+                (vanilla IR and visual: 1); -1 = no cap
             maxFog - maxFogSeeThrough, -1 if undefined
             component - its config class name
-        munitionSensors - those that can see a munition (radar, ir), radars
-            first
         hasRadar - an active radar <BOOLEAN>
         hasSensor - a sensor of its own that finds aircraft: an active
             radar, IR or visual <BOOLEAN>
@@ -216,7 +209,6 @@ if (_hasRadar) then {
     _radarArc = (_radars select 0) select 2;
 };
 private _hasSensor = (_sensors findIf { (_x select 0) in ["radar", "ir", "visual"] }) != -1;
-private _munitionSensors = _radars + (_sensors select { (_x select 0) == "ir" });
 
 private _launcherWeapons = [];
 private _ciwsWeapons = [];
@@ -313,7 +305,6 @@ private _fnModeStats = {
 
 createHashMapFromArray [
     ["sensors", _sensors],
-    ["munitionSensors", _munitionSensors],
     ["hasRadar", _hasRadar],
     ["hasSensor", _hasSensor],
     ["radarRange", _radarRange],

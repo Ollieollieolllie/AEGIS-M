@@ -38,9 +38,8 @@ Description:
             1. its name
             2. network and sensor status (light blue): its own sensors, the
                longest of each kind -- reach, arc, "turret" if it turns with
-               one, and for a radar emitting or silent (munitions are found
-               by AEGIS-M's own check either way; aircraft only while an
-               active radar emits) -- and its Site's sensor vehicles and
+               one, and for a radar emitting or silent (a silent radar sees
+               nothing, aircraft or munitions) -- and its Site's sensor vehicles and
                tracks, or STANDALONE with its own tracks. NO SENSOR ON SITE
                in orange when networked but no member of its Site has a
                sensor of its own (aegism_system_fnc_resolveContactSource).
@@ -258,9 +257,8 @@ private _fnSiteStats = {
 
         // Network and sensor status (the middle line): the vehicle's own
         // sensors, the longest of each kind -- reach, arc, "turret" if it
-        // turns with one, and for a radar whether it's emitting (munitions
-        // are found by AEGIS-M's own check either way; aircraft only while
-        // an active radar emits, through the game's sensors) -- and where
+        // turns with one, and for a radar whether it's emitting (a silent
+        // radar sees nothing, aircraft or munitions) -- and where
         // its contacts come from: its Site (sensor vehicles, contacts in the
         // Site's picture) or, standalone, its own sensors alone.
         private _statusParts = [];
