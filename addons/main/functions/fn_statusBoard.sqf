@@ -128,7 +128,9 @@ private _fnSystemStatus = {
     ["READY", COL_READY]
 };
 
-// "[R I L C]" role tags and "L 3 | C 540" ammo for one System.
+// "[RDR IR L C]" role tags and "L 3 | C 540" ammo for one System: its own
+// sensors (RDR radar, IR, VIS visual), DL if it has none and its contacts
+// come from its Site's, L launcher, C CIWS.
 private _fnRolesAndAmmo = {
     params ["_system"];
     private _systemData = _system getVariable ["AEGISM_system", createHashMap];
@@ -136,7 +138,8 @@ private _fnRolesAndAmmo = {
     {
         _x params ["_type", "_tag"];
         if (((_systemData getOrDefault ["sensors", []]) findIf { (_x select 0) == _type }) != -1) then { _tags pushBack _tag; };
-    } forEach [["radar", "R"], ["ir", "I"], ["visual", "V"]];
+    } forEach [["radar", "RDR"], ["ir", "IR"], ["visual", "VIS"]];
+    if (!(_systemData getOrDefault ["hasSensor", false]) && {"network" in (_system getVariable ["AEGISM_resolvedContactSource", []])}) then { _tags pushBack "DL"; };
     private _ammo = [];
     {
         _x params ["_key", "_tag"];
@@ -201,17 +204,39 @@ if (_focusIndex >= 0) then {
     // Every vehicle of the group, once; the ones linking its Sites.
     private _members = [];
     { { _members pushBackUnique _x; } forEach ((_x getVariable ["AEGISM_networkMembers", []]) select { !isNull _x }); } forEach _focusGroup;
-    private _linkedBy = _focus getVariable ["AEGISM_linkShared", []];
-    private _sharedVehicles = _linkedBy select { _x in _members };
+    // Every link holding the group together, and the vehicles that form one.
+    private _links = _focus getVariable ["AEGISM_links", []];
+    private _sharedVehicles = [];
+    {
+        _x params ["_type", "_a", "_b"];
+        if (_type in ["shared", "pair"]) then { _sharedVehicles pushBackUnique _a; };
+        if (_type == "pair") then { _sharedVehicles pushBackUnique _b; };
+    } forEach _links;
+    // A vehicle's Site within the group, for naming.
+    private _fnSiteOf = {
+        private _vehicle = _this;
+        private _index = _focusGroup findIf { _vehicle in (_x getVariable ["AEGISM_networkMembers", []]) };
+        if (_index < 0) exitWith { "" };
+        [_focusGroup select _index, _sites find (_focusGroup select _index)] call _fnSiteName
+    };
 
     if (_linked) then {
         _lines pushBack format ["<t size='0.95' font='PuristaSemibold' color='%1'>Linked Sites: %2</t><br/>", COL_HEAD, (_focusGroup apply { [_x, _sites find _x] call _fnSiteName }) joinString " + "];
         _lines pushBack format ["<t size='0.75' color='%1'>%2 vehicle(s), %3 contact(s), %4 engagement(s) -- contacts and engagements shared</t><br/>", COL_DIM, count _members, count _pool, count _allRecords];
         _lines pushBack format ["<t size='0.75' color='%1'>Coordinated by %2 -- %3</t><br/>", COL_TRACK, [_lead, _sites find _lead] call _fnSiteName,
             ["first set up; each vehicle keeps its own Site's settings", "Shared Site Coordinator: its settings apply to every vehicle"] select (_lead getVariable ["sharedCoordinator", false])];
-        private _byWhat = _sharedVehicles apply { [_x] call _fnShortName };
-        if ((_linkedBy findIf { _x isKindOf "AEGISM_Module_Site" }) != -1) then { _byWhat pushBack "Site modules synced to each other"; };
-        _lines pushBack format ["<t size='0.75' color='%1'>Linked by %2</t><br/>", COL_DIM, _byWhat joinString ", "];
+        // Each link on its own line: losing one of several keeps the group.
+        _lines pushBack format ["<t size='0.75' color='%1'>Linked by %2 link(s)%3:</t><br/>", COL_DIM, count _links,
+            ["", " -- it splits when the last goes"] select (count _links > 1)];
+        {
+            _x params ["_type", "_a", "_b"];
+            _lines pushBack format ["<t align='left' size='0.72' color='%1'>    %2</t><br/>", COL_DIM,
+                switch (_type) do {
+                    case "shared": { format ["%1, synced to both", [_a] call _fnShortName] };
+                    case "pair": { format ["%1 (%2) -- %3 (%4)", [_a] call _fnShortName, _a call _fnSiteOf, [_b] call _fnShortName, _b call _fnSiteOf] };
+                    default { format ["%1 and %2 modules synced to each other", [_a, _sites find _a] call _fnSiteName, [_b, _sites find _b] call _fnSiteName] };
+                }];
+        } forEach _links;
     } else {
         _lines pushBack format ["<t size='0.95' font='PuristaSemibold' color='%1'>%2</t><br/>", COL_HEAD, [_focus, _focusIndex] call _fnSiteName];
         _lines pushBack format ["<t size='0.75' color='%1'>%2 vehicle(s), %3 contact(s), %4 engagement(s)</t><br/>", COL_DIM, count _members, count _pool, count _allRecords];

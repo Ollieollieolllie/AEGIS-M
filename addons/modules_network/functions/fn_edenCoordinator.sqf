@@ -3,8 +3,10 @@ Function: aegism_network_fnc_edenCoordinator
 
 Description:
     Eden: keeps "Shared Site Coordinator" to one Site per group of connected
-    Sites -- Site modules synced to each other, or synced to the same
-    vehicle (directly or through its crew), chained. Run on every Eden
+    Sites -- Site modules synced to each other, synced to the same vehicle,
+    or with a vehicle of one synced to a vehicle of the other (directly or
+    through a crewman), chained: the links aegism_network_fnc_linkSites
+    makes at runtime. Run on every Eden
     attribute change and every new connection (Cfg3DEN EventHandlers, this
     addon's config).
 
@@ -42,10 +44,22 @@ if (isNil "_seen") then {
 private _fnTicked = { ((_this get3DENAttribute "sharedCoordinator") param [0, false]) isEqualTo true };
 
 if (count _sites > 1) then {
-    // What each Site is synced to: other Sites, and vehicles (a crewman
-    // stands for his vehicle).
-    private _syncedOf = _sites apply {
-        ((get3DENConnections _x) select { (_x select 0) == "Sync" }) apply { vehicle (_x select 1) }
+    // What an entity is synced to, each as its vehicle (a crewman stands for
+    // his vehicle).
+    private _fnSynced = { ((get3DENConnections _this) select { (_x select 0) == "Sync" }) apply { vehicle (_x select 1) } };
+    // What each Site is synced to (other Sites, and its vehicles), and what
+    // its vehicles are synced to themselves (directly or by a crewman).
+    private _syncedOf = _sites apply { _x call _fnSynced };
+    private _vehicleSyncsOf = _syncedOf apply {
+        private _siteSynced = _x;
+        private _reach = [];
+        {
+            if (_x isKindOf "AllVehicles" && {!(_x isKindOf "CAManBase")}) then {
+                _reach append (_x call _fnSynced);
+                { _reach append (_x call _fnSynced); } forEach (crew _x);
+            };
+        } forEach _siteSynced;
+        _reach
     };
     private _count = count _sites;
     private _groupOf = [];
@@ -62,8 +76,11 @@ if (count _sites > 1) then {
                     if ((_groupOf select _b) < 0) then {
                         private _syncedA = _syncedOf select _a;
                         private _syncedB = _syncedOf select _b;
+                        private _vehiclesB = _syncedB select { _x isKindOf "AllVehicles" && {!(_x isKindOf "CAManBase")} };
                         private _shared = (_syncedA arrayIntersect _syncedB) select { _x isKindOf "AllVehicles" && {!(_x isKindOf "CAManBase")} };
-                        if (_shared isNotEqualTo [] || {(_sites select _b) in _syncedA} || {(_sites select _a) in _syncedB}) then {
+                        // A vehicle of one synced to a vehicle of the other.
+                        private _paired = ((_vehicleSyncsOf select _a) arrayIntersect _vehiclesB) isNotEqualTo [];
+                        if (_shared isNotEqualTo [] || {_paired} || {(_sites select _b) in _syncedA} || {(_sites select _a) in _syncedB}) then {
                             _groupOf set [_b, _i];
                             _group pushBack _b;
                             _queue pushBack _b;

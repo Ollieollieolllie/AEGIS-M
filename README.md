@@ -223,10 +223,13 @@ System before any of them fire, rather than each System independently
 guessing what to shoot at. The Site's settings apply battery-wide (see
 **Settings** below); a vehicle never synced to a Site uses the defaults.
 
-**Linked Sites.** A vehicle synced to two Sites links them into one -- say
-two batteries (each 4 launchers, a radar and a CIWS) that both sync a
-shared long-range radar -- and so does syncing the two Site modules to each
-other. While linked, the Sites share one contact pool and one set of
+**Linked Sites.** Sites can be linked into one in three ways, as many at
+once as you like: a vehicle synced to both (say two batteries, each 4
+launchers, a radar and a CIWS, that both sync a shared long-range radar); a
+vehicle of one synced to a vehicle of the other (held while both are
+alive); or the two Site modules synced to each other. Losing one of several
+links keeps the Sites linked (`LINK-CHANGE` in the RPT); they split when the
+last one goes. While linked, the Sites share one contact pool and one set of
 assignments, and one coordinator assigns every target across all their
 vehicles, so two batteries never fire on the same target unless that's the
 plan (a CIWS alongside a launcher). The coordinator is the Site ticked
@@ -460,11 +463,20 @@ laptop is never an alarm speaker.
 
 For a Site linked with others, the board (terminal and hint alike) shows
 the whole group: which Site coordinates it and whether its settings apply
-to every vehicle, what links the Sites, and each Site's vehicles under its
-own heading -- the coordinator first, the terminal's own Site marked, a
-vehicle linking them listed once (`LINK`) -- then the group's shared
-contacts. Other Sites in the hint's summary say what they're linked with,
-and the 3D draw tags a linked Site's vehicles `LINKED`.
+to every vehicle, every link holding it together, one per line (a vehicle
+synced to both, a vehicle-to-vehicle pair with each one's Site, or the
+modules synced to each other), and each Site's vehicles under its own
+heading -- the coordinator first, the terminal's own Site marked, each
+vehicle forming a link tagged `LINK` and listed once -- then the group's
+shared contacts. Other Sites in the hint's summary say what they're linked
+with. In the 3D draw a linked Site's vehicles read "LINKED, n Sites by n
+links", a vehicle forming a link is tagged `LINK`, and a vehicle-to-vehicle
+or module-to-module link is a dashed cyan line.
+
+Short codes, everywhere in the debug: `RDR` radar, `IR`, `VIS` visual,
+`PAS` passive radar, `DL` datalink (a contact the game's datalink shared,
+or a vehicle with no sensor of its own, fed by its Site); `L` launcher,
+`C` CIWS.
 
 **RPT performance summary** (CBA setting "AEGIS-M > Debug > RPT Performance
 Summary", on by default) -- every 10 s, while AEGIS-M is doing anything, the

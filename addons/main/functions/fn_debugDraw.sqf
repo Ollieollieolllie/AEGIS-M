@@ -50,6 +50,13 @@ Description:
 
         Radar - a faint ring at each radar's own detection range.
 
+        Linked Sites (aegism_network_fnc_linkSites) - a vehicle's Site status
+            reads "(LINKED, n Sites by n links, coordinating / coordinated by
+            ...)"; a vehicle forming a link is tagged LINK; a vehicle-to-
+            vehicle link, or two modules synced to each other, is a dashed
+            cyan line between them. Sensor codes: RDR radar, PAS passive, IR,
+            VIS visual; DL a vehicle with none, fed by its Site.
+
         Not active - a vehicle AEGIS-M found capable but hasn't activated
             (deferred until synced, AEGISM_deferredSystems): grey, with
             "NOT ACTIVE:" and why -- e.g. a launcher with no sensor of its
@@ -176,6 +183,32 @@ private _radars = [];               // [position ASL, range]
     };
 } forEach _radars;
 
+// --- Links between Sites (aegism_network_fnc_linkSites): a vehicle of one
+// synced to a vehicle of the other, or the two modules synced to each other
+// -- a dashed cyan line between them, "LINK" at its middle. (A vehicle synced
+// to both is tagged LINK on its own label.) Each group's links once.
+private _linkGroupsDrawn = [];
+{
+    private _site = _x;
+    if (!isNull _site && {!isNil {_site getVariable "AEGISM_networkMembers"}}) then {
+        private _lead = _site getVariable ["AEGISM_linkLead", _site];
+        if !(_lead in _linkGroupsDrawn) then {
+            _linkGroupsDrawn pushBack _lead;
+            {
+                _x params ["_type", "_a", "_b"];
+                if (_type in ["pair", "modules"] && {!isNull _a} && {!isNull _b}) then {
+                    private _from = (ASLToAGL getPosASLVisual _a) vectorAdd [0, 0, 2];
+                    private _span = ((ASLToAGL getPosASLVisual _b) vectorAdd [0, 0, 2]) vectorDiff _from;
+                    for "_i" from 0 to 9 step 2 do {
+                        drawLine3D [_from vectorAdd (_span vectorMultiply (_i / 10)), _from vectorAdd (_span vectorMultiply ((_i + 1) / 10)), [0.3, 0.9, 1, 0.8]];
+                    };
+                    [_from vectorAdd (_span vectorMultiply 0.5), ["LINK (modules)", "LINK"] select (_type == "pair"), [0.3, 0.9, 1, 0.9], AEGISM_SMALL_TEXT] call _fnText;
+                };
+            } forEach (_site getVariable ["AEGISM_links", []]);
+        };
+    };
+} forEach (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
+
 // --- Engagement lines; per target and per system role, the most urgent ---
 // (Keyed by contact key and vehicle netId: a HashMap can't key on objects.)
 private _byTarget = createHashMap;  // contact key -> [urgency, colour]
@@ -267,11 +300,12 @@ private _fnSiteStats = {
         private _statusColor = [0.55, 0.8, 1, 0.9];
         private _sensorParts = [];
         private _kindsShown = [];
+        private _sensorCodes = createHashMapFromArray [["radar", "RDR"], ["passive", "PAS"], ["ir", "IR"], ["visual", "VIS"]];
         {
             _x params ["_type", "_range", "_arc", "_aim"];
             if !(_type in _kindsShown) then {
                 _kindsShown pushBack _type;
-                private _text = format ["%1 %2km %3", toUpper _type, (round (_range / 100)) / 10, [format ["%1deg", round _arc], "360"] select (_arc >= 360)];
+                private _text = format ["%1 %2km %3", _sensorCodes getOrDefault [_type, toUpper _type], (round (_range / 100)) / 10, [format ["%1deg", round _arc], "360"] select (_arc >= 360)];
                 if (_aim isNotEqualTo []) then { _text = _text + " turret"; };
                 if (_type == "radar") then { _text = _text + " " + (["silent", "emitting"] select (isVehicleRadarOn _vehicle)); };
                 _sensorParts pushBack _text;
@@ -288,9 +322,16 @@ private _fnSiteStats = {
             if (_linkedSites > 1) then {
                 private _lead = _network getVariable ["AEGISM_linkLead", _network];
                 private _leadName = vehicleVarName _lead;
-                _siteTag = _siteTag + format [" (LINKED, %1 Sites, %2)", _linkedSites,
+                private _links = _network getVariable ["AEGISM_links", []];
+                _siteTag = _siteTag + format [" (LINKED, %1 Sites by %2 link%3, %4)", _linkedSites, count _links, ["s", ""] select (count _links == 1),
                     if (_lead == _network) then { "coordinating" } else { format ["coordinated by %1", ["another Site", "SITE " + _leadName] select (_leadName != "")] }];
+                // This vehicle forms one of the links.
+                if ((_links findIf { (_x select 0) in ["shared", "pair"] && {(_x select 1) == _vehicle || {(_x select 2) == _vehicle}} }) != -1) then {
+                    _siteTag = "LINK  " + _siteTag;
+                };
             };
+            // No sensor of its own: its contacts come from its Site's (DL).
+            if !(_system getOrDefault ["hasSensor", false]) then { _statusParts pushBack "DL"; };
             if (!("network" in (_vehicle getVariable ["AEGISM_resolvedContactSource", []]))) then {
                 _statusColor = [1, 0.6, 0, 1];
                 _statusParts pushBack (_siteTag + ": NO SENSOR ON SITE");
