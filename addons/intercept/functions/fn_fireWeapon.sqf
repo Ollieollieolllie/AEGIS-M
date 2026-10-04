@@ -151,6 +151,23 @@ if (_isCiws) then {
                 format ["its turn rate isn't measured yet, so its flight (%1s) is predicted as if straight -- this flight measures it", round (_predictedFlight * 10) / 10]
             }];
     };
+    // An aircraft: its gunner has held a lock on it (aegism_intercept_fnc_
+    // gunnerLock), so the missile leaves with the aircraft warned. Logged:
+    // what the aircraft's own sensors show of this launcher and the gunner's
+    // assigned target, and whether the game warns it (IncomingMissile,
+    // logged once per missile as MISSILE-WARNING; added once per aircraft,
+    // where it's simulated here).
+    if (!_targetIsMunition) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCK: %1 fires on %2 -- its sensors show this launcher as %3; gunner's assigned target %4.", _system, _target,
+            ((getSensorThreats _target) select { (_x param [0, objNull]) isEqualTo _system }) apply { _x select [1] }, assignedTarget _gunner];
+        if (local _target && {!(_target getVariable ["AEGISM_warningLogged", false])}) then {
+            _target setVariable ["AEGISM_warningLogged", true];
+            _target addEventHandler ["IncomingMissile", {
+                params ["_target", "_ammo", "_vehicle"];
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSILE-WARNING: %1 (%2) is warned of an incoming %3 from %4.", _target, typeOf _target, _ammo, _vehicle];
+            }];
+        };
+    };
     [_system, _weaponClass, _turretPath] call BIS_fnc_fire;
 };
 

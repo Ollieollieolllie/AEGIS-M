@@ -116,6 +116,7 @@ private _stateKey = "standalone_" + _role;
     if (_lockedAt >= 0 && {time - _lockedAt > AEGISM_TURRET_RELEASE}) then {
         _ts set ["lockAt", -1];
         [_system, _x select 0, objNull] call aegism_intercept_fnc_lockTurret;
+        if (!_isCiws) then { [_system, _x select 0, objNull] call aegism_intercept_fnc_gunnerLock; };
     };
 } forEach _weaponPool;
 
@@ -165,7 +166,7 @@ private _lastShotAt = _system getVariable ["AEGISM_lastShotAt", -1e9];
 private _liveWindow = AEGISM_LIVE_WINDOW_DEFAULT;
 if (!isNull _network) then {
     _lastShotAt = _lastShotAt max (_network getVariable ["AEGISM_lastShotAt", -1e9]);
-    _liveWindow = _network getVariable ["alarmHold", AEGISM_LIVE_WINDOW_DEFAULT];
+    _liveWindow = ([_network] call aegism_fnc_siteSettingsSource) getVariable ["alarmHold", AEGISM_LIVE_WINDOW_DEFAULT];
 };
 private _inCombat = time - _lastShotAt <= _liveWindow;
 if (_inCombat) then { _reactionTime = _reactionTime * (_crewMods getOrDefault ["combatReactionMult", 1]); };
@@ -190,11 +191,18 @@ private _fnExecute = {
     // A gun's per-frame tracker keeps the turret on this target between
     // ticks, bursts or not; a running burst stops once the turret's "tickAt"
     // goes stale (the assignment is no longer being worked).
+    // A launcher's gunner locks an aircraft from the moment it's assigned,
+    // through the reaction and the slew, as a real crew would: the aircraft
+    // gets its lock warning, and the missile its launch warning when it
+    // leaves on the lock (aegism_intercept_fnc_gunnerLock) -- the time the
+    // lock still needs.
+    private _lockWait = 0;
     private _aim = if (_isCiws) then {
         _ts set ["tickAt", time];
         _ts set ["trackTarget", [_target, _weaponInfo, time]];
         [_system, _turretPath] call aegism_intercept_fnc_ciwsTrack
     } else {
+        _lockWait = [_system, _turretPath, _target, _weaponClass] call aegism_intercept_fnc_gunnerLock;
         [_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon
     };
     _aim params ["_aligned", "_angle", "_tolerance", "_aimPoint", "_feasible", ["_inRange", true]];
@@ -254,6 +262,16 @@ private _fnExecute = {
     };
     _state set ["losBlocked", false];
 
+    // A gun cued onto a target that isn't in its reach yet (aegism_intercept_
+    // fnc_canEngage, "Cue Before In Range"): reacted, its barrel on the
+    // target, holding until it can reach it.
+    if (!_feasible && {_isCiws} && {_state getOrDefault ["cued", false]}) exitWith {
+        _state set ["status", "cued"];
+        if !(_state getOrDefault ["cuedLogged", false]) then {
+            _state set ["cuedLogged", true];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " CUED: %1 (%2) on %3 at %4m -- not in reach yet; crew reacted, barrel on it, holding until it can be reached.", _system, _role, _target, round (_system distance _target)];
+        };
+    };
     if (!_feasible) exitWith {
         _state set ["status", "noSolution"];
         if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
@@ -308,6 +326,16 @@ private _fnExecute = {
             };
             diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6%7.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
                 ["", " (or the turret settled, within the missile's post-launch cone)"] select !_isCiws, _limitNote];
+        };
+    };
+
+    // On it and ready, but the gunner's lock on the aircraft isn't complete:
+    // a missile fired now would leave unlocked, and the aircraft unwarned.
+    if (_lockWait > 0) exitWith {
+        _state set ["status", "locking"];
+        if !(_state getOrDefault ["lockingLogged", false]) then {
+            _state set ["lockingLogged", true];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCKING: %1 (%2) on %3 -- aligned, holding fire %4 s more for its gunner's lock.", _system, _role, _target, (round (_lockWait * 10)) / 10];
         };
     };
 
@@ -449,7 +477,7 @@ private _taken = [];
             _picked
         };
     };
-    _selection params ["_target", "_weaponInfo"];
+    _selection params ["_target", "_weaponInfo", ["_cued", _state getOrDefault ["cued", false]]];
 
     if (isNull _target) then {
         if (!isNull _current) then { _ts set [_stateKey, createHashMap]; };
@@ -466,6 +494,9 @@ private _taken = [];
                 ["interceptors", []]
             ];
         };
+        // A gun cued onto it before it's in reach (aegism_intercept_fnc_
+        // selectTarget).
+        _state set ["cued", _cued];
         _ts set [_stateKey, _state];
 
         if (_crew getOrDefault ["costValueJudgment", false]) then {

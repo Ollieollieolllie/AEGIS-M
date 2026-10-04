@@ -8,6 +8,14 @@ class CfgFunctions
             class scanForUninitSites {};
             class readSiteSettings {};
             class siteAlarm {};
+            class linkSites {};
+            class edenCoordinator {};
+            class drawThreatRings {};
+            class isTerminal {};
+            class terminalAction {};
+            class terminalOpen {};
+            class terminalRequest {};
+            class terminalShow {};
             class zeusApplySite {};
             class zeusEdit {};
             class zeusInit {};

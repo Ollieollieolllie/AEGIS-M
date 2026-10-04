@@ -5,8 +5,10 @@ Description:
     Resolves which Doctrine data applies to a given System vehicle:
         1. the base -- the Site's doctrine (AEGISM_Module_Site's moduleInit
            copies it onto every member as "AEGISM_engagement", and it is
-           also read from the Site logic via "AEGISM_network"), or the
-           hardcoded defaults for a standalone vehicle;
+           also read from the Site logic via "AEGISM_network"), or, while
+           the Site is linked with others under a Shared Site Coordinator,
+           that Site's (aegism_fnc_siteSettingsSource), or the hardcoded
+           defaults for a standalone vehicle;
         2. then the vehicle's own per-vehicle overrides on top, if it has
            any enabled (aegism_system_fnc_applyOverrides) -- each setting
            left on "Site setting" keeps the base value.
@@ -28,11 +30,12 @@ Author:
 
 params ["_systemObject", ["_changes", []]];
 
-private _base = _systemObject getVariable "AEGISM_engagement";
-if (isNil "_base") then {
-    private _network = _systemObject getVariable ["AEGISM_network", objNull];
-    if (!isNull _network) then { _base = _network getVariable "AEGISM_engagement"; };
-};
+// Its Site linked with others under a Shared Site Coordinator: that Site's
+// settings (aegism_fnc_siteSettingsSource).
+private _network = _systemObject getVariable ["AEGISM_network", objNull];
+private _source = [_network] call aegism_fnc_siteSettingsSource;
+private _base = if (_source != _network) then { _source getVariable "AEGISM_engagement" } else { _systemObject getVariable "AEGISM_engagement" };
+if (isNil "_base" && {!isNull _network}) then { _base = _network getVariable "AEGISM_engagement"; };
 if (isNil "_base") then { _base = [] call aegism_system_fnc_defaultEngagementSettings; };
 
 [_systemObject, _base, "engagement", _changes] call aegism_system_fnc_applyOverrides

@@ -52,7 +52,9 @@ private _network = _systemObject getVariable ["AEGISM_network", objNull];
 private _warning = "";
 
 if (!isNull _network) then {
-    private _members = _network getVariable ["AEGISM_networkMembers", []];
+    // A Site linked to others gets the whole group's contacts (aegism_
+    // network_fnc_linkSites).
+    private _members = _network getVariable ["AEGISM_groupMembers", _network getVariable ["AEGISM_networkMembers", []]];
     private _networkHasSensor = (_members findIf {
         private _memberSystem = _x getVariable ["AEGISM_system", createHashMap];
         _memberSystem getOrDefault ["hasSensor", false]

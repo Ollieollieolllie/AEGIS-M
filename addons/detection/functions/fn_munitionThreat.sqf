@@ -3,7 +3,8 @@ Function: aegism_detect_fnc_munitionThreat
 
 Description:
     Whether a munition is a threat to what a pool owner protects: every live
-    member of its Site, or just itself if standalone. Asked of a friendly or
+    member of its Site (of every Site linked with it, aegism_network_fnc_
+    linkSites), or just itself if standalone. Asked of a friendly or
     neutral munition (engaged only if so), and of any hostile munition when
     the Site only engages threats (aegism_detect_fnc_munitionCheck).
 
@@ -50,9 +51,11 @@ Author:
 
 params ["_projectile", "_class", "_poolOwner", ["_radiusSetting", 0]];
 
+// A Site linked to others protects the whole group (aegism_network_fnc_
+// linkSites).
 private _network = _poolOwner getVariable ["AEGISM_network", objNull];
 private _protected = if (isNull _network) then { [_poolOwner] } else {
-    (_network getVariable ["AEGISM_networkMembers", []]) select { !isNull _x && {alive _x} }
+    (_network getVariable ["AEGISM_groupMembers", _network getVariable ["AEGISM_networkMembers", []]]) select { !isNull _x && {alive _x} }
 };
 if (_protected isEqualTo []) exitWith { [] };
 

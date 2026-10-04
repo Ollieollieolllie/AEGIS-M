@@ -46,7 +46,7 @@ private _keys = if (_kind == "crew") then {
 } else {
     ["targetPriority", "minAltitude", "maxAltitude", "engageFriendlyThreats", "engageOnlyThreats", "friendlyThreatRadius",
      "minRange", "maxRange", "salvoSize", "minShotInterval", "maxOffBore",
-     "ciwsMaxRange", "ciwsMinElevation", "ciwsOpenFireChance", "ciwsBurstMin", "ciwsBurstMax", "ciwsBurstPause", "ciwsLastResort"]
+     "ciwsMaxRange", "ciwsMinElevation", "ciwsOpenFireChance", "ciwsCueAhead", "ciwsBurstMin", "ciwsBurstMax", "ciwsBurstPause", "ciwsLastResort", "ciwsSelfDestruct"]
 };
 
 private _result = +_settings;

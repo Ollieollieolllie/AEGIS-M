@@ -28,6 +28,21 @@ class Extended_PostInit_EventHandlers
     };
 };
 
+// Eden: one Shared Site Coordinator per group of connected Sites (aegism_
+// network_fnc_edenCoordinator), kept on every attribute change and new
+// connection.
+class Cfg3DEN
+{
+    class EventHandlers
+    {
+        class aegism_modules_network
+        {
+            onEntityAttributeChanged = "_this call aegism_network_fnc_edenCoordinator";
+            onConnectionAdded = "_this call aegism_network_fnc_edenCoordinator";
+        };
+    };
+};
+
 // Site alarms (aegism_network_fnc_siteAlarm): one looping sound per tone,
 // built exactly like vanilla's own "Alarm" sound source (CfgSFX AlarmSfx,
 // CfgVehicles Sound_Alarm): volume 1, heard to 400m, played back to back.
@@ -299,6 +314,26 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "false";
             };
+            class SharedCoordinator
+            {
+                displayName = "Shared Site Coordinator";
+                tooltip = "For Sites linked together -- a vehicle synced to both, or the Site modules synced to each other: this Site coordinates the linked group, and its settings (everything below: doctrine, crew, alarms) apply to every vehicle of the group while they're linked, each vehicle's own overrides still on top. Only one Site of a linked group can be it: ticking it here unticks it on every Site synced or linked to this one, in Eden and in Zeus. Off on all of them: the first Site set up coordinates, and each vehicle keeps its own Site's settings.";
+                property = "sharedCoordinator";
+                control = "Checkbox";
+                expression = "_this setVariable ['sharedCoordinator', _value];";
+                typeName = "BOOL";
+                defaultValue = "false";
+            };
+            class ThreatRings
+            {
+                displayName = "Threat Rings on Map";
+                tooltip = "Draws the reach of every Site weapon and sensor on the map, once, when the Site starts, in its side's channel, as markers a player could have placed (players can delete them). Launchers red: the range they engage to (the missile's own reach, or Max Range where shorter). CIWS orange: the gun's reach, or CIWS Max Range where shorter. Sensors blue: their reach against an aircraft; a sensor fixed to the hull is drawn as its sector, one that turns with a turret as a full ring. Rings of one kind with similar reaches on vehicles close together are drawn as one, covering them all, its label listing every system on it; labels sit on each ring's north-east edge. They don't move with the vehicles or go when one is destroyed. In Zeus: turning it on draws them; turning it off deletes them.";
+                property = "threatRings";
+                control = "Checkbox";
+                expression = "_this setVariable ['threatRings', _value];";
+                typeName = "BOOL";
+                defaultValue = "false";
+            };
 
             // ========================================== INTERCEPTION TARGETS
             class Section_Targets
@@ -529,6 +564,16 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "40";
             };
+            class CiwsCueAhead
+            {
+                displayName = "Cue Before In Range (s)";
+                tooltip = "A CIWS gun is assigned a target this many seconds before it comes into the gun's reach (judged on where the target will be by then), so the crew's reaction and the barrel's swing are done by the time it can fire -- it holds meanwhile (CUED in the RPT, 'cued' on the debug overlays). Default 2. 0 = assigned only once it's in reach.";
+                property = "ciwsCueAhead";
+                control = "Edit";
+                expression = "_this setVariable ['ciwsCueAhead', _value];";
+                typeName = "NUMBER";
+                defaultValue = "2";
+            };
             class CiwsBurstMin
             {
                 displayName = "Burst Length Min (s)";
@@ -569,6 +614,16 @@ class CfgVehicles
                 typeName = "BOOL";
                 defaultValue = "false";
             };
+            class CiwsSelfDestruct
+            {
+                displayName = "Self-Destruct Rounds";
+                tooltip = "Off (default): a round that hits nothing flies until its lifetime runs out (CfgAmmo timeToLive -- each ammo's own: the vanilla 35mm's 6s is 30s with ACE) and disappears in mid-air. On: once it has passed the gun's reach (CIWS Max Range, or the gun's own config reach) it detonates, like a C-RAM round's self-destruct fuze -- or just before its lifetime runs out, if that comes first. Every round the gun fires under AEGIS-M; each gun's fuze time is logged (SELF-DESTRUCT-FUZE), and the count after each burst (SELF-DESTRUCT).";
+                property = "ciwsSelfDestruct";
+                control = "Checkbox";
+                expression = "_this setVariable ['ciwsSelfDestruct', _value];";
+                typeName = "BOOL";
+                defaultValue = "false";
+            };
 
             // ======================================================== ALARMS
             class Section_Alarms
@@ -582,7 +637,7 @@ class CfgVehicles
             class AlarmWarning
             {
                 displayName = "Going-Live Warning";
-                tooltip = "Sounds from the moment the Site commits a weapon to a target (before its first shot: the crew's reaction and the turret's slew), and keeps sounding until the Warning Lasts time after its last shot. Plays from every non-vehicle object synced to this Site (a loudspeaker, a lamp post, a Game Logic -- anything that isn't a vehicle or a unit), or from this module itself if none is. Heard to 400m, like vanilla's own alarm. The Incoming Alarm replaces it while a munition is inbound. Tone lengths are one cycle.";
+                tooltip = "Sounds from the moment the Site commits a weapon to a target (before its first shot: the crew's reaction and the turret's slew), and keeps sounding until the Warning Lasts time after its last shot. Plays from every non-vehicle object synced to this Site (a loudspeaker, a lamp post, a Game Logic -- anything that isn't a vehicle, a unit or a laptop, which is a status terminal), or from this module itself if none is. Heard to 400m, like vanilla's own alarm. The Incoming Alarm replaces it while a munition is inbound. Tone lengths are one cycle.";
                 property = "alarmWarning";
                 control = "Combo";
                 expression = "_this setVariable ['alarmWarning', _value];";
@@ -658,7 +713,7 @@ class CfgVehicles
 
         class ModuleDescription: ModuleDescription
         {
-            description = "The one AEGIS-M module: sync it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a site to link them into one battery under these settings, with a shared coordinator assigning each detected threat to the best-fit weapon. Roles are discovered automatically from each vehicle's real sensors and loaded ammo. Any vehicle can override these settings for itself in its own attributes (AEGIS-M: Vehicle Overrides). A qualifying vehicle still works standalone with default settings if never synced to a Site. Sync non-vehicle objects (a loudspeaker, a lamp post, a Game Logic) to make them the Site's alarm speakers (see Alarms). In Zeus (with Zeus Enhanced): double-click the Site, or right-click it or a vehicle for AEGIS-M Settings.";
+            description = "The one AEGIS-M module: sync it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a site to link them into one battery under these settings, with a shared coordinator assigning each detected threat to the best-fit weapon. Roles are discovered automatically from each vehicle's real sensors and loaded ammo. Any vehicle can override these settings for itself in its own attributes (AEGIS-M: Vehicle Overrides). A qualifying vehicle still works standalone with default settings if never synced to a Site. Sync non-vehicle objects (a loudspeaker, a lamp post, a Game Logic) to make them the Site's alarm speakers (see Alarms). A vehicle synced to two Sites, or two Site modules synced to each other, link them into one: one coordinator (the Site ticked Shared Site Coordinator, whose settings then apply to all), shared contacts and assignments. Sync a laptop (any object with 'laptop' in its class name) to make it the Site's status terminal: players get an 'AEGIS-M: Site Status' action on it showing the Site's live status board -- every vehicle, its target and ammo, and every contact it tracks. In Zeus (with Zeus Enhanced): double-click the Site, or right-click it or a vehicle for AEGIS-M Settings.";
             sync[] = {"AnyVehicle"};
         };
     };

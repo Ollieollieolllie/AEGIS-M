@@ -35,8 +35,10 @@ class CfgPatches
 // the game multiplies a sensor's range by the target's size (the Cheetah's
 // 9000 m radar first saw a Darter at 852 m), and size 1 means each sensor
 // sees a munition at its own configured range. The Darter has no heat
-// signature (irTarget 0); a munition is hot, so IR is on (and it's made hot
-// at creation, setVehicleTIPars). Everything that would make it more than a
+// signature (irTarget 0); a munition is hot, so IR is on, and the proxy is
+// made hot at creation: its engine started (an IR sensor only sees a vehicle
+// whose engine runs -- with it off, no IR sensor ever saw a munition) and
+// its thermal look set (setVehicleTIPars). Its engine is silent (below). Everything that would make it more than a
 // target is removed: no crew, no turret (the Darter's camera), no sensors
 // or datalink of its own (so it costs no sensor simulation), not a UAV (so
 // no terminal can connect to it).
@@ -69,6 +71,14 @@ class CfgVehicles
         irTargetSize = 1;
         class Turrets {};
         class Components {};
+        // Silent: its engine runs (an IR sensor only sees a vehicle whose
+        // engine is on, aegism_detect_fnc_proxyCreate), and the Darter's
+        // motor and blades would buzz along with every munition.
+        soundEngineOnInt[] = {"", 0, 1};
+        soundEngineOnExt[] = {"", 0, 1};
+        soundEngineOffInt[] = {"", 0, 1};
+        soundEngineOffExt[] = {"", 0, 1};
+        class Sounds {};
     };
     class AEGISM_MunitionProxy_missile: AEGISM_MunitionProxy
     {

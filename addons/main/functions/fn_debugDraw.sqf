@@ -237,7 +237,9 @@ private _fnSiteStats = {
     private _key = netId _site;
     private _stats = _siteStats get _key;
     if (isNil "_stats") then {
-        private _members = (_site getVariable ["AEGISM_networkMembers", []]) select { alive _x };
+        // A Site linked with others (aegism_network_fnc_linkSites): the whole
+        // group's sensors feed its shared contacts.
+        private _members = (_site getVariable ["AEGISM_groupMembers", _site getVariable ["AEGISM_networkMembers", []]]) select { alive _x };
         private _radars = { ((_x getVariable ["AEGISM_system", createHashMap]) getOrDefault ["hasRadar", false]) } count _members;
         private _others = {
             private _memberSystem = _x getVariable ["AEGISM_system", createHashMap];
@@ -282,6 +284,13 @@ private _fnSiteStats = {
             ([_network] call _fnSiteStats) params ["_siteRadars", "_siteOthers", "_siteTracks"];
             private _siteName = vehicleVarName _network;
             private _siteTag = ["SITE " + _siteName, "SITE"] select (_siteName == "");
+            private _linkedSites = count (_network getVariable ["AEGISM_linkSites", [_network]]);
+            if (_linkedSites > 1) then {
+                private _lead = _network getVariable ["AEGISM_linkLead", _network];
+                private _leadName = vehicleVarName _lead;
+                _siteTag = _siteTag + format [" (LINKED, %1 Sites, %2)", _linkedSites,
+                    if (_lead == _network) then { "coordinating" } else { format ["coordinated by %1", ["another Site", "SITE " + _leadName] select (_leadName != "")] }];
+            };
             if (!("network" in (_vehicle getVariable ["AEGISM_resolvedContactSource", []]))) then {
                 _statusColor = [1, 0.6, 0, 1];
                 _statusParts pushBack (_siteTag + ": NO SENSOR ON SITE");

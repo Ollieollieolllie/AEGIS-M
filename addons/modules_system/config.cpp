@@ -284,6 +284,7 @@ class Cfg3DEN
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsMaxRange,"AEGISM_ovr_ciwsMaxRange","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsMaxRange', parseNumber _value]};","Max Range (m)","0 = the gun's own config reach. Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsMinElevation,"AEGISM_ovr_ciwsMinElevation","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsMinElevation', parseNumber _value]};","Min Elevation (deg)","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsOpenFireChance,"AEGISM_ovr_ciwsOpenFireChance","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsOpenFireChance', parseNumber _value]};","Open Fire at Hit Chance (%)","Fires only where one burst is at least this likely to hit, from the gun's measured accuracy and the round's flight. 0 = its full reach. Blank = Site setting.");
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsCueAhead,"AEGISM_ovr_ciwsCueAhead","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsCueAhead', parseNumber _value]};","Cue Before In Range (s)","Assigned a target this long before it's in reach, so it's on it by then. 0 = only once in reach. Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstMin,"AEGISM_ovr_ciwsBurstMin","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstMin', parseNumber _value]};","Burst Length Min (s)","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstMax,"AEGISM_ovr_ciwsBurstMax","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstMax', parseNumber _value]};","Burst Length Max (s)","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstPause,"AEGISM_ovr_ciwsBurstPause","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstPause', parseNumber _value]};","Pause Between Bursts (s)","Blank = Site setting.");
@@ -293,6 +294,13 @@ class Cfg3DEN
                         tooltip = "On: this gun holds while a launcher covers the contact, until the launcher fails or the contact closes inside 40% of the gun's reach.";
                         property = "AEGISM_ovr_ciwsLastResort";
                         expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsLastResort', _value == 'on']};";
+                    };
+                    class AEGISM_ovr_ciwsSelfDestruct: AEGISM_ovr_costValueJudgment
+                    {
+                        displayName = "Self-Destruct Rounds";
+                        tooltip = "On: this gun's rounds that hit nothing detonate once past its reach (or just before their lifetime runs out, if sooner), instead of flying on and disappearing in mid-air.";
+                        property = "AEGISM_ovr_ciwsSelfDestruct";
+                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsSelfDestruct', _value == 'on']};";
                     };
                 };
             };

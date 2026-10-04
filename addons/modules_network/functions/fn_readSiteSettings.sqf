@@ -46,11 +46,13 @@ private _allowlist = [];
         ["ciwsBurstPause", _logic getVariable ["ciwsBurstPause", 1]],
         ["ciwsMinElevation", _logic getVariable ["ciwsMinElevation", 5]],
         ["ciwsOpenFireChance", _logic getVariable ["ciwsOpenFireChance", 40]],
+        ["ciwsCueAhead", _logic getVariable ["ciwsCueAhead", 2]],
         ["engageFriendlyThreats", _logic getVariable ["engageFriendlyThreats", true]],
         ["engageOnlyThreats", _logic getVariable ["engageOnlyThreats", true]],
         ["friendlyThreatRadius", _logic getVariable ["friendlyThreatRadius", 0]],
         ["targetClassAllowlist", _allowlist],
-        ["ciwsLastResort", _logic getVariable ["ciwsLastResort", false]]
+        ["ciwsLastResort", _logic getVariable ["ciwsLastResort", false]],
+        ["ciwsSelfDestruct", _logic getVariable ["ciwsSelfDestruct", false]]
     ],
     createHashMapFromArray [
         ["skillTier", _logic getVariable ["skillTier", "regular"]],

@@ -52,6 +52,18 @@ Description:
     assignEngagements for this Site (below), which publishes each member's
     assignments for its own 0.1s engagement loop.
 
+    Its threat rings ("Threat Rings on Map") are drawn on its first
+    coordinator tick, once its links are known -- a linked group's as one set
+    (aegism_network_fnc_drawThreatRings).
+
+    A vehicle synced to it AND to another Site links the two into one
+    (aegism_network_fnc_linkSites): one coordinator, one contact pool, one
+    set of assignments, until that vehicle is destroyed.
+
+    Each laptop synced to it (aegism_network_fnc_isTerminal) becomes its
+    status terminal: an action that opens its live status board, on every
+    machine (aegism_network_fnc_terminalAction).
+
     A vehicle's own Radar/Launcher/CIWS setup (aegism_system_fnc_moduleInit)
     is intentionally NOT triggered from here -- it's driven independently by
     aegism_fnc_scanForRoles's periodic discovery sweep (addons/main), so a
@@ -159,11 +171,30 @@ missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
 private _sensorsFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_system_fnc_discoverCapabilities) get "hasSensor") }, "ASCEND"] call BIS_fnc_sortBy;
 { [_x] call aegism_system_fnc_moduleInit; } forEach _sensorsFirst;
 
+// Its threat rings: drawn on its first coordinator tick (below), once it's
+// known whether it's linked with other Sites -- a linked group's are drawn
+// as one set (aegism_network_fnc_drawThreatRings).
+_logic setVariable ["AEGISM_ringsPending", true, false];
+// What they were drawn under: a Zeus edit that changes it redraws them
+// (aegism_network_fnc_zeusApplySite).
+_logic setVariable ["AEGISM_ringsApplied", [_logic getVariable ["threatRings", false], _logic getVariable ["sharedCoordinator", false]], false];
+
+// Its status terminals: the laptops synced to it, on every machine and for
+// anyone joining later. One synced or unsynced later is the poll's (below).
+if (isServer) then {
+    {
+        if ([_x] call aegism_network_fnc_isTerminal) then { [_x, _logic] remoteExec ["aegism_network_fnc_terminalAction", 0, _x]; };
+    } forEach (synchronizedObjects _logic);
+};
+
 [
     _logic,
     {
         params ["_object", "_data"];
         _object = vehicle _object;
+        if ([_object] call aegism_network_fnc_isTerminal) exitWith {
+            [_object, _data get "logic"] remoteExec ["aegism_network_fnc_terminalAction", 0, _object];
+        };
         if (!(_object isKindOf "AllVehicles") || {_object isKindOf "CAManBase"}) exitWith {};
         private _siteLogic = _data get "logic";
         _object setVariable ["AEGISM_network", _siteLogic, false];
@@ -188,8 +219,25 @@ private _sensorsFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_sy
     {
         params ["_object", "_data"];
         _object = vehicle _object;
+        if ([_object] call aegism_network_fnc_isTerminal) exitWith {
+            [_object, objNull] remoteExec ["aegism_network_fnc_terminalAction", 0, _object];
+        };
         if (!(_object isKindOf "AllVehicles") || {_object isKindOf "CAManBase"}) exitWith {};
         private _siteLogic = _data get "logic";
+        private _members = _siteLogic getVariable ["AEGISM_networkMembers", []];
+        _siteLogic setVariable ["AEGISM_networkMembers", _members - [_object], false];
+        // Still synced to another Site (it linked the two, aegism_network_
+        // fnc_linkSites): it stays under AEGIS-M, reporting to that one.
+        private _owners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
+        private _otherIndex = _owners findIf { !isNull _x && {_x != _siteLogic} && {_object in (_x getVariable ["AEGISM_networkMembers", []])} };
+        if (_otherIndex != -1) exitWith {
+            private _other = _owners select _otherIndex;
+            if ((_object getVariable ["AEGISM_network", objNull]) == _siteLogic) then {
+                _object setVariable ["AEGISM_network", _other, false];
+                _object setVariable ["AEGISM_engagement", _other getVariable "AEGISM_engagement", false];
+                _object setVariable ["AEGISM_crew", _other getVariable "AEGISM_crew", false];
+            };
+        };
         _object setVariable ["AEGISM_network", nil, false];
         _object setVariable ["AEGISM_engagement", nil, false];
         _object setVariable ["AEGISM_crew", nil, false];
@@ -221,8 +269,6 @@ private _sensorsFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_sy
             // AI simulation, not just the server's.
             [_object, allTurrets _object, false] remoteExecCall ["aegism_fnc_setWeaponAiSuppressed", 0];
         };
-        private _members = _siteLogic getVariable ["AEGISM_networkMembers", []];
-        _siteLogic setVariable ["AEGISM_networkMembers", _members - [_object], false];
     },
     createHashMapFromArray [["logic", _logic]],
     5,
@@ -253,7 +299,17 @@ if (isServer) then {
         // game used to keep the coordinator running twice a second.
         if (time == _lastTime) exitWith {};
         _args set [2, time];
-        [_logic] call aegism_intercept_fnc_assignEngagements;
+        // Linked to another Site through a shared vehicle: the group's lead
+        // coordinates the whole group (aegism_network_fnc_linkSites).
+        [] call aegism_network_fnc_linkSites;
+        // Its first tick: its threat rings, with its whole linked group's.
+        if (_logic getVariable ["AEGISM_ringsPending", false]) then {
+            { _x setVariable ["AEGISM_ringsPending", false, false]; } forEach (_logic getVariable ["AEGISM_linkSites", [_logic]]);
+            [_logic] call aegism_network_fnc_drawThreatRings;
+        };
+        if ((_logic getVariable ["AEGISM_linkLead", _logic]) == _logic) then {
+            [_logic] call aegism_intercept_fnc_assignEngagements;
+        };
         [_logic, _alarm] call aegism_network_fnc_siteAlarm;
     }, 0.5, [_logic, ["", "", []], -1]] call CBA_fnc_addPerFrameHandler;
 };

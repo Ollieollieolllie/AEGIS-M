@@ -5,6 +5,9 @@ Description:
     Site-level engagement coordinator, run once per Site every 0.5s on the
     server. Decides, for every pooled contact, which member System's weapon
     engages it; member engagement loops only execute these assignments.
+    Sites linked through a shared vehicle (aegism_network_fnc_linkSites) are
+    coordinated once, by their lead, across every vehicle of the group
+    ("AEGISM_groupMembers"), from the pool and ledger they share.
 
     1. Prune the Site pool by expiry (aegism_detect_fnc_pruneStaleContacts).
        Sensors never delete from the shared pool directly any more -- they
@@ -158,7 +161,9 @@ if (isNil "_engagementSettings") exitWith {
 
 [_logic] call aegism_detect_fnc_pruneStaleContacts;
 
-private _members = _logic getVariable ["AEGISM_networkMembers", []];
+// A Site linked to others coordinates the whole group's vehicles
+// (aegism_network_fnc_linkSites); its pool and claims are the group's.
+private _members = _logic getVariable ["AEGISM_groupMembers", _logic getVariable ["AEGISM_networkMembers", []]];
 private _pool = _logic getVariable ["AEGISM_pooledContacts", createHashMap];
 private _claims = _logic getVariable ["AEGISM_claims", createHashMap];
 
@@ -179,7 +184,8 @@ private _allowlist = +(_engagementSettings getOrDefault ["targetClassAllowlist",
         { _allowlist pushBackUnique _x; } forEach ((_x call _fnSettings) getOrDefault ["targetClassAllowlist", []]);
     };
 } forEach _members;
-_logic setVariable ["AEGISM_contactAllowlist", _allowlist, false];
+// Every Site of a linked group: each one's sensors add to the group's pool.
+{ _x setVariable ["AEGISM_contactAllowlist", _allowlist, false]; } forEach (_logic getVariable ["AEGISM_linkSites", [_logic]]);
 
 // --- 2. Review existing assignments ---------------------------------------
 // Turrets committed to contacts, indexed by turret ([system netId, turret
@@ -233,7 +239,12 @@ private _fnBusyRemove = {
             if (_alive) then {
                 _engage = if (_salvoAway) then { [true, ""] } else { [_system, _role, _weaponInfo, _object, _systemSettings] call aegism_intercept_fnc_canEngage };
             };
-            if (!_salvoAway) then { _record set ["flightTime", _engage param [2, 0]]; };
+            if (!_salvoAway) then {
+                _record set ["flightTime", _engage param [2, 0]];
+                // A gun cued onto it before it's in reach (aegism_intercept_
+                // fnc_canEngage): its engagement loop holds, "cued".
+                _record set ["cued", (_engage param [4, 0]) > 0];
+            };
 
             private _unfiredLauncher = _role == "launcher" && {(_record get "roundsFired") == 0};
 
@@ -707,7 +718,7 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                         private _beyond = _role == "launcher" && {((getPosASL _candSystem) distance _targetPos) > (_candInfo select 5) + 50};
                         if (!_conflict && {!_avoided} && {!_reserved} && {!_beyond} && {_class in (_candSettings getOrDefault ["targetClassAllowlist", []])}) then {
                             private _engage = [_candSystem, _role, _candInfo, _object, _candSettings] call aegism_intercept_fnc_canEngage;
-                            if (_engage select 0) then { _eligible pushBack [_forEachIndex, _engage param [2, 0]]; };
+                            if (_engage select 0) then { _eligible pushBack [_forEachIndex, _engage param [2, 0], _engage param [4, 0]]; };
                         };
                     };
                 } forEach _allWeapons;
@@ -756,7 +767,7 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                     ([_eligible, _role, _contactKey, _contactSize, _targetPos, _timeToImpact] call _fnPickWeapon) params ["_weaponIndex", "_readyIn", "_inTime"];
                     if (_allowed && {_weaponIndex >= 0}) then {
                         (_allWeapons select _weaponIndex) params ["_bestSystem", "_bestRole", "_bestInfo"];
-                        private _flightTime = (_eligible select (_eligible findIf { (_x select 0) == _weaponIndex })) select 1;
+                        (_eligible select (_eligible findIf { (_x select 0) == _weaponIndex })) params ["", "_flightTime", ["_cueIn", 0]];
 
                         // A hand-off only goes ahead if the new launcher is in
                         // time and actually a different one.
@@ -784,7 +795,8 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                                 ["lastShotAt", -1],
                                 ["roundsFired", 0],
                                 ["interceptors", []],
-                                ["flightTime", _flightTime]
+                                ["flightTime", _flightTime],
+                                ["cued", _cueIn > 0]
                             ];
                             [_bestSystem, _bestInfo select 0, _contactKey, _bestRole, true,
                                 [0, ((_bestSystem call _fnSettings) getOrDefault ["salvoSize", 1]) max 1] select (_role == "launcher")] call _fnBusyAdd;
@@ -800,8 +812,9 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                                     [format ["ready in ~%1s + %2s flight vs impact in %3s", round (_oldEta * 10) / 10, round (((_handoff select 0) getOrDefault ["flightTime", 0]) * 10) / 10, round (_timeToImpact * 10) / 10], "no missile left for it"] select (_oldEta >= AEGISM_NO_ROUND),
                                     _bestSystem, _bestInfo select 1, round (_readyIn * 10) / 10];
                             } else {
-                                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " ASSIGN: %1 (%2, %3 %4) -> %5 (%6, %7m, %8m AGL)%9", _bestSystem, typeOf _bestSystem, _bestRole, _bestInfo select 1, _object, _class, round ((getPosASL _bestSystem) distance _targetPos), round _height,
-                                    [["", format [", impact in %1s", round _timeToImpact]] select (_timeToImpact < 1e9), format [", fires in ~%1s, impact in %2s", round (_readyIn * 10) / 10, round _timeToImpact]] select (_role == "launcher" && {_readyIn > 0} && {_timeToImpact < 1e9})];
+                                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " ASSIGN: %1 (%2, %3 %4) -> %5 (%6, %7m, %8m AGL)%9%10", _bestSystem, typeOf _bestSystem, _bestRole, _bestInfo select 1, _object, _class, round ((getPosASL _bestSystem) distance _targetPos), round _height,
+                                    [["", format [", impact in %1s", round _timeToImpact]] select (_timeToImpact < 1e9), format [", fires in ~%1s, impact in %2s", round (_readyIn * 10) / 10, round _timeToImpact]] select (_role == "launcher" && {_readyIn > 0} && {_timeToImpact < 1e9}),
+                                    ["", format [" -- cued: in reach within %1s, the crew reacts and the barrel comes onto it meanwhile", _cueIn]] select (_cueIn > 0)];
                                 // A longer-reach launcher on a munition no cheaper
                                 // tier can take in time: the reserve steps in.
                                 if (_role == "launcher" && {_reserveReach < 0} && {count _tierReaches > 1} && {_isMunition} && {_timeToImpact < 1e9}

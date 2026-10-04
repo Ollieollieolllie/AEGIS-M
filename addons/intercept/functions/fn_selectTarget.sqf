@@ -36,8 +36,9 @@ Parameters:
     _turretPath - optional, the turret (its aim record) <ARRAY>
 
 Returns:
-    [target <OBJECT>, weaponInfo <ARRAY>], or [objNull, []] if nothing is
-    engageable
+    [target <OBJECT>, weaponInfo <ARRAY>, cued -- a gun's target not in its
+    reach yet, only within its cue time <BOOLEAN>], or [objNull, []] if
+    nothing is engageable
 
 Examples:
     [_weaponPos, _candidates, _settings, _readyWeapons, "ciws", _cheetah, _shell, [0]] call aegism_intercept_fnc_selectTarget;
@@ -62,24 +63,27 @@ if (_role == "ciws" && {!isNull _current} && {alive _current} && {(_candidates f
     private _unsolved = (_aim param [3, objNull]) == _current && {!(_aim param [4, true]) || {!(_aim param [7, true])}};
     if (!_unsolved && {([_current] call aegism_detect_fnc_classifyTarget) in _allowlist}) then {
         private _index = _weapons findIf { ([_system, _role, _x, _current, _engagementSettings] call aegism_intercept_fnc_canEngage) select 0 };
-        if (_index != -1) then { _kept = [_current, _weapons select _index]; };
+        if (_index != -1) then { _kept = [_current, _weapons select _index, false]; };
     };
 };
 if (_kept isNotEqualTo []) exitWith { _kept };
 
 PERF_INC(PERF_SELECT_FULL);
 
-// [object, class, weaponInfo, in open-fire range] for every candidate some
-// ready weapon reaches.
+// [object, class, weaponInfo, in open-fire range, cued] for every candidate
+// some ready weapon reaches -- or, for a gun, will reach within its cue time
+// (aegism_intercept_fnc_canEngage, "Cue Before In Range").
 private _engageable = [];
 {
     _x params ["_object", "_class"];
     if (!isNull _object && {alive _object} && {_class in _allowlist}) then {
         private _inRange = false;
+        private _cued = false;
         private _idx = _weapons findIf {
             private _weaponInfo = _x;
             private _engage = [_system, _role, _weaponInfo, _object, _engagementSettings] call aegism_intercept_fnc_canEngage;
-            if (_engage select 0) then {
+            _cued = (_engage param [4, 0]) > 0;
+            if ((_engage select 0) && {!_cued}) then {
                 _inRange = _role != "ciws" || {
                     // As the gun's own aim judges it (aegism_intercept_fnc_aimWeapon).
                     private _hitRadius = [_object] call aegism_intercept_fnc_targetHitRadius;
@@ -94,7 +98,7 @@ private _engageable = [];
             _engage select 0
         };
         if (_idx != -1) then {
-            _engageable pushBack [_object, _class, _weapons select _idx, _inRange];
+            _engageable pushBack [_object, _class, _weapons select _idx, _inRange, _cued];
         };
     };
 } forEach _candidates;
@@ -134,4 +138,4 @@ private _scores = switch (_priority) do {
 };
 
 private _best = _engageable select (_scores find (selectMax _scores));
-[_best select 0, _best select 2]
+[_best select 0, _best select 2, _best select 4]

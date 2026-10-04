@@ -79,7 +79,11 @@ which kinds of sensor saw it.
   vehicle on the supply-drop crate's model with its texture blanked (a
   sensor target needs real geometry: with an empty model nothing saw it),
   size 1 on radar, IR and visual (seen at each sensor's full configured
-  range), and hot (`setVehicleTIPars`) -- that the sensors see instead.
+  range), and hot -- its engine running (an IR sensor only sees a vehicle
+  whose engine is on; the proxy's is silent) and `setVehicleTIPars` -- that
+  the sensors see instead. Every sensor vehicle of a Site that sees a
+  munition adds its kind to the contact, so a radar and a Spartan's IR both
+  show.
   It's created half a second after launch (at the muzzle its geometry is
   inside the launching vehicle) and attached 5 m behind its munition, so
   the engine carries it; an ammo type that doesn't carry an attached object
@@ -218,6 +222,26 @@ coordinator matches each contact to the best-fit weapon across every member
 System before any of them fire, rather than each System independently
 guessing what to shoot at. The Site's settings apply battery-wide (see
 **Settings** below); a vehicle never synced to a Site uses the defaults.
+
+**Linked Sites.** A vehicle synced to two Sites links them into one -- say
+two batteries (each 4 launchers, a radar and a CIWS) that both sync a
+shared long-range radar -- and so does syncing the two Site modules to each
+other. While linked, the Sites share one contact pool and one set of
+assignments, and one coordinator assigns every target across all their
+vehicles, so two batteries never fire on the same target unless that's the
+plan (a CIWS alongside a launcher). The coordinator is the Site ticked
+**Shared Site Coordinator**: its settings (doctrine, crew, alarms) then
+apply to every vehicle of the group, each vehicle's own overrides still on
+top. With none ticked, the first Site set up coordinates and each vehicle
+keeps its own Site's settings. Only one Site of a group can be its
+coordinator: ticking it on one unticks it on every Site synced or linked to
+it, in Eden and in Zeus. A munition threatening any of the group's vehicles
+is a threat to all of it, and the Sites' alarms sound together. Links chain
+(A linked to B and B to C make one group of three). When the link goes --
+the linking vehicle destroyed or unsynced, the modules unsynced -- the
+group splits back into independent Sites with their own settings: each
+keeps its own vehicles' assignments (a missile already in flight is still
+followed) and a copy of the contacts. Logged as `LINK` / `UNLINK`.
 
 **Engagement is coordinated, not just deconflicted.** Launchers are chosen
 by layered-defence doctrine, from each launcher's real values: first, one
@@ -425,6 +449,23 @@ each, and which weapons are on each (coloured the same way) -- the longest
 section, so it's the one a full hint box cuts off. It shows data wherever AEGIS-M runs its engagement
 logic: singleplayer, Eden Preview, or a hosted game's host.
 
+**Site status terminal.** Sync a laptop (any object with "laptop" in its
+class name -- `Land_Laptop_unfolded_F`, `Land_Laptop_device_F`...) to a
+Site, and players get an **AEGIS-M: Site Status** action on it (within
+3 m): a scrollable screen with that Site's live board -- the same as the
+hint's, for that Site alone, with every contact it tracks -- refreshed once
+a second until closed (Esc). The server builds the board and sends it to
+the player using the terminal, so it works on a dedicated server too. A
+laptop is never an alarm speaker.
+
+For a Site linked with others, the board (terminal and hint alike) shows
+the whole group: which Site coordinates it and whether its settings apply
+to every vehicle, what links the Sites, and each Site's vehicles under its
+own heading -- the coordinator first, the terminal's own Site marked, a
+vehicle linking them listed once (`LINK`) -- then the group's shared
+contacts. Other Sites in the hint's summary say what they're linked with,
+and the 3D draw tags a linked Site's vehicles `LINKED`.
+
 **RPT performance summary** (CBA setting "AEGIS-M > Debug > RPT Performance
 Summary", on by default) -- every 10 s, while AEGIS-M is doing anything, the
 server writes one `PERF` line: coordinator runs and time (total and worst),
@@ -465,6 +506,8 @@ envelope, and all threat classes are engaged.
 | Reaction Once in Combat (%) | 50 | Once the Site is in combat (it fired within Warning Lasts After Last Shot, 10 s by default), crews are at their stations, weapons free, and take this percentage of their reaction on each new target -- about one skill tier quicker (Regular 2.5 s becomes 1.25 s; a CIWS's 1 s cap becomes 0.5 s). The first target of an engagement always gets the full reaction. 100 = no change. |
 | Crew Skill on Automated Systems | Off | Off: automated systems (crewed by UAV AI -- Phalanx, RAM, MIM-145, radars) ignore Crew Skill and Temperament -- no reaction delay, no skipped fire cycles, no interval scaling. On: they get the same crew model as manned systems. |
 | Save Ammo for Bigger Threats | Off | Hold fire if firing would leave fewer rounds than tracked higher-value contacts. |
+| Shared Site Coordinator | Off | For linked Sites (see **Linked Sites**): this Site coordinates the group, and its settings apply to every vehicle of it while linked. Ticking it unticks it on every Site synced or linked to this one, in Eden and Zeus. |
+| Threat Rings on Map | Off | When the Site starts, draws the reach of each of its weapons and sensors on the map, in its side's channel, as markers a player could have placed (players can delete them): launchers red (the range they engage to), CIWS orange (the gun's reach), sensors blue (their reach against an aircraft; one fixed to the hull as its sector). Rings of one kind with similar reaches (within a tenth of each other) on vehicles close together (within a tenth of the reach) are drawn as one, whatever the weapon or vehicle, sized to cover every ring it replaces, and its label lists every system on it ("4x MIM-145 Defender: MIM-145 16.0 km \| Mk49 Spartan: RIM-116 15.5 km"). Labels sit on the ring's edge at north-east -- or, where another label is already there (a radar's and a launcher's ring the same size), on the next clear diagonal; a sector's in the middle of its arc. Linked Sites are drawn together as one set, so the same systems on different Sites merge too; with a Shared Site Coordinator, its setting decides for the whole group. Drawn once, when the Site starts: they don't move with the vehicles. In Zeus, ticking it draws them and unticking deletes them. Logged as `THREAT-RINGS`. |
 
 **Interception Targets**
 
@@ -493,9 +536,11 @@ envelope, and all threat classes are engaged.
 | Max Range (m) | 0 | 0 = the gun's own reach (Cheetah 35 mm: 2500 m). |
 | Min Elevation (deg) | 5 | Never engages below it; holds fire while the barrel is below it. |
 | Open Fire at Hit Chance (%) | 40 | Tracks from its full reach, but only fires where one burst is at least this likely to hit -- from the gun's measured scatter, the target's straying, the round's flight time, the hit radius and the rounds per burst; never past the round's lifetime reach or inside its arming distance. Lower = earlier, farther, more rounds per hit. 0 = its full reach. |
+| Cue Before In Range (s) | 2 | A gun is assigned a target this long before it comes into reach (judged on where the target will be by then), so its crew's reaction and its barrel's swing are done by the time it can fire; it holds meanwhile (`CUED` in the RPT). 0 = assigned only once in reach. |
 | Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
 | Pause Between Bursts (s) | 1 | Gap after a burst before firing again at the same target. After a kill the gun goes straight on to its next target. |
 | Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |
+| Self-Destruct Rounds | Off | A round that hits nothing detonates once it has passed the gun's reach (CIWS Max Range, or the gun's own config reach), like a C-RAM round's self-destruct fuze, instead of flying on until its lifetime runs out and disappearing in mid-air -- or just before that lifetime, if it comes first. The fuze time is the round's flight to the gun's reach under its own drag, from its real muzzle speed; each ammo's lifetime (`timeToLive`) and drag are read once per ammo type -- they differ between weapon systems and mods (the vanilla 35 mm lives 6 s, 30 s with ACE). Each gun's fuze time is logged (`SELF-DESTRUCT-FUZE`), and the rounds that went off after each burst (`SELF-DESTRUCT`). |
 
 **Alarms**
 
@@ -513,8 +558,9 @@ Restricted-zone warning (4.6 s), Helicopter warning NATO (2.0 s) and CSAT
 and Independent alarms are the same recording, so they're one tone here.)
 Each plays like vanilla's own alarm sound source: volume 1, heard to 400 m,
 looped by the engine. The speakers are the non-vehicle objects synced to
-the Site -- a loudspeaker prop, a lamp post, a Game Logic -- or the Site
-module itself when none is. Only a change of alarm state crosses the
+the Site -- a loudspeaker prop, a lamp post, a Game Logic, but not a
+laptop (that's a status terminal) -- or the Site module itself when none
+is. Only a change of alarm state crosses the
 network. Logged as `ALARM`.
 
 Range settings are real-world metres, scaled by the CBA setting AEGIS-M

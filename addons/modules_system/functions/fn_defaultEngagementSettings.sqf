@@ -38,6 +38,9 @@ Returns:
             is at least this likely to hit, from its measured accuracy and
             the round's flight (aegism_intercept_fnc_openFireRange); 0 = its
             full reach <NUMBER>
+        ciwsCueAhead - seconds; a CIWS gun is assigned a target this long
+            before it comes into reach, so it's reacted and on it by then
+            (aegism_intercept_fnc_canEngage); 0 = only once in reach <NUMBER>
         engageFriendlyThreats - also engage friendly/neutral munitions that
             are predicted to hit the Site <BOOLEAN>
         engageOnlyThreats - a hostile artillery round or rocket is only
@@ -47,6 +50,11 @@ Returns:
             munition's predicted impact must fall within to count as a
             threat; 0 = the munition's own config dangerRadiusHit <NUMBER>
         targetClassAllowlist - permitted contact classes <ARRAY of STRING>
+        ciwsLastResort - a CIWS gun holds while a launcher covers the
+            contact <BOOLEAN>
+        ciwsSelfDestruct - a CIWS round that hits nothing detonates just
+            before its lifetime runs out (aegism_intercept_fnc_
+            ciwsSelfDestruct) <BOOLEAN>
 
 Examples:
     [] call aegism_system_fnc_defaultEngagementSettings;
@@ -70,9 +78,11 @@ createHashMapFromArray [
     ["ciwsBurstPause", 1],
     ["ciwsMinElevation", 5],
     ["ciwsOpenFireChance", 40],
+    ["ciwsCueAhead", 2],
     ["engageFriendlyThreats", true],
     ["engageOnlyThreats", true],
     ["friendlyThreatRadius", 0],
     ["targetClassAllowlist", ["missile", "rocket", "bomb", "artilleryShell", "fixedWing", "helicopter", "drone"]],
-    ["ciwsLastResort", false]
+    ["ciwsLastResort", false],
+    ["ciwsSelfDestruct", false]
 ]

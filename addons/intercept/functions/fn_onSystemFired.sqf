@@ -29,7 +29,9 @@ Description:
             against a MUNITION target, and every AEGISM_SPOT_EVERY-th round
             measured for spotting against the track it was aimed with. A
             round against an aircraft that isn't spotted isn't tracked at all
-            (the engine's own collision handles the hit).
+            (the engine's own collision handles the hit). With Self-Destruct
+            Rounds on, every round also goes to its gun's self-destruct
+            queue (aegism_intercept_fnc_ciwsSelfDestruct).
 
     Rounds from other weapons, or after the context expired, are ignored.
 
@@ -72,25 +74,44 @@ if (_context isEqualTo []) then {
         if ((_candidate param [6, ""]) == _weapon) exitWith { _ts = _y; _context = _candidate; };
     } forEach _turrets;
 };
-if (_context isEqualTo []) exitWith {};
+// No fire command from AEGIS-M for this weapon: the crew fired by itself
+// (its gunner ordered to lock an aircraft, aegism_intercept_fnc_gunnerLock,
+// mustn't make it shoot). Logged once per vehicle and weapon.
+if (_context isEqualTo []) exitWith {
+    private _logKey = "AEGISM_uncommandedLogged_" + _weapon;
+    if !(_vehicle getVariable [_logKey, false]) then {
+        _vehicle setVariable [_logKey, true];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " UNCOMMANDED-FIRE: %1 fired %2 (%3) with no AEGIS-M fire command -- its crew's own AI fired.", _vehicle, _weapon, typeOf _projectile];
+    };
+};
 _context params ["_target", "_role", "_interceptors", "_expiresAt", "_targetIsMunition", "_turretPath", "", ["_launch", []]];
 
 if (time > _expiresAt) exitWith { _ts deleteAt "capture"; };
 
 // The Site's going-live alarm lasts a while after its last shot (aegism_
 // network_fnc_siteAlarm), and its crews are in combat meanwhile (aegism_
-// intercept_fnc_engagementLoop) -- a vehicle with no Site by its own.
+// intercept_fnc_engagementLoop) -- a vehicle with no Site by its own. Every
+// Site of a linked group (aegism_network_fnc_linkSites) goes live together.
 _vehicle setVariable ["AEGISM_lastShotAt", time];
 private _site = _vehicle getVariable ["AEGISM_network", objNull];
-if (!isNull _site) then { _site setVariable ["AEGISM_lastShotAt", time]; };
+if (!isNull _site) then {
+    { _x setVariable ["AEGISM_lastShotAt", time]; } forEach (_site getVariable ["AEGISM_linkSites", [_site]]);
+};
 
 if (_role == "launcher") exitWith {
     _ts deleteAt "capture";
+    // Forced: set even if the target is outside the missile's own seeker
+    // cone as it leaves (an off-bore launch turns onto it).
     if (!isNull _target && {alive _target}) then {
-        _projectile setMissileTarget _target;
+        _projectile setMissileTarget [_target, true];
     };
     _interceptors pushBack _projectile;
     [_projectile, _target, _launch] call aegism_intercept_fnc_interceptorPFH;
+};
+
+// Every round of the burst, whatever it's aimed at (Self-Destruct Rounds).
+if ((_vehicle getVariable ["AEGISM_resolvedEngagementSettings", createHashMap]) getOrDefault ["ciwsSelfDestruct", false]) then {
+    [_vehicle, _turretPath, _ts, _projectile, _weapon] call aegism_intercept_fnc_ciwsSelfDestruct;
 };
 
 if (isNull _target || {!alive _target}) exitWith {};

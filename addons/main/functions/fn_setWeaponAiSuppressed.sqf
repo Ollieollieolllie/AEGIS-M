@@ -3,7 +3,7 @@ Function: aegism_fnc_setWeaponAiSuppressed
 
 Description:
     Enables or disables a specific turret's own crewman's independent AI
-    targeting/engagement (disableAI "TARGET"/"AUTOTARGET"), so that turret's
+    targeting/engagement (disableAI "TARGET"/"AUTOTARGET"/"FIREWEAPON"), so that turret's
     weapon only ever fires when AEGIS-M's own aegism_intercept_fnc_fireWeapon
     commands it via BIS_fnc_fire -- a real fire-control gate, not just AEGIS-M
     picking targets in parallel with a crew that can ALSO independently
@@ -15,12 +15,15 @@ Description:
 
     "AUTOTARGET" stops independent target ACQUISITION (the AI won't scan
     for/acquire a new target on its own); "TARGET" stops independent
-    ENGAGEMENT/reaction to an already-known target (the AI won't fire or
-    maneuver to fire even at something it's aware of). Both are disabled
-    together since the goal is to prevent ANY self-initiated fire, not just
-    self-initiated target discovery -- BIS_fnc_fire and lockCameraTo (AEGIS-M's
-    own aim/fire commands) are separate scripted command paths that keep
-    working on a unit with these AI subsystems disabled.
+    ENGAGEMENT/reaction to an already-known target. "FIREWEAPON" stops the
+    unit firing its weapon at all: with only the first two off, a launcher
+    gunner given an aircraft for AEGIS-M's shot (aegism_intercept_fnc_
+    gunnerLock, so the aircraft gets its missile warning) went on to fire
+    missiles of its own every couple of seconds, some 3.5 s later
+    (UNCOMMANDED-FIRE) -- even taken off the target again and told to hold
+    fire. All three are disabled together since the goal is to prevent ANY
+    self-initiated fire. BIS_fnc_fire and lockCameraTo (AEGIS-M's own
+    aim/fire commands) are separate scripted command paths.
 
     Scoped to ONE turret's crewman (via turretUnit), not the whole vehicle
     -- a Tigris/ZSU-style vehicle's coax MG or a multi-turret vehicle's other
@@ -61,9 +64,11 @@ if (isNull _vehicle || {!alive _vehicle}) exitWith {};
         if (_suppress) then {
             _gunner disableAI "TARGET";
             _gunner disableAI "AUTOTARGET";
+            _gunner disableAI "FIREWEAPON";
         } else {
             _gunner enableAI "TARGET";
             _gunner enableAI "AUTOTARGET";
+            _gunner enableAI "FIREWEAPON";
         };
     };
 } forEach _turretPaths;

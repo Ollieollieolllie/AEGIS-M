@@ -14,6 +14,7 @@ class CfgFunctions
             class turretState {};
             class computeLeadPoint {};
             class lockTurret {};
+            class gunnerLock {};
             class barrelDirection {};
             class turretPoints {};
             class aimWeapon {};
@@ -38,6 +39,7 @@ class CfgFunctions
             class ciwsTrack {};
             class ciwsBurst {};
             class ciwsRounds {};
+            class ciwsSelfDestruct {};
             class ciwsSpot {};
             class interceptHit {};
             class interceptorPFH {};

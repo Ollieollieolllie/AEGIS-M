@@ -19,7 +19,9 @@ Description:
     AEGISM_Alarm_*, or the Site's custom class) created at every speaker --
     each non-vehicle object synced to the Site, or the Site logic itself if
     there is none. The engine loops it, and deleting it stops it at once, so
-    the network only carries a change of state, never the repeats. Nothing
+    the network only carries a change of state, never the repeats. (A laptop
+    synced to the Site is its status terminal, aegism_network_fnc_
+    isTerminal, not a speaker.) Nothing
     happens between changes but a few variable reads.
 
     Logged as ALARM on each change.
@@ -66,14 +68,17 @@ private _fnClass = {
     ["", _class] select (isClass (configFile >> "CfgVehicles" >> _class))
 };
 
+// Its alarm settings: its own, or, linked under a Shared Site Coordinator,
+// that Site's (aegism_fnc_siteSettingsSource).
+private _settings = [_logic] call aegism_fnc_siteSettingsSource;
 private _state = "";
 private _class = "";
 if (time - (_logic getVariable ["AEGISM_incomingAt", -1e9]) <= AEGISM_INCOMING_HOLD) then {
-    _class = [_logic, _logic getVariable ["alarmIncoming", "auto"], _logic getVariable ["alarmIncomingCustom", ""]] call _fnClass;
+    _class = [_logic, _settings getVariable ["alarmIncoming", "auto"], _settings getVariable ["alarmIncomingCustom", ""]] call _fnClass;
     if (_class != "") then { _state = "incoming"; };
 };
-if (_state == "" && {count (_logic getVariable ["AEGISM_claims", createHashMap]) > 0 || {time - (_logic getVariable ["AEGISM_lastShotAt", -1e9]) <= (_logic getVariable ["alarmHold", 10])}}) then {
-    _class = [_logic, _logic getVariable ["alarmWarning", "base"], _logic getVariable ["alarmWarningCustom", ""]] call _fnClass;
+if (_state == "" && {count (_logic getVariable ["AEGISM_claims", createHashMap]) > 0 || {time - (_logic getVariable ["AEGISM_lastShotAt", -1e9]) <= (_settings getVariable ["alarmHold", 10])}}) then {
+    _class = [_logic, _settings getVariable ["alarmWarning", "base"], _settings getVariable ["alarmWarningCustom", ""]] call _fnClass;
     if (_class != "") then { _state = "warning"; };
 };
 
@@ -84,7 +89,9 @@ if (_class == (_alarm select 1)) exitWith { _alarm set [0, _state]; };
 private _sources = [];
 private _speakers = [];
 if (_class != "") then {
-    _speakers = (synchronizedObjects _logic) select { !(_x isKindOf "AllVehicles") };
+    // Not another Site synced to this one (that links them, aegism_network_
+    // fnc_linkSites), nor a laptop (a status terminal).
+    _speakers = (synchronizedObjects _logic) select { !(_x isKindOf "AllVehicles") && {!(_x isKindOf "AEGISM_Module_Site")} && {!([_x] call aegism_network_fnc_isTerminal)} };
     if (_speakers isEqualTo []) then { _speakers = [_logic]; };
     { _sources pushBack (createSoundSource [_class, getPosATL _x, [], 0]); } forEach _speakers;
 };

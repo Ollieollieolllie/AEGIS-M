@@ -11,8 +11,10 @@ Description:
         assigned - just assigned, not worked yet (green)
         reacting - crew reaction time (amber)
         slewing - turret swinging onto it (amber)
+        locking - on it, waiting for its gunner's lock on an aircraft (amber)
         reloading - shot interval / burst pause / lost fire cycle (orange)
         rangeHold - a gun tracking it, beyond its open-fire range (teal)
+        cued - a gun on it before it's in reach, holding until it is (teal)
         firing - a gun's burst on it, or a missile just launched (red)
         inFlight - salvo away, missiles guiding (gold)
         losBlocked / noSolution - can't see it / can't reach it (purple)
@@ -39,8 +41,10 @@ switch (_status) do {
     case "queued": { ["queued", [0.45, 0.7, 1, 1], "#73B3FF", 1] };
     case "reacting": { ["reacting", [1, 0.79, 0.16, 1], "#FFCA28", 3] };
     case "slewing": { ["slewing", [1, 0.79, 0.16, 1], "#FFCA28", 3] };
+    case "locking": { ["locking", [1, 0.79, 0.16, 1], "#FFCA28", 3] };
     case "reloading": { ["reloading", [1, 0.65, 0.15, 1], "#FFA726", 4] };
     case "rangeHold": { ["range hold", [0.3, 0.85, 0.8, 1], "#4DD9CC", 2] };
+    case "cued": { ["cued", [0.3, 0.85, 0.8, 1], "#4DD9CC", 2] };
     case "firing": { ["firing", [0.94, 0.33, 0.31, 1], "#EF5350", 7] };
     case "inFlight": { ["in flight", [1, 0.84, 0.31, 1], "#FFD54F", 5] };
     case "losBlocked": { ["no LOS", [0.81, 0.58, 0.85, 1], "#CE93D8", 6] };

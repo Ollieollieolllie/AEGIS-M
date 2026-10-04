@@ -21,10 +21,11 @@ Description:
         standalone vehicle - its own pool
         networked vehicle - its Site's pool (if the class is one this
             vehicle's own settings engage). Once one member of a Site has
-            seen the munition, the Site's other members are skipped for
-            this check: they could only add it again. (A networked
-            vehicle's own pool isn't kept for munitions: nothing engages
-            from it.)
+            judged the munition, the Site's other members aren't judged
+            again this check; those that see it too only add their sensor
+            kinds to the contact (a radar and a Spartan's IR both show).
+            (A networked vehicle's own pool isn't kept for munitions:
+            nothing engages from it.)
 
     IFF and threat:
         hostile shooter - tracked outright, unless the Site's doctrine
@@ -66,13 +67,26 @@ _entry params ["_projectile", "_class", "_shooterSide", "_key", "_addedTo", "", 
 
 private _firstDetection = _addedTo isEqualTo [];
 private _fromSystem = _projectile getVariable ["AEGISM_fromSystem", false];
-// Sites this munition already reached this check.
+// Sites this munition already reached this check, and those it went into.
 private _sitesDone = [];
+private _sitesAdded = [];
 
 {
     private _poolOwner = _x;
     private _system = _poolOwner getVariable "AEGISM_system";
     private _network = _poolOwner getVariable ["AEGISM_network", objNull];
+
+    // Another member of a Site the munition already went into this check:
+    // nothing to judge, but its own sensors' sighting is added to the
+    // contact, so it records every kind of sensor on the Site that sees it
+    // -- the first member (usually the radar, set up first) used to be the
+    // only one, and a Spartan's IR never showed on a munition.
+    if (!isNil "_system" && {!isNull _network} && {_network in _sitesAdded}) then {
+        (_poolOwner getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_seenMunitions"];
+        if (time - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions}) then {
+            [_network, _projectile, _class, 1, _seenMunitions get _key] call aegism_detect_fnc_addContact;
+        };
+    };
 
     if (!isNil "_system" && {isNull _network || {!(_network in _sitesDone)}}) then {
         private _hostile = [side _poolOwner, _shooterSide] call aegism_detect_fnc_isHostile;
@@ -131,13 +145,18 @@ private _sitesDone = [];
                     // a munition threatening it, engaged or not. Judged here
                     // only if the check above didn't already, and only while
                     // that alarm is on.
-                    if (!_needsThreat && {(_network getVariable ["alarmIncoming", "auto"]) != "off" || {(_network getVariable ["alarmIncomingCustom", ""]) != ""}}) then {
+                    private _alarmSettings = [_network] call aegism_fnc_siteSettingsSource;
+                    if (!_needsThreat && {(_alarmSettings getVariable ["alarmIncoming", "auto"]) != "off" || {(_alarmSettings getVariable ["alarmIncomingCustom", ""]) != ""}}) then {
                         _threat = [_projectile, _class, _poolOwner, _settings getOrDefault ["friendlyThreatRadius", 0]] call aegism_detect_fnc_munitionThreat;
                     };
-                    if (_threat isNotEqualTo []) then { _network setVariable ["AEGISM_incomingAt", time]; };
+                    // Every Site of a linked group (aegism_network_fnc_linkSites).
+                    if (_threat isNotEqualTo []) then {
+                        { _x setVariable ["AEGISM_incomingAt", time]; } forEach (_network getVariable ["AEGISM_linkSites", [_network]]);
+                    };
                     if (_class in (_settings getOrDefault ["targetClassAllowlist", []])
                         && {[_network, _projectile, _class, 1, _seenBy] call aegism_detect_fnc_addContact}) then {
                         _addedTo pushBackUnique _network;
+                        _sitesAdded pushBack _network;
                     };
                 };
                 if (_firstDetection && {_addedTo isNotEqualTo []}) then {

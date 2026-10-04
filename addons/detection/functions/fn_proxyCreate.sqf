@@ -9,7 +9,9 @@ Description:
 
     The proxy is its threat class's proxy type ("AEGISM_MunitionProxy_
     <class>", detection config.cpp), texture blanked (invisible), hot for
-    IR (setVehicleTIPars: engine, wheels, weapon), and attached
+    IR -- its (silent) engine running, which an IR sensor needs to see it,
+    and its thermal look set (setVehicleTIPars: engine, wheels, weapon) --
+    and attached
     AEGISM_PROXY_TRAIL m behind the munition, in the munition's own model
     space: the engine carries it from then on, with no script each frame.
     attachTo doesn't carry it on every projectile, though -- the MLRS
@@ -45,6 +47,9 @@ private _proxy = (format ["AEGISM_MunitionProxy_%1", _class]) createVehicleLocal
 _proxy allowDamage false;
 _proxy setObjectTexture [0, ""];
 _proxy setVehicleTIPars [1, 1, 1];
+// An IR sensor only sees a vehicle whose engine is running (as an IR missile
+// can't lock one parked); the proxy's is silent (detection config.cpp).
+_proxy engineOn true;
 _proxy setVariable ["AEGISM_proxyKey", _key];
 [_proxy, _projectile] call aegism_detect_fnc_proxyFollow;
 
