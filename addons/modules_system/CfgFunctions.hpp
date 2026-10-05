@@ -15,6 +15,8 @@ class CfgFunctions
             class defaultEngagementSettings {};
             class defaultCrew {};
             class scanForRoles {};
+            class radarCovers {};
+            class emconUpdate {};
             class debugCheckCiws {};
         };
     };

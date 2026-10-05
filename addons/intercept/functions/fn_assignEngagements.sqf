@@ -37,7 +37,9 @@ Description:
            assigned (turret can't bear, LOS never clears) -- frees the
            contact for a better-placed weapon instead of holding it forever
 
-    3. Assign free roles, contacts in Target Priority order. For each
+    3. Assign free roles, contacts in Target Priority order -- except a
+       contact only passive radar hears (aegism_fnc_hasTrack), which only
+       cues the Site's radars. For each
        contact, a launcher and a CIWS weapon are chosen independently (CIWS
        runs in parallel with a launcher unless that gun's "CIWS last
        resort" is set). A candidate weapon must:
@@ -91,10 +93,13 @@ Description:
 
     Cost (it runs in one frame, so it's what shows as a server spike under a
     salvo):
-        - the layered-reserve plan's per-munition, per-launcher scan (when
-          can this launcher first make a shot that lands in time) is cached
-          ("AEGISM_planCache") while the munition keeps to its predicted
-          path, and skipped while every munition already has a launcher
+        - the layered-reserve plan's per-munition, per-launcher question
+          (when can this launcher first make a shot that lands in time) is
+          worked out step by step only as far as the first shot, each step
+          cached ("AEGISM_planCache") while the munition keeps to its
+          predicted path, and skipped while every munition already has a
+          launcher (solving the whole path up front was the ~100 ms frame
+          when a salvo came into view)
         - claims are indexed per turret, so the conflict and queue checks
           read one turret's claims (they scanned the whole Site's for every
           candidate weapon of every contact)
@@ -440,14 +445,20 @@ private _fnLauncherEta = {
 // [fireTime, interceptTime] (seconds from now) of the earliest shot from
 // _start on that meets the munition before _tti, or [] if there's none.
 //
-// The scan behind it -- every AEGISM_RESERVE_PLAN_STEP s from now to
-// impact: inside the envelope, a feasible intercept, landing before impact
-// -- is done once per munition and launcher and kept in game time
-// ("AEGISM_planCache": [scanned at, position, velocity, [[fire at, intercept
-// at], ...]]). A ballistic path is fixed, and so is a parked launcher's
-// envelope; the scan is redone if the munition strays AEGISM_PLAN_CACHE_
-// TOLERANCE m from the path it was scanned on (a rocket still burning, a
-// missile turning), or after AEGISM_PLAN_CACHE_MAX_AGE s.
+// Found by stepping along the munition's projected path every AEGISM_
+// RESERVE_PLAN_STEP s from _start -- inside the envelope, a feasible
+// intercept, landing before impact -- and only as far as the first shot.
+// Each step's answer is kept per munition and launcher, in game time
+// ("AEGISM_planCache": [scanned at, position, velocity, step -> [fire at,
+// intercept at], or [] for no shot]), so a later question from another start
+// re-solves nothing already worked out. The whole path used to be solved up
+// front -- an intercept solve (aegism_intercept_fnc_launchSolution) for every
+// step in the envelope, for every munition and launcher -- and a salvo coming
+// into view together cost ~100 ms in one frame. A ballistic path is fixed,
+// and so is a parked launcher's envelope; the steps are thrown away if the
+// munition strays AEGISM_PLAN_CACHE_TOLERANCE m from the path they were
+// worked out on (a rocket still burning, a missile turning), or after
+// AEGISM_PLAN_CACHE_MAX_AGE s.
 private _planCache = _logic getVariable "AEGISM_planCache";
 if (isNil "_planCache") then { _planCache = createHashMap; _logic setVariable ["AEGISM_planCache", _planCache, false]; };
 private _fnPlanShot = {
@@ -465,14 +476,22 @@ private _fnPlanShot = {
         PERF_INC(PERF_PLAN_HITS);
     } else {
         PERF_INC(PERF_PLAN_BUILDS);
-        _bounds params ["_minRange", "_maxRange", "_minAltitude", "_maxAltitude"];
-        private _origin = eyePos _candSystem;
-        private _p0 = getPosASL _object;
-        private _v = velocity _object;
-        private _muzzle = ([_candSystem, _weaponInfo select 0, "launcher"] call aegism_intercept_fnc_turretPoints) select 0;
-        private _shots = [];
-        for "_t" from 0 to _tti step AEGISM_RESERVE_PLAN_STEP do {
-            private _p = (_p0 vectorAdd (_v vectorMultiply _t)) vectorDiff [0, 0, _drop * _t * _t];
+        _entry = [time, getPosASL _object, velocity _object, createHashMap];
+        _planCache set [_cacheKey, _entry];
+    };
+    _entry params ["_scannedAt", "_p0", "_v", "_steps"];
+    _bounds params ["_minRange", "_maxRange", "_minAltitude", "_maxAltitude"];
+    private _origin = eyePos _candSystem;
+    private _muzzle = [];
+    private _impactAt = time + _tti;
+    private _found = [];
+    for "_k" from (ceil (((time + _start) - _scannedAt) / AEGISM_RESERVE_PLAN_STEP) max 0) to (floor ((_impactAt - _scannedAt) / AEGISM_RESERVE_PLAN_STEP)) do {
+        private _shot = _steps get _k;
+        if (isNil "_shot") then {
+            _shot = [];
+            // Seconds after the path was taken, and from now.
+            private _sinceScan = _k * AEGISM_RESERVE_PLAN_STEP;
+            private _p = (_p0 vectorAdd (_v vectorMultiply _sinceScan)) vectorDiff [0, 0, _drop * _sinceScan * _sinceScan];
             private _distance = _origin distance _p;
             private _height = (ASLToAGL _p) select 2;
             if (_distance >= _minRange && {_distance <= _maxRange} && {_height >= _minAltitude} && {_maxAltitude <= 0 || {_height <= _maxAltitude}}) then {
@@ -481,21 +500,18 @@ private _fnPlanShot = {
                 // planned onto rockets above its 40-degree limit held the
                 // Patriots in reserve for kills it couldn't make. A vertical
                 // launch cell's shots are off-bore, with the missile's turn.
-                ([_candSystem, _weaponInfo, _object, _muzzle, false, false, false, _t, _ballistic] call aegism_intercept_fnc_launchSolution)
+                if (_muzzle isEqualTo []) then { _muzzle = ([_candSystem, _weaponInfo select 0, "launcher"] call aegism_intercept_fnc_turretPoints) select 0; };
+                PERF_INC(PERF_PLAN_SOLVES);
+                ([_candSystem, _weaponInfo, _object, _muzzle, false, false, false, (_scannedAt + _sinceScan) - time, _ballistic] call aegism_intercept_fnc_launchSolution)
                     params ["_launchable", "", "", "", "_flightTime"];
-                if (_launchable && {_t + (_flightTime max 0) < _tti}) then {
-                    _shots pushBack [time + _t, time + _t + (_flightTime max 0)];
-                };
+                if (_launchable) then { _shot = [_scannedAt + _sinceScan, _scannedAt + _sinceScan + (_flightTime max 0)]; };
             };
+            _steps set [_k, _shot];
         };
-        _entry = [time, _p0, _v, _shots];
-        _planCache set [_cacheKey, _entry];
+        if (_shot isNotEqualTo [] && {(_shot select 1) < _impactAt}) exitWith { _found = _shot; };
     };
-    private _earliest = time + _start;
-    private _index = (_entry select 3) findIf { (_x select 0) >= _earliest };
-    if (_index == -1) exitWith { [] };
-    ((_entry select 3) select _index) params ["_fireAt", "_interceptAt"];
-    [_fireAt - time, _interceptAt - time]
+    if (_found isEqualTo []) exitWith { [] };
+    [(_found select 0) - time, (_found select 1) - time]
 };
 
 // Picks one weapon from the eligible list ([index in _allWeapons, flight
@@ -640,7 +656,9 @@ if (count _tierReaches > 1 && {_anyFree}) then {
     private _object = _entry get "object";
     private _class = _entry get "class";
 
-    if (!isNull _object && {alive _object} && {_class in _allowlist}) then {
+    // A contact only passive radar hears is a bearing, not a track: it cues
+    // the Site's radars (aegism_system_fnc_emconUpdate) but isn't assigned.
+    if (!isNull _object && {alive _object} && {_class in _allowlist} && {[_entry] call aegism_fnc_hasTrack}) then {
         private _targetPos = getPosASL _object;
         private _height = _object call _fnHeight;
         private _contactSize = [typeOf _object] call aegism_intercept_fnc_munitionSize;

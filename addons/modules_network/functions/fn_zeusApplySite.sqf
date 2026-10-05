@@ -71,11 +71,11 @@ if (_logic getVariable ["sharedCoordinator", false]) then {
 } forEach ((_logic getVariable ["AEGISM_groupMembers", []]) + _members);
 
 // Threat rings: redrawn for the Site's group (aegism_network_fnc_
-// drawThreatRings) when Threat Rings on Map or Shared Site Coordinator is
-// changed -- turned on, drawn; turned off, gone (or the group's drawn
-// without this Site's). Otherwise left as drawn.
-private _ringsKey = [_logic getVariable ["threatRings", false], _logic getVariable ["sharedCoordinator", false]];
-if (_ringsKey isNotEqualTo (_logic getVariable ["AEGISM_ringsApplied", [false, false]])) then {
+// drawThreatRings) when Threat Rings on Map, Shared Site Coordinator or
+// Protected Area Radius is changed -- turned on, drawn; turned off, gone (or
+// the group's drawn without this Site's). Otherwise left as drawn.
+private _ringsKey = [_logic getVariable ["threatRings", false], _logic getVariable ["sharedCoordinator", false], _logic getVariable ["protectRadius", 750]];
+if (_ringsKey isNotEqualTo (_logic getVariable ["AEGISM_ringsApplied", [false, false, 750]])) then {
     [_logic] call aegism_network_fnc_drawThreatRings;
 };
 _logic setVariable ["AEGISM_ringsApplied", _ringsKey, false];

@@ -17,6 +17,10 @@ Description:
             config caps it (IR, visual). One fixed to the hull with less than
             360 degrees is drawn as its sector, the way the vehicle faces
             now; one that turns with a turret as a full ring.
+        protected area (green) - the Site's Protected Area Radius round its
+            module (the area a hostile munition landing in, or guided at
+            anything inside, is a threat to: aegism_detect_fnc_
+            munitionThreat), "Protected area: 750 m".
     A vehicle's sensors with the same reach and arc share a ring (a radar
     and its passive receiver), as do its launchers of one weapon. Each ring
     is a line with a labelled dot on its edge: a sector's in the middle of
@@ -301,5 +305,47 @@ private _placed = [];
         ["", format [" (one ring round all %1 vehicles, %2 km)", count _vehicles, (_radius / 1000) toFixed 1]] select (count _vehicles > 1)];
 } forEach _drawn;
 
+// Each drawing Site's protected area (Protected Area Radius, the Shared Site
+// Coordinator's when there is one: aegism_fnc_siteSettingsSource), green,
+// round the Site module -- labelled like the rings, on the first clear
+// diagonal.
+private _areas = 0;
+{
+    private _site = _x;
+    private _areaRadius = (([_site] call aegism_fnc_siteSettingsSource) getVariable ["AEGISM_engagement", createHashMap]) getOrDefault ["protectRadius", 750];
+    if (_areaRadius > 0) then {
+        (getPosASL _site) params ["_cx", "_cy"];
+        private _points = [];
+        for "_i" from 0 to AEGISM_RING_SEGMENTS do {
+            private _bearing = 360 * _i / AEGISM_RING_SEGMENTS;
+            _points append [_cx + _areaRadius * sin _bearing, _cy + _areaRadius * cos _bearing];
+        };
+        private _ring = [[_cx, _cy]] call _fnCreate;
+        if (_ring != "") then {
+            _ring setMarkerShapeLocal "POLYLINE";
+            _ring setMarkerPolylineLocal _points;
+            _ring setMarkerColor "ColorGreen";
+            _markers pushBack _ring;
+        };
+        private _fnLabelAt = { [_cx + _areaRadius * sin _this, _cy + _areaRadius * cos _this] };
+        private _clearIndex = AEGISM_RING_LABEL_BEARINGS findIf {
+            private _at = _x call _fnLabelAt;
+            (_placed findIf { (_at distance2D (_x select 0)) < ((((_x select 1) max _areaRadius) * AEGISM_RING_LABEL_GAP) max AEGISM_RING_LABEL_MIN_GAP) }) == -1
+        };
+        private _labelBearing = AEGISM_RING_LABEL_BEARINGS select (_clearIndex max 0);
+        _placed pushBack [_labelBearing call _fnLabelAt, _areaRadius];
+        private _label = [_labelBearing call _fnLabelAt] call _fnCreate;
+        if (_label != "") then {
+            _label setMarkerShapeLocal "ICON";
+            _label setMarkerTypeLocal "mil_dot";
+            _label setMarkerTextLocal format ["Protected area: %1 m", round _areaRadius];
+            _label setMarkerColor "ColorGreen";
+            _markers pushBack _label;
+        };
+        _areas = _areas + 1;
+        _logged pushBack format ["%1 protected area %2 m", _site, round _areaRadius];
+    };
+} forEach _drawingSites;
+
 _lead setVariable ["AEGISM_threatRings", _markers, false];
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " THREAT-RINGS: %1 drew %2 ring(s) for %3 vehicle(s) in %4's side channel (placed by %5): %6", _drawingSites, count _drawn, count _drawnHere, side group _creator, _creator, _logged joinString "; "];
+diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " THREAT-RINGS: %1 drew %2 ring(s) for %3 vehicle(s) and %4 protected area(s) in %5's side channel (placed by %6): %7", _drawingSites, count _drawn, count _drawnHere, _areas, side group _creator, _creator, _logged joinString "; "];

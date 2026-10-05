@@ -11,6 +11,8 @@ class CfgFunctions
             class perfLog {};
             class statusStyle {};
             class sensorTags {};
+            class hasTrack {};
+            class emconText {};
             class debugDraw {};
             class statusBoard {};
             class debugHint {};

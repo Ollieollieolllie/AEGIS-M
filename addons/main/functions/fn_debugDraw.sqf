@@ -38,8 +38,10 @@ Description:
             1. its name
             2. network and sensor status (light blue): its own sensors, the
                longest of each kind -- reach, arc, "turret" if it turns with
-               one, and for a radar emitting or silent (a silent radar sees
-               nothing, aircraft or munitions) -- and its Site's sensor vehicles and
+               one, and for a radar its emission (Radar Emission, aegism_fnc_
+               emconText: EMITTING, SILENT, SHUT DOWN, AI: ..., and why; a
+               silent radar sees nothing, aircraft or munitions) -- and its
+               Site's sensor vehicles and
                tracks, or STANDALONE with its own tracks. NO SENSOR ON SITE
                in orange when networked but no member of its Site has a
                sensor of its own (aegism_system_fnc_resolveContactSource).
@@ -48,8 +50,13 @@ Description:
             Name and weapons in its most urgent engagement's colour; grey
             while idle.
 
-        Radar - a faint ring at each radar's own detection range.
+        Radar - a faint ring at each radar's own detection range: blue while
+            the AI decides its emission, amber while AEGIS-M has it emitting,
+            grey while it keeps it silent, red while it's shut down for an
+            anti-radiation missile.
 
+        A contact only passive radar hears is tagged CUE ONLY: it cues the
+        Site's radars, but nothing engages it (aegism_fnc_hasTrack).
         Linked Sites (aegism_network_fnc_linkSites) - a vehicle's Site status
             reads "(LINKED, n Sites by n links, coordinating / coordinated by
             ...)"; a vehicle forming a link is tagged LINK; a vehicle-to-
@@ -121,7 +128,7 @@ private _radars = [];               // [position ASL, range]
     if (!isNull _owner) then {
         private _system = _owner getVariable "AEGISM_system";
         private _isSystem = !isNil "_system";
-        if (_isSystem && {_system get "hasRadar"}) then { _radars pushBack [getPosASL _owner, _system get "radarRange"]; };
+        if (_isSystem && {_system get "hasRadar"}) then { _radars pushBack [getPosASL _owner, _system get "radarRange", _owner]; };
 
         private _pool = _owner getVariable ["AEGISM_pooledContacts", createHashMap];
         {
@@ -171,14 +178,22 @@ private _radars = [];               // [position ASL, range]
     };
 } forEach (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
 
-// --- Radar rings ---
+// --- Radar rings: blue, amber while AEGIS-M has it emitting, grey while it
+// keeps it silent, red while it's shut down for an anti-radiation missile
+// (aegism_fnc_emconText) ---
 {
-    _x params ["_center", "_radius"];
+    _x params ["_center", "_radius", "_radar"];
+    private _color = [0.3, 0.6, 1, 0.25];
+    ([_radar] call aegism_fnc_emconText) params ["_label", "", "", "_rgba"];
+    if (_label != "" && {!(_label in ["AI: EMITTING", "AI: SILENT"])}) then {
+        _color = +_rgba;
+        _color set [3, [0.3, 0.15] select (_label == "SILENT")];
+    };
     private _previous = [];
     for "_i" from 0 to AEGISM_DEBUG_CIRCLE_SEGMENTS do {
         private _angle = (_i % AEGISM_DEBUG_CIRCLE_SEGMENTS) * (360 / AEGISM_DEBUG_CIRCLE_SEGMENTS);
         private _point = ASLToAGL (_center vectorAdd [_radius * sin _angle, _radius * cos _angle, 0]);
-        if (_i > 0) then { drawLine3D [_previous, _point, [0.3, 0.6, 1, 0.25]]; };
+        if (_i > 0) then { drawLine3D [_previous, _point, _color]; };
         _previous = _point;
     };
 } forEach _radars;
@@ -255,6 +270,8 @@ private _byRole = createHashMap;    // [system netId, role] -> [urgency, label, 
     private _text = toUpper _class;
     if (_tti < 1e9) then { _text = format ["%1  %2s", _text, (round (_remaining * 10) / 10) max 0]; };
     private _tags = [_seen] call aegism_fnc_sensorTags;
+    // Only passive radar hears it: it cues radars, nothing engages it.
+    if !([createHashMapFromArray [["sources", _seen]]] call aegism_fnc_hasTrack) then { _tags = ([_tags, "CUE ONLY"] - [""]) joinString " "; };
     if (_tags != "") then { _text = format ["%1  [%2]", _text, _tags]; };
     [[_position, -1.4] call _fnStacked, _text, _color, AEGISM_SMALL_TEXT] call _fnText;
 } forEach _contacts;
@@ -307,7 +324,13 @@ private _fnSiteStats = {
                 _kindsShown pushBack _type;
                 private _text = format ["%1 %2km %3", _sensorCodes getOrDefault [_type, toUpper _type], (round (_range / 100)) / 10, [format ["%1deg", round _arc], "360"] select (_arc >= 360)];
                 if (_aim isNotEqualTo []) then { _text = _text + " turret"; };
-                if (_type == "radar") then { _text = _text + " " + (["silent", "emitting"] select (isVehicleRadarOn _vehicle)); };
+                if (_type == "radar") then {
+                    // Its emission (Radar Emission, aegism_fnc_emconText), and why.
+                    ([_vehicle] call aegism_fnc_emconText) params ["_label", "_detail"];
+                    if (_label == "") then { _label = ["SILENT", "EMITTING"] select (isVehicleRadarOn _vehicle); };
+                    _text = _text + " " + _label;
+                    if !(_detail in ["", "always on", "the AI decides"]) then { _text = _text + format [" (%1)", _detail]; };
+                };
                 _sensorParts pushBack _text;
             };
         } forEach (_system getOrDefault ["sensors", []]);

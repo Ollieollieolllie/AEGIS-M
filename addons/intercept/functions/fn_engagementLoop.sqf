@@ -218,7 +218,20 @@ private _fnExecute = {
 
     if (time - (_state getOrDefault ["losAt", -1e9]) >= AEGISM_LOS_REUSE) then {
         _state set ["losAt", time];
-        _state set ["losClear", (lineIntersectsSurfaces [_weaponPos, getPosASL _target, _system, _target, true, 1]) isEqualTo []];
+        // From the weapon's own muzzle (aegism_intercept_fnc_turretPoints):
+        // where its rounds or missiles leave, and where a missile's seeker
+        // sits. It used to be the vehicle's eye point (eyePos), which can sit
+        // well below the launcher: launchers behind H-barriers 5-14m away
+        // were blocked on targets the launcher itself sat above.
+        _state set ["losFrom", ([_system, _turretPath, _role] call aegism_intercept_fnc_turretPoints) select 0];
+        // A munition's own sensor proxy (aegism_detect_fnc_proxyCreate), a
+        // crate-sized vehicle 5 m from it, isn't in the way: it's skipped like
+        // the target itself (only two objects can be ignored by the command).
+        private _hits = (lineIntersectsSurfaces [_state get "losFrom", getPosASL _target, _system, _target, true, 3]) select {
+            !((_x select 2) isKindOf "AEGISM_MunitionProxy") && {!((_x select 3) isKindOf "AEGISM_MunitionProxy")}
+        };
+        _state set ["losClear", _hits isEqualTo []];
+        _state set ["losHit", _hits param [0, []]];
     };
     private _losClear = _state get "losClear";
 
@@ -257,7 +270,18 @@ private _fnExecute = {
         _state set ["status", "losBlocked"];
         if !(_state getOrDefault ["losBlocked", false]) then {
             _state set ["losBlocked", true];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOS-BLOCKED: %1 (%2) cannot see %3 -- holding, re-checking every tick.", _system, _role, _target];
+            // What's in the way: the first surface on the line, terrain if
+            // it belongs to no object.
+            (_state getOrDefault ["losHit", []]) params [["_hitPos", []], "", ["_hitObject", objNull], ["_hitParent", objNull]];
+            private _blocker = [_hitParent, _hitObject] select (isNull _hitParent);
+            private _losFrom = _state getOrDefault ["losFrom", _weaponPos];
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOS-BLOCKED: %1 (%2) cannot see %3 (%4m, %5 deg up from its muzzle) -- blocked by %6 -- holding, re-checking every tick.", _system, _role, _target, round (_losFrom distance _target),
+                round (((_losFrom vectorFromTo (getPosASL _target)) select 2) call { asin ((_this max -1) min 1) }),
+                switch (true) do {
+                    case (_hitPos isEqualTo []): { "something" };
+                    case (isNull _blocker): { format ["terrain %1m out", round (_losFrom distance _hitPos)] };
+                    default { format ["%1 (%2) %3m out, its top %4m above the muzzle", _blocker, typeOf _blocker, round (_losFrom distance _hitPos), round ((((_blocker modelToWorldWorld [0, 0, ((boundingBoxReal _blocker) select 1) select 2]) select 2) - (_losFrom select 2)) * 10) / 10] };
+                }];
         };
     };
     _state set ["losBlocked", false];
@@ -416,7 +440,8 @@ if (_readyWeapons isEqualTo []) exitWith {};
 private _candidates = [];
 {
     private _object = _y getOrDefault ["object", objNull];
-    if (!isNull _object && {alive _object}) then { _candidates pushBack [_object, _y get "class"]; };
+    // Not one only passive radar hears (aegism_fnc_hasTrack): a bearing, not a track.
+    if (!isNull _object && {alive _object} && {[_y] call aegism_fnc_hasTrack}) then { _candidates pushBack [_object, _y get "class"]; };
 } forEach _pool;
 
 private _byTurret = createHashMap;

@@ -101,6 +101,9 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+// Seconds between the coordinator's runs (assignments, links, alarm).
+#define AEGISM_COORDINATOR_INTERVAL 0.5
+
 params ["_logic", "_units", "_activated"];
 
 // isGlobal = 1 (below) guarantees this runs on every machine, but a module
@@ -177,7 +180,7 @@ private _sensorsFirst = [_units, [], { [1, 0] select (([_x, true] call aegism_sy
 _logic setVariable ["AEGISM_ringsPending", true, false];
 // What they were drawn under: a Zeus edit that changes it redraws them
 // (aegism_network_fnc_zeusApplySite).
-_logic setVariable ["AEGISM_ringsApplied", [_logic getVariable ["threatRings", false], _logic getVariable ["sharedCoordinator", false]], false];
+_logic setVariable ["AEGISM_ringsApplied", [_logic getVariable ["threatRings", false], _logic getVariable ["sharedCoordinator", false], _logic getVariable ["protectRadius", 750]], false];
 
 // Its status terminals: the laptops synced to it, on every machine and for
 // anyone joining later. One synced or unsynced later is the poll's (below).
@@ -288,6 +291,10 @@ if (isServer) then {
 // in between. The Site's alarm (aegism_network_fnc_siteAlarm) follows the
 // assignments it has just made; its sound sources go with the Site.
 if (isServer) then {
+    // Every frame, but only working every AEGISM_COORDINATOR_INTERVAL s --
+    // or at once when a munition has just come into the picture ("AEGISM_
+    // assignNow", aegism_detect_fnc_munitionCheck): it's seconds from impact,
+    // and waiting for the next turn cost up to half a second of it.
     [{
         params ["_args", "_pfhHandle"];
         _args params ["_logic", "_alarm", "_lastTime"];
@@ -298,6 +305,8 @@ if (isServer) then {
         // Paused (game time not moving): nothing has changed. A paused
         // game used to keep the coordinator running twice a second.
         if (time == _lastTime) exitWith {};
+        if (time < _lastTime + AEGISM_COORDINATOR_INTERVAL && {!(_logic getVariable ["AEGISM_assignNow", false])}) exitWith {};
+        _logic setVariable ["AEGISM_assignNow", false, false];
         _args set [2, time];
         // Linked to another Site through a shared vehicle: the group's lead
         // coordinates the whole group (aegism_network_fnc_linkSites).
@@ -311,7 +320,7 @@ if (isServer) then {
             [_logic] call aegism_intercept_fnc_assignEngagements;
         };
         [_logic, _alarm] call aegism_network_fnc_siteAlarm;
-    }, 0.5, [_logic, ["", "", []], -1]] call CBA_fnc_addPerFrameHandler;
+    }, 0, [_logic, ["", "", []], -1]] call CBA_fnc_addPerFrameHandler;
 };
 
 diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];

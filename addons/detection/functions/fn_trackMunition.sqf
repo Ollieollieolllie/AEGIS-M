@@ -16,9 +16,9 @@ Description:
     has no radar/IR/visual target properties), so an invisible vehicle of
     its threat class's proxy type ("AEGISM_MunitionProxy_<class>", detection
     config.cpp) flies with it, attached a few metres behind it -- created
-    AEGISM_PROXY_DELAY s after launch, clear of the launching vehicle
-    (aegism_detect_fnc_proxyCreate), moved every frame instead for an ammo
-    class that doesn't carry an attached object -- and is deleted with it
+    a tenth of a second after launch (aegism_detect_fnc_proxyCreate), or,
+    moved every frame instead for an ammo class that doesn't carry an
+    attached object, once clear of the launching vehicle -- and is deleted with it
     (aegism_detect_fnc_munitionTracker). Every vehicle's sensors then see
     it, or don't, by their own rules; the detection loop (aegism_detect_
     fnc_confidenceLoop) reads which munitions each vehicle sees.
@@ -69,13 +69,15 @@ private _watched = !(_projectile getVariable ["AEGISM_fromSystem", false]) || {
 
 // [projectile, class, shooter side, key, pools it's in, next check at,
 // sensor proxy (objNull until it's made, or if none), flags (HashMap)].
-// Flags "follow": its proxy is moved every frame; "attachCheckAt": when to
-// check its proxy came along when attached.
-private _entry = [_projectile, _class, _shooterSide, _key, [], time, objNull, createHashMap];
+// Flags "firedAt": when it was fired; "follow": its proxy is moved every
+// frame; "attachCheckAt": when to check its proxy came along when attached;
+// "arm": an anti-radiation missile's last known state (aegism_detect_fnc_
+// munitionCheck, logged as ARM-END when it's gone).
+private _entry = [_projectile, _class, _shooterSide, _key, [], time, objNull, createHashMapFromArray [["firedAt", time], ["ammo", typeOf _projectile]]];
 _tracked pushBack _entry;
 
 if (_watched) then {
-    [aegism_detect_fnc_proxyCreate, [_entry], AEGISM_PROXY_DELAY] call CBA_fnc_waitAndExecute;
+    [aegism_detect_fnc_proxyCreate, [_entry], AEGISM_PROXY_MIN_DELAY] call CBA_fnc_waitAndExecute;
 };
 
 if !(missionNamespace getVariable ["AEGISM_munitionTrackerRunning", false]) then {

@@ -30,6 +30,17 @@
     1
 ] call CBA_fnc_addSetting;
 
+// Global (isGlobal=1): a mission rule, read by the server's detection loops
+// (aegism_detect_fnc_confidenceLoop).
+[
+    "aegism_main_useDatalink",
+    "CHECKBOX",
+    ["Use Datalink Contacts", "Off (default): AEGIS-M only uses what its vehicles' own sensors detect (radar, IR, visual, passive radar) and shares that within a Site itself. A contact the game's datalink passes to a vehicle from another vehicle -- any friendly vehicle with datalink in the mission, AEGIS-M's or not -- is ignored. On: those are used as well, as if the vehicle had seen them itself, e.g. a standalone SPAAG fed by a friendly AWACS."],
+    ["AEGIS-M", "General"],
+    false,
+    1
+] call CBA_fnc_addSetting;
+
 // Client-side (isForce=0) and NOT saved to the server's exported settings --
 // this is a per-player visualisation toggle, not a mission rule, so each
 // machine watching the battery picks it independently. See aegism_fnc_debugDraw.

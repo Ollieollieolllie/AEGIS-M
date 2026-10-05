@@ -50,9 +50,15 @@ private _allowlist = [];
         ["engageFriendlyThreats", _logic getVariable ["engageFriendlyThreats", true]],
         ["engageOnlyThreats", _logic getVariable ["engageOnlyThreats", true]],
         ["friendlyThreatRadius", _logic getVariable ["friendlyThreatRadius", 0]],
+        ["protectRadius", _logic getVariable ["protectRadius", 750]],
         ["targetClassAllowlist", _allowlist],
         ["ciwsLastResort", _logic getVariable ["ciwsLastResort", false]],
-        ["ciwsSelfDestruct", _logic getVariable ["ciwsSelfDestruct", false]]
+        ["ciwsSelfDestruct", _logic getVariable ["ciwsSelfDestruct", false]],
+        ["emcon", _logic getVariable ["emcon", "ai"]],
+        ["emconHold", _logic getVariable ["emconHold", 10]],
+        ["emconBurstOn", _logic getVariable ["emconBurstOn", 5]],
+        ["emconBurstOff", _logic getVariable ["emconBurstOff", 15]],
+        ["armShutdown", _logic getVariable ["armShutdown", true]]
     ],
     createHashMapFromArray [
         ["skillTier", _logic getVariable ["skillTier", "regular"]],

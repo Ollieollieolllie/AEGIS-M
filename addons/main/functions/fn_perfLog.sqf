@@ -25,7 +25,8 @@ Description:
             every frame, included)
         sensors - vehicles' sensor reads (aegism_detect_fnc_confidenceLoop):
             munition proxies seen across them, total ms
-        plan - reserve plan cache hits / rebuilds
+        plan - reserve plan cache hits / rebuilds / intercept solves it ran
+            (aegism_intercept_fnc_assignEngagements' _fnPlanShot)
         openFire - CIWS open-fire range recalculations (aegism_intercept_
             fnc_openFireRange; at most one a second per gun and target type)
         fps - the server's frames over the whole interval, timed every
@@ -60,7 +61,7 @@ if (!_active) exitWith {};
 
 private _ms = { (round (_this * 10)) / 10 };
 
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms) | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %24ms | plan %19 hit / %20 built | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
+diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms) | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
     _c select PERF_COORD_RUNS, (_c select PERF_COORD_MS) call _ms, (_c select PERF_COORD_MAX_MS) call _ms,
     _c select PERF_ENGAGE_TICKS,
     _c select PERF_AIM_SOLVES, _c select PERF_STEER_FRAMES,
@@ -72,4 +73,4 @@ diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PERF: coord %1 runs 
     _c select PERF_PLAN_HITS, _c select PERF_PLAN_BUILDS,
     round ((_c select PERF_FRAMES) / (_span max 0.001)), round (_c select PERF_FRAME_MAX_MS),
     _c select PERF_OPEN_FIRE_BUILDS, (_c select PERF_SENSOR_MS) call _ms,
-    _c select PERF_SLOW_FRAMES];
+    _c select PERF_SLOW_FRAMES, _c select PERF_PLAN_SOLVES];

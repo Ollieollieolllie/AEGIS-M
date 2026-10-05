@@ -44,14 +44,34 @@ launcher-mounted IR) -- and the "Standalone Air Defence" CBA setting is on
 or an IFV with ATGMs keeps its normal AI.
 
 **IFF and threats.** Hostile contacts (mission side relations) are engaged,
-including munitions -- but a hostile munition only while it's a threat to a
-Site vehicle (Site setting "Only Engage Munitions Threatening the Site", on
-by default): an artillery, mortar or MLRS round (or unguided rocket)
-predicted to land within the threat radius of one; a missile guided at one,
-or flying on a line that passes within the threat radius of one; a bomb
-whose fall or line of flight does. A shell landing well clear of the Site,
-or a missile flying at something else, doesn't cost a single round
-(`IGNORED` in the RPT), and is picked up if it turns toward the Site. A
+including munitions. A renegade (side ENEMY, e.g. a pilot whose rating fell
+through friendly fire) is hostile to everyone, its own former side included.
+A hostile munition is only engaged while it's a threat to a Site vehicle
+(Site setting "Only Engage Munitions Threatening the Site", on by default):
+- an artillery, mortar or MLRS round, an unguided rocket, or a missile that
+  can't steer (the vanilla `Rocket_04_HE_F`): predicted to land within the
+  threat radius of one;
+- a guided missile: guided at one (`missileTarget`), flying on a line that
+  passes within the threat radius of one, or -- when what it's homing on
+  can't be read (ACE guidance, a laser spot) -- with one inside its seeker's
+  view: within its seeker cone of its line of flight, closing (the cone from
+  its config: ACE `seekerAngle`, else `missileKeepLockedCone`, e.g. 60
+  degrees for the vanilla `M_Scalpel_AT`), and turning toward it: its angle
+  off that line no wider than at the check before (a missile flying past a
+  vehicle opens that angle). The first sighting waits one check (0.5 s);
+- a bomb whose fall or line of flight does;
+- or the Site's **protected area**: a circle round the Site module
+  (Protected Area Radius, 750 m by default). A hostile munition guided at
+  anything inside it (an ammo truck, a building), flying down into it, or
+  predicted to land in it is a threat. Linked Sites each protect their own
+  circle (with a Shared Site Coordinator, its radius applies round each).
+  Friendly munitions are still judged on the Site's vehicles only, so
+  friendly mortars firing on attackers near the Site aren't shot down.
+
+A shell landing well clear of the Site, or a missile flying at something
+else, doesn't cost a single round (`IGNORED` in the RPT, with what a missile
+was homing on), and is picked up if it turns toward the Site. `TRACKING`
+says why a munition counts as a threat. A
 friendly or neutral munition is engaged only when it is
 predicted to hit the Site (doctrine "Engage Friendly Munitions Threatening
 the Site", on by default): a guided missile whose own target is a Site
@@ -68,8 +88,8 @@ visual sensor of its own reads what its sensors hold (getSensorTargets) --
 the same radar/IR/visual/passive/datalink simulation already running
 against its real CfgVehicles config, with each sensor's own range, arc,
 line of sight, fog, night and speed limits, ground clutter, and an active
-radar only while it's emitting (the AI decides that). Each contact records
-which kinds of sensor saw it.
+radar only while it's emitting (see **Radar emission** below). Each contact
+records which kinds of sensor saw it.
 - **Aircraft, helicopters, drones** are read directly (`DETECT` in the
   RPT, once per new contact). A target's own size scales a sensor's range
   (`radarTargetSize` 0.1 on a Darter: a 9 km radar sees it at 900 m).
@@ -78,28 +98,106 @@ which kinds of sensor saw it.
   So every tracked munition carries an invisible **sensor proxy** -- a
   vehicle on the supply-drop crate's model with its texture blanked (a
   sensor target needs real geometry: with an empty model nothing saw it),
-  size 1 on radar, IR and visual (seen at each sensor's full configured
-  range), and hot -- its engine running (an IR sensor only sees a vehicle
+  size 2.5 on radar and IR and 1 on visual (a target's size scales a
+  sensor's range: raised from 1 to help sensors pick munitions up), and
+  hot -- its engine running (an IR sensor only sees a vehicle
   whose engine is on; the proxy's is silent) and `setVehicleTIPars` -- that
   the sensors see instead. Every sensor vehicle of a Site that sees a
   munition adds its kind to the contact, so a radar and a Spartan's IR both
   show.
-  It's created half a second after launch (at the muzzle its geometry is
-  inside the launching vehicle) and attached 5 m behind its munition, so
-  the engine carries it; an ammo type that doesn't carry an attached object
-  (`PROXY-ATTACH` in the RPT, once per type -- the MLRS carrier stage
-  `R_230mm_HE` doesn't) has its proxies moved every frame instead, at the
-  munition's own velocity. It's deleted with its munition. There's one
+  It's created a tenth of a second after launch and attached 5 m behind its
+  munition at once, so the engine carries it; an ammo type that doesn't
+  carry an attached object (`PROXY-ATTACH` in the RPT, once per type -- the
+  MLRS carrier stage `R_230mm_HE` doesn't) has its proxies moved every
+  frame instead, at the munition's own velocity. A proxy moved that way is
+  a free vehicle, so it isn't made until its munition is clear of whatever
+  fired it (the shooter's size, plus the proxy's, plus 5 m), half a second
+  after launch at the latest. It's deleted with its munition. There's one
   proxy class per kind of munition (`AEGISM_MunitionProxy_missile` /
   `_rocket` / `_bomb` / `_artilleryShell`), so each can carry its own
   signature. A cluster carrier's bomblets get none (they're not followed at
   all), nor does an AEGIS-M interceptor unless an AEGIS-M vehicle is
   hostile to its side. `TRACKING` in the RPT names the sensors that found
-  a munition.
+  a munition, and how long after launch.
+- **Timing.** Each sensor vehicle reads its sensors once a second, and
+  four times a second while any munition is in flight. A munition one of
+  them sees for the first time is checked at once, and when it enters a
+  Site's picture the Site's coordinator assigns weapons in the next frame
+  rather than at its next half-second turn.
 
-Datalink counts: a vehicle sees what its side's datalink shares. The
-proxies exist on the server only, so a vehicle whose crew is simulated
+**Datalink doesn't count by default.** The game's datalink passes a vehicle
+what other vehicles see: any friendly vehicle with datalink in the mission,
+not only AEGIS-M's. A Site already shares its own members' contacts, so a
+target that only datalink reports is ignored, and `DL` is dropped from what
+saw a contact. The CBA setting "AEGIS-M > General > Use Datalink Contacts"
+turns it on (e.g. a standalone SPAAG fed by a friendly AWACS).
+
+**Passive radar cues, it doesn't aim.** A contact only passive radar hears
+(an aircraft with its radar on) gives a bearing, not a track. It's pooled
+and cues the Site's radars (**Radar emission**), but no weapon is assigned
+to it until a radar, IR or visual sensor holds it. The debug overlays tag it
+`CUE ONLY`.
+
+The proxies exist on the server only, so a vehicle whose crew is simulated
 elsewhere (a headless client, a player gunner) doesn't see munitions.
+
+**Radar emission.** An active radar only sees while it emits, and while it
+emits, enemy radar-warning receivers and anti-radiation missiles can find
+it. Each Site sets when its radars emit (**Radar Emission**, a per-vehicle
+override too), applied with `setVehicleRadar`:
+
+| Mode | What its radars do |
+|---|---|
+| AI decides (default) | As without AEGIS-M. |
+| Always on | Emit all the time. |
+| Silent until cued | Off until another sensor finds a threat the radar covers. |
+| Intermittent | As Silent until cued, but searching meanwhile: 5 s on every 20 s by default. A linked group's intermittent radars take turns, their bursts spread evenly over the cycle (three radars: one comes on every 6.7 s, with 1.7 s gaps). |
+
+- **Cues** are contacts in the Site's picture (the whole linked group's):
+  an enemy radar heard by passive radar, an aircraft or round seen by IR or
+  visual sensors, another radar's, a linked Site's, or datalink's where
+  that's allowed.
+- **Coverage** is the radar's own reach and arcs, horizontal and vertical.
+  A radar on a turret covers whatever its turret can turn and elevate it
+  to (the vanilla radar truck's 120 x 120 degree radar covers all round,
+  from 70 degrees below the horizon to straight up).
+- **A lit radar stays lit** while any contact is in its coverage, while a
+  launcher's missiles are in flight at a target it covers (fire control),
+  and for **Stay Lit After Last Contact** (10 s) after the last.
+- **A narrow radar on its own turret** (no AEGIS-M weapon on it, like the
+  radar truck's) is turned by AEGIS-M while lit: onto its most urgent
+  contact, or sweeping round in steps of three quarters of its arc every
+  2 s. It's handed back to its crew while silent.
+- A Site with no sensor but its radars never lights in Silent until cued:
+  use Intermittent. Munitions don't emit, so passive radar never cues on
+  them; IR, visual and other radars do.
+- The trade-off: a munition released while every radar is silent goes
+  unseen until a radar comes on or it closes into IR or visual range. A
+  hostile aircraft is usually found and held before it releases, which
+  keeps the radars covering it lit. A friendly aircraft never cues (it
+  isn't a contact), so friendly rounds falling on the Site get the least
+  warning. `TRACKING` in the RPT gives how long after launch each munition
+  was first seen.
+
+**Anti-radiation missiles.** A missile whose own seeker is a passive radar
+(the vanilla HARM and Kh-58) is recognised from its config. When a Site
+sees one homing on one of its radars (`missileTarget`), or one with a Site
+radar emitting in its seeker's view, that radar shuts down, in every mode,
+whether or not that saves it (**Shut Down for Anti-Radiation Missiles**, on
+by default). It stays down until the missile is gone, or 5 s past when it
+would have arrived. The Site's other radars that cover the missile light up
+for it, so its guns keep a track. This works whether or not the Site
+engages missiles.
+
+RPT lines: `EMCON` (each radar's mode, going silent, back to searching),
+`CUE` (lit for a contact, and what found it), `ARM-SHUTDOWN` (shut down,
+with which other radars are still emitting, and back), `ARM-END` (how each
+anti-radiation missile ended: what it was homing on at its last check, how
+far it was from the nearest AEGIS-M radar and whether that radar was
+emitting, and whether any AEGIS-M sensor saw it). The status board,
+the laptop terminal and the 3D draw show each radar's state and why:
+`EMITTING`, `SILENT`, `SHUT DOWN`, or `AI: ...` while the AI decides. If a
+radar doesn't follow what AEGIS-M set within 2 s, they say so.
 
 **Firing commands the vehicle's own real weapon** with its
 actual loaded ammo, so ballistics, guidance, and damage are entirely the
@@ -404,7 +502,7 @@ thing, labels stacked rather than drawn over each other:
   the most urgent engagement on it. Label: its class, for an incoming
   munition seconds to impact, and the kinds of sensor that saw it in the
   last 3 s (`[RDR IR]`: active radar, IR, `VIS` visual, `PAS` passive
-  radar, `DL` datalink).
+  radar, `DL` datalink); `CUE ONLY` if only passive radar hears it.
 - **Engagements**: a line from weapon to target in its state's colour.
   Waiting ones (queued behind the launcher's current target, missiles in
   flight, held) are faint, so a launcher's queue doesn't drown out what
@@ -414,10 +512,11 @@ thing, labels stacked rather than drawn over each other:
   1. its name;
   2. network and sensor status, in light blue: its own sensors, the
      longest of each kind -- reach, arc, `turret` if it turns with one, and
-     for a radar whether it's emitting (it sees nothing while silent) --
-     then its Site's sensor vehicles and tracked contacts (`RADAR 16km
-     120deg turret emitting  PASSIVE 16km 360  |  SITE: 2 radars + 4
-     IR/visual, 7 tracks`), or `STANDALONE` with its own tracks. `NO SENSOR
+     for a radar its emission and why (it sees nothing while silent; see
+     **Radar emission**) -- then its Site's sensor vehicles and tracked
+     contacts (`RDR 16km 120deg turret EMITTING (holding: silent in 6s)  PAS
+     16km 360  |  SITE: 2 radars + 4 IR/visual, 7 tracks`), or `STANDALONE`
+     with its own tracks. `NO SENSOR
      ON SITE` in orange if it's networked but no vehicle of its Site has a
      sensor of its own;
   3. each weapon with rounds left and what it's doing (`MSL 4: firing +3
@@ -425,7 +524,9 @@ thing, labels stacked rather than drawn over each other:
 
   Name and weapons are in the vehicle's most urgent engagement's colour,
   grey while idle.
-- **Radars**: a faint ring at each one's detection range.
+- **Radars**: a faint ring at each one's detection range: blue while the
+  AI decides its emission, amber while AEGIS-M has it emitting, grey while
+  silent, red while shut down for an anti-radiation missile.
 - **Not active**: a vehicle AEGIS-M found capable but hasn't activated is
   grey with `NOT ACTIVE:` and why -- e.g. a launcher with no sensor of its
   own placed without a Site (`no sensor of its own -- sync it to a Site with
@@ -434,7 +535,7 @@ thing, labels stacked rather than drawn over each other:
   sensor (most tanks and IFVs) isn't shown: it's only used synced to a
   Site.
 
-An assigned weapon that isn't firing always logs why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED`, `FIRE-SKIP`, or
+An assigned weapon that isn't firing always logs why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED` (the line from the weapon's own muzzle to the target, naming what's in the way: terrain, or the object, its class and how far its top is above the muzzle), `FIRE-SKIP`, or
 `ASSIGN-CLEAR` with a reason. Every AEGIS-M RPT line carries the mission's
 game time (`[AEGIS-M] t=123.4 ...`): the RPT's own timestamp is wall-clock
 time, which keeps running while the game is paused.
@@ -447,8 +548,11 @@ FIRING, NO SOLUTION, LOS BLOCKED, NO AMMO, DESTROYED), target and ammo,
 with each weapon's worked engagements in their state colours (and how many
 more are queued); then other Sites and standalone Systems in summary; then
 **Not active** vehicles with why (e.g. a launcher with no sensor placed
-without a Site); and last the nearest Site's contacts, the sensors that saw
-each, and which weapons are on each (coloured the same way) -- the longest
+without a Site). Under each radar vehicle, its emission and why (`RDR
+EMITTING cued: ...`, `RDR SILENT silent until cued`, `RDR SHUT DOWN
+anti-radiation missile inbound ...`). Last, the nearest Site's contacts,
+the sensors that saw each (`cue only` for one only passive radar hears),
+and which weapons are on each (coloured the same way) -- the longest
 section, so it's the one a full hint box cuts off. It shows data wherever AEGIS-M runs its engagement
 logic: singleplayer, Eden Preview, or a hosted game's host.
 
@@ -475,8 +579,8 @@ or module-to-module link is a dashed cyan line.
 
 Short codes, everywhere in the debug: `RDR` radar, `IR`, `VIS` visual,
 `PAS` passive radar, `DL` datalink (a contact the game's datalink shared,
-or a vehicle with no sensor of its own, fed by its Site); `L` launcher,
-`C` CIWS.
+with Use Datalink Contacts on, or a vehicle with no sensor of its own, fed
+by its Site); `L` launcher, `C` CIWS.
 
 **RPT performance summary** (CBA setting "AEGIS-M > Debug > RPT Performance
 Summary", on by default) -- every 10 s, while AEGIS-M is doing anything, the
@@ -485,8 +589,8 @@ engagement ticks with work, aim solves and per-frame steers, CIWS rounds
 tracked / checked near the target / skipped in flight / time, engageability
 checks, standalone target re-evaluations, Fired events seen / threats among
 them / munitions ignored as landing clear, munition tracker checks / time
-(proxies created and moved included), sensor reads: munitions seen / time, reserve-plan cache hits and
-rebuilds, and the server's frames over the whole interval: average fps,
+(proxies created and moved included), sensor reads: munitions seen / time, reserve-plan cache hits,
+rebuilds and the intercept solves it ran, and the server's frames over the whole interval: average fps,
 worst frame and frames slower than 50 ms (paused time isn't counted).
 Idle, it writes nothing. The timings come from a 32-bit clock that only
 resolves to about 0.25 ms after an hour of game time, so treat them as
@@ -504,7 +608,7 @@ second.
 
 ## Settings
 
-The Site module's attributes are in five sections. Every default is chosen
+The Site module's attributes are in six sections. Every default is chosen
 so a Site works out of the box: each weapon uses its own real config
 envelope, and all threat classes are engaged.
 
@@ -528,8 +632,9 @@ envelope, and all threat classes are engaged.
 | Engage Missiles / Rockets / Bombs / Artillery, Mortar and MLRS Rounds / Fixed-Wing / Helicopters / Drones | all on | Which threat classes the Site engages. |
 | Target Min / Max Height (m above ground) | 0 / 0 | Ignore contacts outside this height band. Max 0 = no limit. |
 | Engage Friendly Munitions Threatening the Site | On | Also engage a friendly/neutral round predicted to hit the Site. |
-| Only Engage Munitions Threatening the Site | On | A hostile munition is only engaged while it's a threat to a Site vehicle: a shell/rocket predicted to land within the Threat Radius of one, a missile guided or flying at one, a bomb falling or flying at one (`IGNORED` in the RPT otherwise). Off: every hostile munition in reach is engaged. |
+| Only Engage Munitions Threatening the Site | On | A hostile munition is only engaged while it's a threat to a Site vehicle: a shell/rocket predicted to land within the Threat Radius of one, a missile guided or flying at one, or with one inside its seeker's view when its target can't be read, a bomb falling or flying at one (`IGNORED` in the RPT otherwise; see **IFF and threats**). Off: every hostile munition in reach is engaged. |
 | Threat Radius (m) | 0 | How close to a Site vehicle a predicted impact counts as a threat, for both settings above. 0 = the round's own config danger radius (`dangerRadiusHit`). |
+| Protected Area Radius (m) | 750 | The Site also defends a circle this size round its module: a hostile munition guided at anything inside it, flying down into it, or predicted to land in it is a threat (and sounds the Incoming Alarm). 0 = only the Site's vehicles. Not scaled by Range Scale. Drawn as a green ring with the threat rings (Threat Rings on Map), and a line on the status board. |
 
 **Launchers (Missiles)**
 
@@ -547,12 +652,21 @@ envelope, and all threat classes are engaged.
 |---|---|---|
 | Max Range (m) | 0 | 0 = the gun's own reach (Cheetah 35 mm: 2500 m). |
 | Min Elevation (deg) | 5 | Never engages below it; holds fire while the barrel is below it. |
-| Open Fire at Hit Chance (%) | 40 | Tracks from its full reach, but only fires where one burst is at least this likely to hit -- from the gun's measured scatter, the target's straying, the round's flight time, the hit radius and the rounds per burst; never past the round's lifetime reach or inside its arming distance. Lower = earlier, farther, more rounds per hit. 0 = its full reach. |
+| Open Fire at Hit Chance (%) | 40 | Tracks from its full reach, but only fires where one burst is at least this likely to hit -- from the gun's measured scatter (its rounds' misses about where it now aims: an aiming error its spotting has since corrected doesn't count), the target's straying, the round's flight time, the hit radius and the rounds per burst; never past the round's lifetime reach or inside its arming distance. Lower = earlier, farther, more rounds per hit. 0 = its full reach. |
 | Cue Before In Range (s) | 2 | A gun is assigned a target this long before it comes into reach (judged on where the target will be by then), so its crew's reaction and its barrel's swing are done by the time it can fire; it holds meanwhile (`CUED` in the RPT). 0 = assigned only once in reach. |
 | Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
 | Pause Between Bursts (s) | 1 | Gap after a burst before firing again at the same target. After a kill the gun goes straight on to its next target. |
 | Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |
 | Self-Destruct Rounds | Off | A round that hits nothing detonates once it has passed the gun's reach (CIWS Max Range, or the gun's own config reach), like a C-RAM round's self-destruct fuze, instead of flying on until its lifetime runs out and disappearing in mid-air -- or just before that lifetime, if it comes first. The fuze time is the round's flight to the gun's reach under its own drag, from its real muzzle speed; each ammo's lifetime (`timeToLive`) and drag are read once per ammo type -- they differ between weapon systems and mods (the vanilla 35 mm lives 6 s, 30 s with ACE). Each gun's fuze time is logged (`SELF-DESTRUCT-FUZE`), and the rounds that went off after each burst (`SELF-DESTRUCT`). |
+
+**Radar Emission** (see **Radar emission** above)
+
+| Setting | Default | What it does |
+|---|---|---|
+| Radar Emission | AI decides | When the Site's active radars emit: AI decides, Always on, Silent until cued, or Intermittent. |
+| Stay Lit After Last Contact (s) | 10 | Silent until cued and Intermittent: how long a radar stays lit after the last contact leaves its coverage. |
+| Intermittent: Seconds On / Off | 5 / 15 | Intermittent: each search burst's length, and the silence between bursts. |
+| Shut Down for Anti-Radiation Missiles | On | In every mode, a radar shuts down while the Site sees an anti-radiation missile homing on it, or with it emitting in the missile's seeker view. |
 
 **Alarms**
 
@@ -579,14 +693,15 @@ Range settings are real-world metres, scaled by the CBA setting AEGIS-M
 Range Scale. Launcher ranges never apply to guns, and vice versa.
 
 **Per-vehicle overrides.** Every vehicle has an **AEGIS-M: Vehicle
-Overrides** category in its own Eden attributes, with the same four
-sections. Tick **Override Site Settings**, then change only what should
+Overrides** category in its own Eden attributes, with the same sections
+(not Alarms). Tick **Override Site Settings**, then change only what should
 differ for that vehicle; everything left on "Site setting" (or blank) keeps
 following the Site. Examples: set a long-range SAM's "Artillery, Mortar and
 MLRS Rounds" to Ignore so it never spends missiles on shells, or give one
-CIWS a shorter Max Range as an inner layer. Overrides on a radar affect its
-Interception Targets (what it reports, and which munitions it treats as
-threats). A vehicle's active overrides are logged at start
+CIWS a shorter Max Range as an inner layer, or keep one long-range search
+radar Always on while the rest stay Silent until cued. Overrides on a radar
+affect its Interception Targets (what it reports, and which munitions it
+treats as threats) and its Radar Emission. A vehicle's active overrides are logged at start
 (`OVERRIDES:` in the RPT). Script equivalent:
 `_veh setVariable ["AEGISM_ovr_enabled", true]` plus
 `_veh setVariable ["AEGISM_ovr_<setting>", value]`

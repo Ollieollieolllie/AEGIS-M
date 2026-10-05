@@ -14,9 +14,9 @@ class CfgPatches
 #include "CfgFunctions.hpp"
 
 // Munition proxies: an invisible sensor target carried with every tracked
-// munition (aegism_detect_fnc_proxyCreate: attached half a second after
-// launch, or moved every frame by aegism_detect_fnc_proxyFollow where an
-// ammo type doesn't carry attachments),
+// munition (aegism_detect_fnc_proxyCreate: attached a tenth of a second
+// after launch, or moved every frame by aegism_detect_fnc_proxyFollow where
+// an ammo type doesn't carry attachments),
 // so the game's own sensors decide whether a munition is seen -- radar, IR
 // and visual, with each sensor's own range, arc, line of sight, fog, speed
 // limits, ground clutter, and whether a radar is emitting; datalink shares
@@ -31,21 +31,23 @@ class CfgPatches
 // Darter's own: its camo selection doesn't cover all of it, so parts of it
 // showed. (hideObject would also hide it from radar.)
 //
-// Its signature is size 1 on radar, IR and visual -- not the Darter's 0.1:
-// the game multiplies a sensor's range by the target's size (the Cheetah's
-// 9000 m radar first saw a Darter at 852 m), and size 1 means each sensor
-// sees a munition at its own configured range. The Darter has no heat
+// Its signature is radar 2.5, IR 2.5, visual 1 -- not the Darter's 0.1. The
+// game scales a sensor's range by the target's size (the Cheetah's 9000 m
+// radar first saw a Darter at 852 m); size 1 was each sensor's own
+// configured range, and radar and IR were raised to 2.5 to help the sensors
+// pick munitions up -- many went unseen at 1. The Darter has no heat
 // signature (irTarget 0); a munition is hot, so IR is on, and the proxy is
 // made hot at creation: its engine started (an IR sensor only sees a vehicle
 // whose engine runs -- with it off, no IR sensor ever saw a munition) and
-// its thermal look set (setVehicleTIPars). Its engine is silent (below). Everything that would make it more than a
+// its thermal look set (setVehicleTIPars). Its engine is silent (below).
+// Everything that would make it more than a
 // target is removed: no crew, no turret (the Darter's camera), no sensors
 // or datalink of its own (so it costs no sensor simulation), not a UAV (so
 // no terminal can connect to it).
 //
 // One class per AEGIS-M threat class (aegism_detect_fnc_classifyAmmoClass),
 // "AEGISM_MunitionProxy_<class>", so each kind of munition can carry its
-// own signature -- all size 1 for now.
+// own signature -- all the same for now.
 class CfgVehicles
 {
     class UAV_01_base_F;
@@ -64,11 +66,11 @@ class CfgVehicles
         receiveRemoteTargets = 0;
         reportOwnPosition = 0;
         radarTarget = 1;
-        radarTargetSize = 1;
+        radarTargetSize = 2.5;
         visualTarget = 1;
-        visualTargetSize = 1;
+        visualTargetSize = 2.5;
         irTarget = 1;
-        irTargetSize = 1;
+        irTargetSize = 2.5;
         class Turrets {};
         class Components {};
         // Silent: its engine runs (an IR sensor only sees a vehicle whose

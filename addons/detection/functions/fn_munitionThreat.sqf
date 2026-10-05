@@ -10,7 +10,13 @@ Description:
 
         missile - its own seeker target (missileTarget) is one of the
             protected vehicles ("guided"), or its current line of flight
-            passes within the threat radius of one, closing ("heading")
+            passes within the threat radius of one, closing ("heading"), or,
+            its target not readable (ACE guidance, a laser spot), one is
+            inside its seeker's view: within its seeker cone (aegism_detect_
+            fnc_seekerCone) of its line of flight, closing, and its angle off
+            that line no wider than at the last check ("seeker"). An
+            unguided one (a shotMissile that can't steer, like the vanilla
+            Rocket_04_HE_F) is judged like a rocket, its fall included.
         bomb - its line of flight passes within the threat radius, or its
             predicted fall lands within it
         artillery round, rocket - its predicted impact falls within the
@@ -21,6 +27,16 @@ Description:
             airFriction 0, mortar rounds ~-0.0003), so this is accurate for
             the rounds that matter; a still-burning rocket is under-predicted
             until burnout, and re-evaluated every tracker tick anyway.
+
+    Protected areas (a hostile munition's verdict only, _useAreas): each
+    Site of the group also protects a circle round its own module, of the
+    Site's Protected Area Radius (protectRadius; the Shared Site
+    Coordinator's when there is one; 0 = none). A munition is a threat
+    ("area") if it's guided at anything inside one (an ammo truck, a
+    building), its descending line of flight comes down inside one (a
+    missile or bomb), or its predicted fall lands inside one (a round,
+    rocket, bomb or unguided missile) -- each to the area centre's height.
+    The protected vehicles' own tests above come first.
 
     Threat radius: the doctrine friendlyThreatRadius if > 0, else the
     munition's own CfgAmmo dangerRadiusHit (the radius the game's AI keeps
@@ -34,11 +50,20 @@ Parameters:
     _class - its threat class, from aegism_detect_fnc_classifyTarget <STRING>
     _poolOwner - the radar System evaluating it <OBJECT>
     _radiusSetting - doctrine friendlyThreatRadius, 0 = from config <NUMBER>
+    _flags - the tracked munition's flags (aegism_detect_fnc_trackMunition),
+        where a missile's angle to the vehicles is kept between checks
+        <HASHMAP, default a new one>
+    _useAreas - judge it against the Sites' protected areas too (hostile
+        munitions) <BOOLEAN, default true>
 
 Returns:
     [] if no threat, else [threatened vehicle <OBJECT>, predicted miss
     distance m <NUMBER>, threat radius m <NUMBER>, "guided" | "heading" |
-    "ballistic"]
+    "seeker" | "ballistic", and for "seeker" the degrees it is off the
+    missile's line of flight <NUMBER>], or for a protected area [Site
+    <OBJECT>, distance from its centre m <NUMBER>, its radius m <NUMBER>,
+    "area", "guided" | "heading" | "ballistic", and for "guided" what it's
+    guided at <OBJECT>]
 
 Examples:
     [_shell, "artilleryShell", _radar, 0] call aegism_detect_fnc_munitionThreat;
@@ -49,7 +74,7 @@ Author:
 
 #define AEGISM_GRAVITY 9.80665
 
-params ["_projectile", "_class", "_poolOwner", ["_radiusSetting", 0]];
+params ["_projectile", "_class", "_poolOwner", ["_radiusSetting", 0], ["_flags", createHashMap], ["_useAreas", true]];
 
 // A Site linked to others protects the whole group (aegism_network_fnc_
 // linkSites).
@@ -57,7 +82,28 @@ private _network = _poolOwner getVariable ["AEGISM_network", objNull];
 private _protected = if (isNull _network) then { [_poolOwner] } else {
     (_network getVariable ["AEGISM_groupMembers", _network getVariable ["AEGISM_networkMembers", []]]) select { !isNull _x && {alive _x} }
 };
-if (_protected isEqualTo []) exitWith { [] };
+// Protected areas: a circle round each Site module of the group, of the
+// Site's Protected Area Radius (the Shared Site Coordinator's, when there is
+// one: aegism_fnc_siteSettingsSource) -- [Site, centre ASL, radius].
+private _areas = [];
+if (_useAreas && {!isNull _network}) then {
+    {
+        if (!isNull _x) then {
+            private _areaRadius = (([_x] call aegism_fnc_siteSettingsSource) getVariable ["AEGISM_engagement", createHashMap]) getOrDefault ["protectRadius", 750];
+            if (_areaRadius > 0) then { _areas pushBack [_x, getPosASL _x, _areaRadius]; };
+        };
+    } forEach (_network getVariable ["AEGISM_linkSites", [_network]]);
+};
+if (_protected isEqualTo [] && {_areas isEqualTo []}) exitWith { [] };
+// The first protected area a ground point (ASL) is inside: [Site, distance
+// from its centre, radius], or [].
+private _fnInArea = {
+    private _point = _this;
+    private _index = _areas findIf { (_point distance2D (_x select 1)) <= (_x select 2) };
+    if (_index < 0) exitWith { [] };
+    (_areas select _index) params ["_site", "_centre", "_areaRadius"];
+    [_site, _point distance2D _centre, _areaRadius]
+};
 
 // A carrier round (simulation shotSubmunitions, e.g. the MLRS R_230mm_HE)
 // has no warhead of its own -- dangerRadiusHit -1 and a token blast radius
@@ -111,6 +157,9 @@ private _missileTarget = if (_class == "missile") then { missileTarget _projecti
 if (!isNull _missileTarget && {_missileTarget in _protected}) exitWith {
     [_missileTarget, 0, _radius, "guided"]
 };
+// Guided at anything inside a protected area -- an ammo truck, a building.
+private _guidedArea = if (isNull _missileTarget) then { [] } else { (getPosASL _missileTarget) call _fnInArea };
+if (_guidedArea isNotEqualTo []) exitWith { _guidedArea + ["area", "guided", _missileTarget] };
 
 private _pos = getPosASL _projectile;
 private _velocity = velocity _projectile;
@@ -134,9 +183,69 @@ if (_class in ["missile", "bomb"]) then {
             };
         } forEach _protected;
     };
+    // Or flying into a protected area: where its line of flight, descending,
+    // comes down to the area's own height.
+    if (_best isEqualTo [] && {_vz < 0}) then {
+        {
+            _x params ["_site", "_centre", "_areaRadius"];
+            private _t = ((_pos select 2) - (_centre select 2)) / -_vz;
+            if (_t > 0) then {
+                private _ground = _pos vectorAdd (_velocity vectorMultiply _t);
+                private _distance = _ground distance2D _centre;
+                if (_distance <= _areaRadius && {_best isEqualTo []}) then { _best = [_site, _distance, _areaRadius, "area", "heading"]; };
+            };
+        } forEach _areas;
+    };
 };
-// A missile guided at something else, not flying at the Site: no threat.
-if (_class == "missile") exitWith { _best };
+// A guided missile whose target can't be read (ACE's own guidance, a laser
+// spot, a position) and isn't flying straight at one: a protected vehicle
+// inside its seeker's view -- within its seeker cone of its line of flight
+// (aegism_detect_fnc_seekerCone), closing -- could be what it's homing on.
+// A guided missile on its way in steers, so its line of flight passes within
+// a blast radius of its target only at the very end: a Scalpel seen at 2.2km
+// was judged no threat until 51m from a Site vehicle.
+//
+// And only while it's converging on that vehicle: a missile homing on it
+// turns toward it, so its angle off closes check by check; one flying past
+// opens. Judged against the same vehicle's angle at this protector's last
+// check (flags "seekerOff": [[protector, vehicle, angle], ...]), so the
+// first sighting waits one tracker check (0.5s). Without it a Missile_AGM_02_F
+// with a radar 22 deg off its flight, flying past it, cost a RAM.
+private _cone = if (_class == "missile") then { [typeOf _projectile] call aegism_detect_fnc_seekerCone } else { -1 };
+if (_cone >= 0 && {_best isEqualTo []} && {isNull _missileTarget}) then {
+    private _speed = vectorMagnitude _velocity;
+    if (_speed > 0) then {
+        private _bestOff = 1e10;
+        private _candidate = [];
+        {
+            private _toVehicle = (getPosASL _x) vectorDiff _pos;
+            private _distance = vectorMagnitude _toVehicle;
+            if (_distance > 0) then {
+                private _off = acos ((((_toVehicle vectorDotProduct _velocity) / (_distance * _speed)) max -1) min 1);
+                if (_off <= _cone && {_off < 90} && {_off < _bestOff}) then {
+                    _bestOff = _off;
+                    _candidate = [_x, _distance * sin _off, _radius, "seeker", _off];
+                };
+            };
+        } forEach _protected;
+
+        private _protector = [_network, _poolOwner] select (isNull _network);
+        private _history = _flags getOrDefault ["seekerOff", []];
+        private _index = _history findIf { (_x select 0) == _protector };
+        private _last = if (_index < 0) then { [] } else { _history select _index };
+        if (_candidate isNotEqualTo []) then {
+            if (_last isNotEqualTo [] && {(_last select 1) == (_candidate select 0)} && {_bestOff <= (_last select 2)}) then { _best = _candidate; };
+            if (_index < 0) then { _history pushBack [_protector, _candidate select 0, _bestOff]; } else { _history set [_index, [_protector, _candidate select 0, _bestOff]]; };
+        } else {
+            if (_index >= 0) then { _history deleteAt _index; };
+        };
+        _flags set ["seekerOff", _history];
+    };
+};
+// A guided missile homing on something else, and not flying at the Site: no
+// threat. An unguided one (a rocket built as a missile that can't steer)
+// falls like a rocket, below.
+if (_class == "missile" && {_cone >= 0}) exitWith { _best };
 
 {
     // Later root of z0 + vz*t - g*t^2/2 = protected vehicle's height: the
@@ -152,5 +261,21 @@ if (_class == "missile") exitWith { _best };
         };
     };
 } forEach _protected;
+
+// Or predicted to land inside a protected area, the same fall down to the
+// area's own height.
+if (_best isEqualTo []) then {
+    {
+        _x params ["_site", "_centre", "_areaRadius"];
+        private _disc = _vz * _vz + 2 * AEGISM_GRAVITY * ((_pos select 2) - (_centre select 2));
+        if (_disc >= 0 && {_best isEqualTo []}) then {
+            private _t = (_vz + sqrt _disc) / AEGISM_GRAVITY;
+            if (_t > 0) then {
+                private _distance = [(_pos select 0) + _vx * _t, (_pos select 1) + _vy * _t] distance2D _centre;
+                if (_distance <= _areaRadius) then { _best = [_site, _distance, _areaRadius, "area", "ballistic"]; };
+            };
+        };
+    } forEach _areas;
+};
 
 _best

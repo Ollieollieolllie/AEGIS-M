@@ -168,7 +168,7 @@ class CfgVehicles
         isTriggerActivated = 0;
         is3DEN = 1;
 
-        // Four sections, each opened by an Eden "SubCategory" heading (the
+        // Sections, each opened by an Eden "SubCategory" heading (the
         // same control vanilla uses for its Garbage Collection sections).
         // Eden lists attributes in the order declared here. Property names
         // are unchanged from the old flat list, so values saved in existing
@@ -447,7 +447,7 @@ class CfgVehicles
             class EngageOnlyThreats
             {
                 displayName = "Only Engage Munitions Threatening the Site";
-                tooltip = "On (default): a hostile munition is only engaged while it's a threat to a Site vehicle -- an artillery, mortar or MLRS round (or unguided rocket) predicted to land within the Threat Radius of one; a missile guided at one, or flying on a line that passes within the Threat Radius of one; a bomb whose fall or line of flight does. One landing well clear of the Site, or a missile flying at something else, doesn't cost a single round (logged once as IGNORED), and is picked up if it turns toward the Site. Off: every hostile munition in reach is engaged, wherever it's going.";
+                tooltip = "On (default): a hostile munition is only engaged while it's a threat to a Site vehicle -- an artillery, mortar or MLRS round (or unguided rocket) predicted to land within the Threat Radius of one; a missile guided at one, flying on a line that passes within the Threat Radius of one, or -- when what it's homing on can't be read (ACE guidance, a laser spot) -- with one inside its seeker's view (its config seeker cone of its line of flight, closing); a missile that can't steer is judged like a rocket; a bomb whose fall or line of flight does. One landing well clear of the Site, or a missile flying at something else, doesn't cost a single round (logged once as IGNORED), and is picked up if it turns toward the Site. Off: every hostile munition in reach is engaged, wherever it's going.";
                 property = "engageOnlyThreats";
                 control = "Checkbox";
                 expression = "_this setVariable ['engageOnlyThreats', _value];";
@@ -463,6 +463,17 @@ class CfgVehicles
                 expression = "_this setVariable ['friendlyThreatRadius', _value];";
                 typeName = "NUMBER";
                 defaultValue = "0";
+            };
+
+            class ProtectRadius
+            {
+                displayName = "Protected Area Radius (m)";
+                tooltip = "The Site defends an area, not just its own vehicles: a circle this many metres round the Site module. A hostile munition guided at anything inside it (an ammo truck, a building, troops), flying down into it, or predicted to land in it is a threat -- engaged even with Only Engage Munitions Threatening the Site on, and it sounds the Incoming Alarm -- as well as one threatening a Site vehicle. Linked Sites each protect their own circle; with a Shared Site Coordinator, its radius applies round every Site. Friendly munitions are still judged on the Site's vehicles only. 0 = only the Site's vehicles. Default 750. Not scaled by Range Scale. Drawn as a green ring with the Threat Rings on Map, and shown on the status board.";
+                property = "protectRadius";
+                control = "Edit";
+                expression = "_this setVariable ['protectRadius', _value];";
+                typeName = "NUMBER";
+                defaultValue = "750";
             };
 
             // ===================================================== LAUNCHERS
@@ -623,6 +634,73 @@ class CfgVehicles
                 expression = "_this setVariable ['ciwsSelfDestruct', _value];";
                 typeName = "BOOL";
                 defaultValue = "false";
+            };
+
+            // ================================================ RADAR EMISSION
+            class Section_Emcon
+            {
+                property = "aegism_site_section_emcon";
+                control = "SubCategory";
+                displayName = "Radar Emission";
+                title = "Radar Emission";
+                description = "";
+            };
+            class Emcon
+            {
+                displayName = "Radar Emission";
+                tooltip = "When the Site's active radars emit. A radar only sees while it emits (aircraft and incoming rounds alike), and while it emits, enemy radar-warning receivers and anti-radiation missiles can find it. AI decides (default): as without AEGIS-M. Always on: always emitting. Silent until cued: off until another sensor finds a threat it covers (within its reach and arcs; one on a turret counts what its turret can turn to) -- an enemy radar heard by passive radar, an aircraft or round seen by IR or visual sensors, another radar, a linked Site, or datalink if the CBA setting Use Datalink Contacts is on. It then stays lit while anything is in its coverage, while a launcher's missiles are in flight at a target it covers, and Stay Lit After Last Contact after the last. A Site with no sensor but its radars never lights in this mode: use Intermittent. Intermittent: as Silent until cued, but searching meanwhile, Seconds On every Seconds On + Seconds Off. A narrow radar on its own turret (the vanilla radar truck's 120 degrees) is turned by AEGIS-M while lit: onto its most urgent contact, or sweeping round. A contact only passive radar hears gives a bearing, not a track: it cues radars but no weapon engages it until a radar, IR or visual sensor holds it. Logged as EMCON and CUE.";
+                property = "emcon";
+                control = "Combo";
+                expression = "_this setVariable ['emcon', _value];";
+                typeName = "STRING";
+                defaultValue = "'ai'";
+                class Values
+                {
+                    class Ai { name = "AI decides"; value = "ai"; };
+                    class On { name = "Always on"; value = "on"; };
+                    class Cued { name = "Silent until cued"; value = "cued"; };
+                    class Intermittent { name = "Intermittent"; value = "intermittent"; };
+                };
+            };
+            class EmconHold
+            {
+                displayName = "Stay Lit After Last Contact (s)";
+                tooltip = "Silent until cued and Intermittent: how long a radar stays lit after the last contact leaves its coverage, before it goes silent (or back to its intermittent search).";
+                property = "emconHold";
+                control = "Edit";
+                expression = "_this setVariable ['emconHold', _value];";
+                typeName = "NUMBER";
+                defaultValue = "10";
+            };
+            class EmconBurstOn
+            {
+                displayName = "Intermittent: Seconds On";
+                tooltip = "Intermittent: how long each search burst lasts. The intermittent radars of a Site (and the Sites linked with it) take turns, their bursts spread evenly over the cycle: three radars at 5s on, 15s off -- one comes on every 6.7s, with 1.7s gaps.";
+                property = "emconBurstOn";
+                control = "Edit";
+                expression = "_this setVariable ['emconBurstOn', _value];";
+                typeName = "NUMBER";
+                defaultValue = "5";
+            };
+            class EmconBurstOff
+            {
+                displayName = "Intermittent: Seconds Off";
+                tooltip = "Intermittent: how long a radar stays silent between search bursts.";
+                property = "emconBurstOff";
+                control = "Edit";
+                expression = "_this setVariable ['emconBurstOff', _value];";
+                typeName = "NUMBER";
+                defaultValue = "15";
+            };
+            class ArmShutdown
+            {
+                displayName = "Shut Down for Anti-Radiation Missiles";
+                tooltip = "On (default), in every Radar Emission mode: a radar shuts down as soon as the Site sees an anti-radiation missile (one with a passive radar seeker, like the HARM or Kh-58) homing on it, or with it emitting in the missile's seeker view -- whether or not that saves it -- and comes back once the missile is gone, or past when it would have arrived. The Site's other radars that cover the missile light up for it (Silent until cued, Intermittent), and its guns engage it as usual. Logged as ARM-SHUTDOWN.";
+                property = "armShutdown";
+                control = "Checkbox";
+                expression = "_this setVariable ['armShutdown', _value];";
+                typeName = "BOOL";
+                defaultValue = "true";
             };
 
             // ======================================================== ALARMS

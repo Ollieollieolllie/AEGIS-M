@@ -49,12 +49,26 @@ Returns:
         friendlyThreatRadius - metres from a Site member a friendly
             munition's predicted impact must fall within to count as a
             threat; 0 = the munition's own config dangerRadiusHit <NUMBER>
+        protectRadius - a Site's protected area: metres round its module
+            inside which a hostile munition landing, or guided at anything,
+            is a threat (aegism_detect_fnc_munitionThreat); 0 = only the
+            Site's vehicles. A Site's own setting, not a vehicle's (a
+            standalone vehicle has no area) <NUMBER>
         targetClassAllowlist - permitted contact classes <ARRAY of STRING>
         ciwsLastResort - a CIWS gun holds while a launcher covers the
             contact <BOOLEAN>
         ciwsSelfDestruct - a CIWS round that hits nothing detonates just
             before its lifetime runs out (aegism_intercept_fnc_
             ciwsSelfDestruct) <BOOLEAN>
+        emcon - Radar Emission: "ai" (the AI decides) | "on" | "cued"
+            (silent until cued) | "intermittent" (aegism_system_fnc_
+            emconUpdate) <STRING>
+        emconHold - seconds a cued radar stays lit after the last contact
+            in its coverage <NUMBER>
+        emconBurstOn, emconBurstOff - intermittent search: seconds on, then
+            seconds off <NUMBER>
+        armShutdown - a radar shuts down while an anti-radiation missile is
+            inbound on it, in every Radar Emission mode <BOOLEAN>
 
 Examples:
     [] call aegism_system_fnc_defaultEngagementSettings;
@@ -82,7 +96,13 @@ createHashMapFromArray [
     ["engageFriendlyThreats", true],
     ["engageOnlyThreats", true],
     ["friendlyThreatRadius", 0],
+    ["protectRadius", 750],
     ["targetClassAllowlist", ["missile", "rocket", "bomb", "artilleryShell", "fixedWing", "helicopter", "drone"]],
     ["ciwsLastResort", false],
-    ["ciwsSelfDestruct", false]
+    ["ciwsSelfDestruct", false],
+    ["emcon", "ai"],
+    ["emconHold", 10],
+    ["emconBurstOn", 5],
+    ["emconBurstOff", 15],
+    ["armShutdown", true]
 ]

@@ -55,10 +55,12 @@ Description:
             deviation m, deviation samples], for aegism_intercept_fnc_
             ciwsBurst's SPOTTING line
         scatter - target class -> [round class, rounds, sum of squared
-            angular miss square to the line of sight, sum of squared target
-            deviation m, sum of squared flight time s] (fading like the
-            estimate) -- the gun's measured accuracy, for aegism_intercept_
-            fnc_openFireRange
+            angular miss square to the line of sight -- each round's miss as
+            it would have been with the correction the gun now carries, so
+            an error the correction has taken out isn't scatter -- sum of
+            squared target deviation m, sum of squared flight time s]
+            (fading like the estimate) -- the gun's measured accuracy, for
+            aegism_intercept_fnc_openFireRange
 
 Parameters:
     _spot - [system, turretPath, burstId, correction at firing [lead s,
@@ -165,10 +167,22 @@ _corrections set [_targetClass, [
 ]];
 
 // --- The gun's measured accuracy (aegism_intercept_fnc_openFireRange) --------
-// Its rounds' angular miss square to the line of sight, as fired (with the
-// correction they carried), and how far the real target strayed from the
-// predicted track against the round's flight time.
+// Its rounds' angular miss square to the line of sight, as it would have
+// been with the correction the gun carries NOW (this round included) -- its
+// scatter about where it now aims -- and how far the real target strayed
+// from the predicted track against the round's flight time. Taken as fired,
+// a lead error the correction then took out counted as scatter: one burst at
+// a fast missile, 71m behind it, put the Cheetah's measured scatter at 37-47
+// mrad (config 4.5) and its open-fire range at 400-500m, for every missile
+// after it.
 private _perpendicular = _miss vectorDiff (_los vectorMultiply (_miss vectorDotProduct _los));
+(_corrections get _targetClass) params ["_leadNow", "_elevationNow"];
+if (_crossSpeed * _flightTime > _targetRadius) then {
+    _perpendicular = _perpendicular vectorAdd (_along vectorMultiply ((_leadNow - _leadAtFire) * _crossSpeed));
+};
+if (_cosElevation > 0.001) then {
+    _perpendicular = _perpendicular vectorAdd ((_upSquare vectorMultiply (1 / _cosElevation)) vectorMultiply ((_elevationNow - _elevationAtFire) * _range));
+};
 private _scatterAll = _ts get "scatter";
 if (isNil "_scatterAll") then { _scatterAll = createHashMap; _ts set ["scatter", _scatterAll]; };
 private _scatter = _scatterAll getOrDefault [_targetClass, []];

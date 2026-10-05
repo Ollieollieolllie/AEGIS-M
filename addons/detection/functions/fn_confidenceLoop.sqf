@@ -15,8 +15,13 @@ Description:
     allowlisted, genuinely hostile (IFF, see aegism_detect_fnc_isHostile),
     non-destroyed sensor target is pooled at full confidence, with the
     sensor kinds the engine says saw it (getSensorTargets' 4th element,
-    e.g. "activeradar", "ir"). A contact new to this vehicle's pool is
-    logged once (DETECT) with them. Contacts no longer refreshed by any
+    e.g. "activeradar", "ir"). What the game's datalink passes on from
+    other vehicles ("datalink") only counts with the CBA setting Use
+    Datalink Contacts on: off (the default), a target only datalink reports
+    is skipped, aircraft and munitions alike. A contact new to this
+    vehicle's pool is logged once (DETECT) with them. A contact only
+    passive radar hears is pooled, but only cues the Site's radars (aegism_
+    fnc_hasTrack). Contacts no longer refreshed by any
     sensor expire (aegism_detect_fnc_pruneStaleContacts) rather than being
     deleted the instant one sensor loses them.
 
@@ -75,23 +80,40 @@ private _lastRejects = _poolOwner getVariable ["AEGISM_lastDetectReject", create
 private _rejects = createHashMap;
 // Munition key -> sensor kinds, for every munition proxy seen this tick.
 private _seenMunitions = createHashMap;
+// The game's datalink passes on what OTHER vehicles see -- any friendly
+// vehicle with datalink in the mission, not only AEGIS-M's (a Site shares
+// its own members' contacts itself). Used only with the CBA setting Use
+// Datalink Contacts on; otherwise "datalink" is dropped from what saw a
+// target, and a target only datalink reports is skipped.
+private _useDatalink = "aegism_main_useDatalink" call CBA_settings_fnc_get;
 
 {
     _x params ["_target", "", "_relationship", ["_sensorSources", [], [[]]]];
     private _sources = (_sensorSources select { _x isEqualType "" }) apply { toLower _x };
+    // Seen by no sensor of this vehicle's own: skipped.
+    private _datalinkOnly = false;
+    if (!_useDatalink && {"datalink" in _sources}) then {
+        _sources = _sources - ["datalink"];
+        _datalinkOnly = _sources isEqualTo [];
+    };
 
     if (!isNull _target && {_target isKindOf "AEGISM_MunitionProxy"}) then {
         // A munition's sensor proxy: its munition is seen by this vehicle.
         private _munitionKey = _target getVariable ["AEGISM_proxyKey", ""];
-        if (_munitionKey != "") then {
+        if (_munitionKey != "" && {!_datalinkOnly}) then {
             _seenMunitions set [_munitionKey, _sources];
             PERF_INC(PERF_PROXY_SEEN);
+            // Not in any pool yet: checked at once, not at its next turn
+            // (aegism_detect_fnc_munitionTracker, every 0.5 s) -- this read is
+            // stored below, before the tracker's next frame.
+            private _entry = _target getVariable "AEGISM_proxyEntry";
+            if (!isNil "_entry" && {(_entry select 4) isEqualTo []}) then { _entry set [5, time]; };
         };
     } else {
         // IFF: getSensorTargets reports not-yet-identified contacts as
         // "unknown", including friendly aircraft at range -- engaging
         // "unknown" alone would shoot down friendlies. Require real hostility.
-        if (_relationship != "friendly" && {_relationship != "destroyed"} && {!isNull _target} && {alive _target} && {[_ownSide, side _target] call aegism_detect_fnc_isHostile}) then {
+        if (!_datalinkOnly && {_relationship != "friendly"} && {_relationship != "destroyed"} && {!isNull _target} && {alive _target} && {[_ownSide, side _target] call aegism_detect_fnc_isHostile}) then {
             private _class = [_target] call aegism_detect_fnc_classifyTarget;
 
             if (_class in _allowlist) then {

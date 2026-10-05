@@ -15,8 +15,10 @@ Description:
     (its own sensor config, and every turret's) whose componentType is one
     AEGIS-M uses -- whatever the component class itself is called:
         radar   - ActiveRadarSensorComponent
-        passive - PassiveRadarSensorComponent (sees only what emits: a
-                  radar that's on). Recorded, not yet used for detection.
+        passive - PassiveRadarSensorComponent (hears only what emits: a
+                  radar that's on). What it hears cues the Site's radars
+                  (Radar Emission), but isn't engaged on its own (aegism_
+                  fnc_hasTrack).
         ir      - IRSensorComponent
         visual  - VisualSensorComponent
     This is exactly the config the engine's own getSensorTargets reads, and
@@ -82,7 +84,7 @@ Parameters:
 Returns:
     HashMap. Keys:
         sensors - every sensor, longest reach first, each [type, range, arc,
-            aim, viewDistanceCoef, maxFog, component]:
+            aim, viewDistanceCoef, maxFog, component, verticalArc, aimDown]:
             type - "radar" / "passive" / "ir" / "visual"
             range - reach, metres; arc - horizontal arc, degrees
             aim - turret path it turns with, or [] for the hull
@@ -91,6 +93,9 @@ Returns:
                 (vanilla IR and visual: 1); -1 = no cap
             maxFog - maxFogSeeThrough, -1 if undefined
             component - its config class name
+            verticalArc - angleRangeVertical, degrees (360 if undefined;
+                the vanilla radar template's is 120)
+            aimDown - degrees its boresight is tilted down (0 if undefined)
         hasRadar - an active radar <BOOLEAN>
         hasSensor - a sensor of its own that finds aircraft: an active
             radar, IR or visual <BOOLEAN>
@@ -178,6 +183,7 @@ private _fnReadSensors = {
             };
             private _viewDistanceCoef = if (isNumber (_airCfg >> "viewDistanceLimitCoef")) then { getNumber (_airCfg >> "viewDistanceLimitCoef") } else { -1 };
             private _arc = if (isNumber (_componentCfg >> "angleRangeHorizontal")) then { getNumber (_componentCfg >> "angleRangeHorizontal") } else { 360 };
+            private _verticalArc = if (isNumber (_componentCfg >> "angleRangeVertical")) then { getNumber (_componentCfg >> "angleRangeVertical") } else { 360 };
             private _maxFog = if (isNumber (_componentCfg >> "maxFogSeeThrough")) then { getNumber (_componentCfg >> "maxFogSeeThrough") } else { -1 };
 
             // Where it points: with its animDirection's turret; otherwise
@@ -190,7 +196,7 @@ private _fnReadSensors = {
             if (_arc >= 360) then { _aim = []; };
 
             if (_range > 0) then {
-                _sensors pushBack [_type, _range, _arc min 360, _aim, _viewDistanceCoef, _maxFog, configName _componentCfg];
+                _sensors pushBack [_type, _range, _arc min 360, _aim, _viewDistanceCoef, _maxFog, configName _componentCfg, _verticalArc min 360, getNumber (_componentCfg >> "aimDown")];
             };
         };
     } forEach (configProperties [_root, "isClass _x", true]);

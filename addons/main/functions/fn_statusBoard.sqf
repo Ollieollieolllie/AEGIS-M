@@ -19,9 +19,12 @@ Description:
           AEGIS-M found capable but hasn't activated (deferred until synced
           to a Site), with why -- e.g. a launcher with no sensor of its own
           placed without a Site
+        - under each radar vehicle, its emission (Radar Emission, aegism_
+          fnc_emconText): RDR EMITTING / SILENT / SHUT DOWN and why
         - last, the detailed Site's tracked contacts, the sensor kinds that
-          saw each ([RDR IR], aegism_fnc_sensorTags) and the weapons on each
-          (the longest section, so it's the one a hint box cuts)
+          saw each ([RDR IR], aegism_fnc_sensorTags; "cue only" for one only
+          passive radar hears, which nothing engages) and the weapons on
+          each (the longest section, so it's the one a hint box cuts)
 
     Each engagement shows in its own state's colour (aegism_fnc_statusStyle
     -- the state the engagement loop records on it every tick): blue QUEUED
@@ -154,6 +157,16 @@ private _fnRolesAndAmmo = {
     [format ["[%1]", _tags joinString " "], _ammo joinString " | "]
 };
 
+// A radar vehicle's emission (aegism_fnc_emconText): "RDR EMITTING -- why",
+// as one line under its status, or no line without a radar.
+private _fnRadarLine = {
+    params ["_system"];
+    if (!alive _system) exitWith { [] };
+    ([_system] call aegism_fnc_emconText) params ["_label", "_detail", "_hex"];
+    if (_label == "") exitWith { [] };
+    [format ["<t align='left' size='0.72'>    <t color='%1'>RDR %2</t> <t color='%3'>%4</t></t><br/>", _hex, _label, COL_DIM, _detail]]
+};
+
 private _sites = (missionNamespace getVariable ["AEGISM_allPoolOwners", []]) select { !isNull _x && {!isNil {_x getVariable "AEGISM_networkMembers"}} };
 private _allSystems = (missionNamespace getVariable ["AEGISM_allSystems", []]) select { !isNull _x && {alive _x} };
 missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
@@ -241,6 +254,10 @@ if (_focusIndex >= 0) then {
         _lines pushBack format ["<t size='0.95' font='PuristaSemibold' color='%1'>%2</t><br/>", COL_HEAD, [_focus, _focusIndex] call _fnSiteName];
         _lines pushBack format ["<t size='0.75' color='%1'>%2 vehicle(s), %3 contact(s), %4 engagement(s)</t><br/>", COL_DIM, count _members, count _pool, count _allRecords];
     };
+    // Its protected area (the coordinator's radius for a linked group).
+    private _areaRadius = (([_focus] call aegism_fnc_siteSettingsSource) getVariable ["AEGISM_engagement", createHashMap]) getOrDefault ["protectRadius", 750];
+    _lines pushBack format ["<t size='0.75' color='%1'>%2</t><br/>", COL_DIM,
+        if (_areaRadius > 0) then { format ["Protected area: %1 round %2", [_areaRadius] call _fnRange, ["the Site", "each Site"] select _linked] } else { "Protected area: none (its vehicles only)" }];
 
     // Each Site's vehicles; a vehicle linking Sites under the first that
     // lists it (LINK).
@@ -267,6 +284,7 @@ if (_focusIndex >= 0) then {
                     ["", format [" <t color='%1'>LINK</t>", COL_TRACK]] select (_member in _sharedVehicles)];
                 _lines pushBack format ["<t align='left' size='0.75'>    %1%2</t><br/>",
                     [_colour, _statusText] call _fnColour, ["", format [" <t color='%1'>(%2)</t>", COL_DIM, _ammoText]] select (_ammoText != "")];
+                _lines append ([_member] call _fnRadarLine);
             };
         } forEach ((_site getVariable ["AEGISM_networkMembers", []]) select { !isNull _x });
     } forEach _focusGroup;
@@ -298,6 +316,8 @@ if (_focusIndex >= 0) then {
                     [_hex, format ["%1 %2 %3", ["L", "C"] select ((_x get "role") == "ciws"), [_x get "system"] call _fnShortName, _label]] call _fnColour
                 };
                 private _sensorTags = [_entry getOrDefault ["sources", createHashMap]] call aegism_fnc_sensorTags;
+                // Only passive radar hears it: it cues radars, nothing engages it.
+                if !([_entry] call aegism_fnc_hasTrack) then { _sensorTags = ([_sensorTags, "cue only"] - [""]) joinString " "; };
                 _contactLines pushBack format ["<t align='left' size='0.75'>  %1 %2 <t color='%3'>%4 %5%7</t>%6</t><br/>",
                     [_urgent select 1, "●"] call _fnColour,
                     [_object] call _fnShortName, COL_DIM, _entry get "class", [_nearest] call _fnRange,
@@ -352,6 +372,7 @@ if (_everything) then {
             ([_system, _records] call _fnSystemStatus) params ["_statusText", "_colour"];
             _lines pushBack format ["<t align='left' size='0.8'>%1 %2 <t color='%3'>%4</t></t><br/><t align='left' size='0.75'>    %5 <t color='%3'>(%6)</t></t><br/>",
                 [_colour, "●"] call _fnColour, [_system] call _fnShortName, COL_DIM, _tags, [_colour, _statusText] call _fnColour, _ammoText];
+            _lines append ([_system] call _fnRadarLine);
         } forEach _standalone;
     };
 

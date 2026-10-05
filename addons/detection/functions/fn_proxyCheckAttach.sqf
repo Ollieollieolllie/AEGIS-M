@@ -3,8 +3,10 @@ Function: aegism_detect_fnc_proxyCheckAttach
 
 Description:
     Whether a munition carried its attached sensor proxy (aegism_detect_
-    fnc_proxyCreate): checked once, AEGISM_PROXY_ATTACH_CHECK s after
-    attaching, by aegism_detect_fnc_munitionTracker. An attached proxy sits
+    fnc_proxyCreate): checked once by aegism_detect_fnc_munitionTracker, at
+    least AEGISM_PROXY_ATTACH_CHECK s after attaching and once the munition
+    is over twice AEGISM_PROXY_ATTACH_TOLERANCE from where the proxy was made
+    (or AEGISM_PROXY_ATTACH_TIMEOUT s later). An attached proxy sits
     AEGISM_PROXY_TRAIL m behind its munition; one more than
     AEGISM_PROXY_ATTACH_TOLERANCE m off was left behind (attachTo doesn't
     carry it on every projectile -- the MLRS carrier stage R_230mm_HE

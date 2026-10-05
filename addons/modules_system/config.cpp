@@ -30,7 +30,7 @@ class Extended_PostInit_EventHandlers
 
 // Per-vehicle overrides: an "AEGIS-M: Vehicle Overrides" category in every
 // vehicle's own Eden attributes (condition objectVehicle), mirroring the Site
-// module's four sections. Nothing applies unless "Override Site Settings" is
+// module's sections. Nothing applies unless "Override Site Settings" is
 // ticked, and every setting defaults to "Site setting" (combos) or blank
 // (numbers): those are never written, so the variable stays nil and that
 // setting keeps inheriting from the Site (or the defaults when standalone).
@@ -65,7 +65,7 @@ class Cfg3DEN
                     class AEGISM_ovr_enabled
                     {
                         displayName = "Override Site Settings";
-                        tooltip = "On: every setting below that isn't left on 'Site setting' (or blank) replaces the Site's value for THIS vehicle only. Everything left on 'Site setting' still follows the Site (or the AEGIS-M defaults if this vehicle has no Site). Only matters for vehicles AEGIS-M adopts (radars, SAM launchers, CIWS/SHORAD). A radar uses the Interception Targets section (what it reports into the Site, and which friendly munitions it treats as threats).";
+                        tooltip = "On: every setting below that isn't left on 'Site setting' (or blank) replaces the Site's value for THIS vehicle only. Everything left on 'Site setting' still follows the Site (or the AEGIS-M defaults if this vehicle has no Site). Only matters for vehicles AEGIS-M adopts (radars, SAM launchers, CIWS/SHORAD). A radar uses the Interception Targets section (what it reports into the Site, and which friendly munitions it treats as threats) and Radar Emission.";
                         property = "AEGISM_ovr_enabled";
                         control = "Checkbox";
                         expression = "_this setVariable ['AEGISM_ovr_enabled', _value];";
@@ -249,7 +249,7 @@ class Cfg3DEN
                     class AEGISM_ovr_engageOnlyThreats: AEGISM_ovr_costValueJudgment
                     {
                         displayName = "Only Engage Munitions Threatening the Site";
-                        tooltip = "For a radar: whether a hostile munition it sees is only reported while it's a threat to a Site vehicle (predicted to land within the Threat Radius of one, or a missile guided or flying at one).";
+                        tooltip = "For a radar: whether a hostile munition it sees is only reported while it's a threat to a Site vehicle (predicted to land within the Threat Radius of one, or a missile guided or flying at one, or with one inside its seeker's view when its target can't be read).";
                         property = "AEGISM_ovr_engageOnlyThreats";
                         expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_engageOnlyThreats', _value == 'on']};";
                     };
@@ -301,6 +301,46 @@ class Cfg3DEN
                         tooltip = "On: this gun's rounds that hit nothing detonate once past its reach (or just before their lifetime runs out, if sooner), instead of flying on and disappearing in mid-air.";
                         property = "AEGISM_ovr_ciwsSelfDestruct";
                         expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsSelfDestruct', _value == 'on']};";
+                    };
+
+                    // ----------------------------------------- Radar emission
+                    class AEGISM_ovr_section_emcon
+                    {
+                        property = "AEGISM_ovr_section_emcon";
+                        control = "SubCategory";
+                        displayName = "Radar Emission";
+                        title = "Radar Emission";
+                        description = "";
+                        condition = "objectVehicle";
+                    };
+                    class AEGISM_ovr_emcon
+                    {
+                        displayName = "Radar Emission";
+                        tooltip = "When this vehicle's active radar emits (see the Site module's tooltip). E.g. keep a long-range search radar Always on while the rest of the Site stays Silent until cued.";
+                        property = "AEGISM_ovr_emcon";
+                        control = "Combo";
+                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_emcon', _value]};";
+                        typeName = "STRING";
+                        defaultValue = "''";
+                        condition = "objectVehicle";
+                        class Values
+                        {
+                            class Site { name = "Site setting"; value = ""; };
+                            class Ai { name = "AI decides"; value = "ai"; };
+                            class On { name = "Always on"; value = "on"; };
+                            class Cued { name = "Silent until cued"; value = "cued"; };
+                            class Intermittent { name = "Intermittent"; value = "intermittent"; };
+                        };
+                    };
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_emconHold,"AEGISM_ovr_emconHold","if (_value != '') then {_this setVariable ['AEGISM_ovr_emconHold', parseNumber _value]};","Stay Lit After Last Contact (s)","Blank = Site setting.");
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_emconBurstOn,"AEGISM_ovr_emconBurstOn","if (_value != '') then {_this setVariable ['AEGISM_ovr_emconBurstOn', parseNumber _value]};","Intermittent: Seconds On","Blank = Site setting.");
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_emconBurstOff,"AEGISM_ovr_emconBurstOff","if (_value != '') then {_this setVariable ['AEGISM_ovr_emconBurstOff', parseNumber _value]};","Intermittent: Seconds Off","Blank = Site setting.");
+                    class AEGISM_ovr_armShutdown: AEGISM_ovr_costValueJudgment
+                    {
+                        displayName = "Shut Down for Anti-Radiation Missiles";
+                        tooltip = "On: this radar shuts down while an anti-radiation missile is inbound on it, in every Radar Emission mode.";
+                        property = "AEGISM_ovr_armShutdown";
+                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_armShutdown', _value == 'on']};";
                     };
                 };
             };

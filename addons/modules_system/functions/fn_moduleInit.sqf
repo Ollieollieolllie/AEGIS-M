@@ -36,8 +36,11 @@ Description:
           change later (a Zeus operator syncing a Site), so a 5-second poll
           re-resolves them.
         - with a sensor of its own (radar, IR or visual): its own pool
-          ("AEGISM_pooledContacts") and a 1-second detection loop (aegism_
-          detect_fnc_confidenceLoop).
+          ("AEGISM_pooledContacts") and a detection loop (aegism_detect_fnc_
+          confidenceLoop): once a second, four times a second while any
+          munition is in flight. Once a second, it also sets whether its
+          radar emits, if it has one (Radar Emission, aegism_system_fnc_
+          emconUpdate).
         - one 0.1-second engagement loop per weapon role (aegism_intercept_
           fnc_engagementLoop).
     Registering the loops on every machine would make every client detect
@@ -58,6 +61,10 @@ Examples:
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
+
+// Seconds between sensor reads while any munition is in flight (once a
+// second otherwise).
+#define AEGISM_SENSOR_READ_FAST 0.25
 
 params ["_vehicle"];
 
@@ -174,9 +181,14 @@ if ("ownSensor" in _contactSource) then {
     _allOwners pushBackUnique _vehicle;
     missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners];
 
+    // Its radar's emission once a second (Radar Emission), and what its
+    // sensors see: once a second, but every AEGISM_SENSOR_READ_FAST s while
+    // any munition is in flight -- a munition is a few seconds from impact by
+    // the time it's seen, and reading once a second added up to a second
+    // before AEGIS-M knew what the game's sensors already showed.
     [{
         params ["_args", "_pfhHandle"];
-        _args params ["_vehicle", "_lastTime"];
+        _args params ["_vehicle", "_lastTime", "_emconAt", "_readAt"];
         if (isNull _vehicle || {!alive _vehicle}) exitWith {
             private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
             missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners - [_vehicle]];
@@ -185,8 +197,16 @@ if ("ownSensor" in _contactSource) then {
         // Paused (game time not moving): nothing to detect.
         if (time == _lastTime) exitWith {};
         _args set [1, time];
-        [_vehicle] call aegism_detect_fnc_confidenceLoop;
-    }, 1, [_vehicle, -1]] call CBA_fnc_addPerFrameHandler;
+        if (time >= _emconAt + 1) then {
+            _args set [2, time];
+            [_vehicle] call aegism_system_fnc_emconUpdate;
+        };
+        private _interval = [1, AEGISM_SENSOR_READ_FAST] select ((missionNamespace getVariable ["AEGISM_trackedMunitions", []]) isNotEqualTo []);
+        if (time >= _readAt + _interval) then {
+            _args set [3, time];
+            [_vehicle] call aegism_detect_fnc_confidenceLoop;
+        };
+    }, AEGISM_SENSOR_READ_FAST, [_vehicle, -1, -1e9, -1e9]] call CBA_fnc_addPerFrameHandler;
 };
 
 // Every weapon ticks at 0.1s: its turret has to keep re-aiming at a moving

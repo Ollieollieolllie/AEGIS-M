@@ -15,9 +15,12 @@ class CfgFunctions
             class firedEventHandler {};
             class watchProjectile {};
             class munitionThreat {};
+            class seekerCone {};
             class trackMunition {};
             class munitionTracker {};
             class munitionCheck {};
+            class antiRadiation {};
+            class armInbound {};
             class proxyCreate {};
             class proxyCheckAttach {};
             class proxyFollow {};
