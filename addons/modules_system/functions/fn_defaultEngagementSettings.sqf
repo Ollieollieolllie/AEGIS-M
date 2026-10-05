@@ -60,12 +60,13 @@ Returns:
         ciwsSelfDestruct - a CIWS round that hits nothing detonates just
             before its lifetime runs out (aegism_intercept_fnc_
             ciwsSelfDestruct) <BOOLEAN>
-        emcon - Radar Emission: "ai" (the AI decides) | "on" | "cued"
-            (silent until cued) | "intermittent" (aegism_system_fnc_
-            emconUpdate) <STRING>
+        emcon - Radar Emission: "auto" (Automatic) | "ai" (the AI
+            decides) | "on" | "cued" (silent until cued) | "intermittent"
+            (aegism_system_fnc_emconUpdate) <STRING>
         emconHold - seconds a cued radar stays lit after the last contact
             in its coverage <NUMBER>
-        emconBurstOn, emconBurstOff - intermittent search: seconds on, then
+        emconBurstOn, emconBurstOff - search bursts (Intermittent, and
+            Automatic while quiet): seconds on, then
             seconds off <NUMBER>
         armShutdown - a radar shuts down while an anti-radiation missile is
             inbound on it, in every Radar Emission mode <BOOLEAN>
@@ -92,7 +93,7 @@ createHashMapFromArray [
     ["ciwsBurstPause", 1],
     ["ciwsMinElevation", 5],
     ["ciwsOpenFireChance", 40],
-    ["ciwsCueAhead", 2],
+    ["ciwsCueAhead", 5],
     ["engageFriendlyThreats", true],
     ["engageOnlyThreats", true],
     ["friendlyThreatRadius", 0],
@@ -100,7 +101,7 @@ createHashMapFromArray [
     ["targetClassAllowlist", ["missile", "rocket", "bomb", "artilleryShell", "fixedWing", "helicopter", "drone"]],
     ["ciwsLastResort", false],
     ["ciwsSelfDestruct", false],
-    ["emcon", "ai"],
+    ["emcon", "auto"],
     ["emconHold", 10],
     ["emconBurstOn", 5],
     ["emconBurstOff", 15],

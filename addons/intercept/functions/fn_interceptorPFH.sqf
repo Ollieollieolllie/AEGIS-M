@@ -29,6 +29,14 @@ Description:
     fuse (CfgAmmo proximityExplosionDistance, set on most vanilla SAMs) may
     detonate the missile first; this handler then simply sees it gone.
 
+    Lost target: a guided missile whose target is gone before it gets there
+    (another weapon killed it first), or whose seeker has turned to
+    something else, follows another incoming munition its launcher's Site
+    is tracking if that's what its seeker took -- otherwise it
+    self-destructs (aegism_intercept_fnc_interceptorLost). Left free, its
+    seeker took the next thing it found, which shot down an aircraft the
+    Site wasn't allowed to engage.
+
     Turn rate: a guided missile's body direction is followed every frame,
     and its rotation summed over AEGISM_TURN_WINDOW s windows -- the fastest
     window is the flight's fastest SUSTAINED turn (a window that long
@@ -80,9 +88,40 @@ private _launchPos = getPosASLVisual _projectile;
     // angle, window time, fastest window deg/s].
     _turn params ["_lastDir", "_lastTime", "_windowAngle", "_windowTime", "_peakRate"];
 
-    if (isNull _projectile || {!alive _projectile} || {isNull _target} || {!alive _target}) exitWith {
+    if (isNull _projectile || {!alive _projectile}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, -1] call aegism_intercept_fnc_recordMissileTurn; };
+    };
+
+    // Lost: its target gone before it got there, or its seeker on something
+    // else (a sensor proxy counts as its munition). Another incoming munition
+    // in its launcher's Site picture is followed instead; anything else, it
+    // self-destructs (aegism_intercept_fnc_interceptorLost).
+    private _why = "";
+    if (isNull _target || {!alive _target}) then { _why = format ["its target %1 is gone before it got there", _args select 14]; };
+    if (_isGuided) then {
+        private _homing = missileTarget _projectile;
+        if (!isNull _homing && {_homing isKindOf "AEGISM_MunitionProxy"}) then { _homing = (_homing getVariable ["AEGISM_proxyEntry", [objNull]]) select 0; };
+        if (!isNull _homing && {_homing != _target}) then {
+            private _launcher = (getShotParents _projectile) param [0, objNull];
+            private _site = _launcher getVariable ["AEGISM_network", objNull];
+            private _pool = ([_site, _launcher] select (isNull _site)) getVariable ["AEGISM_pooledContacts", createHashMap];
+            if (alive _homing && {(_homing getVariable ["AEGISM_contactKey", ""]) in _pool}) then {
+                _target = _homing;
+                _args set [1, _homing];
+                _args set [8, getPosASLVisual _homing];
+                _args set [9, _projectile distance _homing];
+                _args set [14, str _homing];
+                _why = "";
+            } else {
+                _why = format ["its seeker turned from %1 to %2 (%3)", _args select 14, _homing, typeOf _homing];
+            };
+        };
+    };
+    if (_why != "") exitWith {
+        [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+        if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, -1] call aegism_intercept_fnc_recordMissileTurn; };
+        if (_isGuided) then { [_projectile, _target, _why] call aegism_intercept_fnc_interceptorLost; };
     };
 
     if (_isGuided) then {
@@ -125,4 +164,4 @@ private _launchPos = getPosASLVisual _projectile;
     _args set [9, _separation];
     _args set [10, _hasClosed];
 }, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosASLVisual _target, _launchPos distance (getPosASLVisual _target), false,
-    typeOf _projectile, _launch, [vectorDirVisual _projectile, time, 0, 0, 0]]] call CBA_fnc_addPerFrameHandler;
+    typeOf _projectile, _launch, [vectorDirVisual _projectile, time, 0, 0, 0], str _target]] call CBA_fnc_addPerFrameHandler;

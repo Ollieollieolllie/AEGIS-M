@@ -56,6 +56,7 @@ Author:
 ---------------------------------------------------------------------------- */
 
 #include "..\..\main\perf.hpp"
+#include "..\..\main\rpt.hpp"
 
 params ["_poolOwner"];
 
@@ -132,7 +133,9 @@ private _useDatalink = "aegism_main_useDatalink" call CBA_settings_fnc_get;
                 private _rejectKey = netId _target;
                 _rejects set [_rejectKey, true];
                 if (!(_rejectKey in _lastRejects)) then {
-                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
+                    if (AEGISM_RPT_VERBOSE) then {
+                        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
+                    };
                 };
             };
         };

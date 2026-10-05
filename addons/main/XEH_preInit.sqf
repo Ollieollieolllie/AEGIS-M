@@ -63,6 +63,17 @@
     1
 ] call CBA_fnc_addSetting;
 
+// How much AEGIS-M writes to the server's RPT (rpt.hpp): Normal is every
+// decision and problem; Verbose adds the step-by-step detail.
+[
+    "aegism_main_rptDetail",
+    "LIST",
+    ["RPT Detail", "Normal: what AEGIS-M decides and why -- detections, assignments, shots, intercepts, munitions it ignored or never saw, alarms, radar emission, anything stopping a weapon (line of sight, no solution, fire held) -- and its setup. Verbose adds the step-by-step detail: each weapon's reaction and slew, CIWS burst spotting, measured missile turns, per-weapon calibration (kinematics, turret rates, target sizes, open-fire ranges), layered-reserve holds, every enemy shot fired, and rejected detections."],
+    ["AEGIS-M", "Debug"],
+    [["normal", "verbose"], ["Normal", "Verbose"], 0],
+    1
+] call CBA_fnc_addSetting;
+
 // Counters behind the PERF line (perf.hpp). Created everywhere so an
 // increment on any machine never hits nil; only the server logs them.
 AEGISM_perfCounts = [];

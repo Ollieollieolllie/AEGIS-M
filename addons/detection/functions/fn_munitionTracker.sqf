@@ -37,6 +37,7 @@ Author:
 
 #include "..\proxy.hpp"
 #include "..\..\main\perf.hpp"
+#include "..\..\main\rpt.hpp"
 
 #define AEGISM_TRACK_INTERVAL 0.5
 
@@ -65,8 +66,10 @@ private _fnFollowLow = {
     if (isNil "_logged") then { _logged = createHashMap; missionNamespace setVariable ["AEGISM_proxyLowLogged", _logged]; };
     if !((typeOf _projectile) in _logged) then {
         _logged set [typeOf _projectile, true];
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PROXY-LOW: %1 came within %2 of the ground (%3 m up, %4 m/s), where an AEGIS-M sensor can lose it in ground clutter -- its proxy now moves with it, showing its speed.",
-            typeOf _projectile, ["the height", format ["%1 m", round _height]] select (_height < 1e9), round ((ASLToAGL getPosASL _projectile) select 2), round (vectorMagnitude velocity _projectile)];
+        if (AEGISM_RPT_VERBOSE) then {
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PROXY-LOW: %1 came within %2 of the ground (%3 m up, %4 m/s), where an AEGIS-M sensor can lose it in ground clutter -- its proxy now moves with it, showing its speed.",
+                typeOf _projectile, ["the height", format ["%1 m", round _height]] select (_height < 1e9), round ((ASLToAGL getPosASL _projectile) select 2), round (vectorMagnitude velocity _projectile)];
+        };
     };
 };
 

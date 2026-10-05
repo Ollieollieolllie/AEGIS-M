@@ -24,6 +24,7 @@ class CfgFunctions
             class proxyCreate {};
             class proxyCheckAttach {};
             class proxyFollow {};
+            class destroyMunition {};
         };
     };
 };

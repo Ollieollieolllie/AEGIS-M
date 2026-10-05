@@ -43,9 +43,28 @@ class Cfg3DEN
     };
 };
 
+// The other Alarm Ranges (below): each tone's sound and sound source again,
+// heard to that many metres.
+#define AEGISM_ALARM_QUOTE(TEXT) #TEXT
+#define AEGISM_ALARM_SFX(TONE,FILE,RANGE) class AEGISM_Alarm_##TONE##_##RANGE##_Sfx: AEGISM_Alarm_##TONE##_Sfx { alarm[] = {FILE, 1, 1, RANGE, 1, 0, 0, 0}; };
+#define AEGISM_ALARM_SFX_RANGES(TONE,FILE) \
+    AEGISM_ALARM_SFX(TONE,FILE,200) \
+    AEGISM_ALARM_SFX(TONE,FILE,800) \
+    AEGISM_ALARM_SFX(TONE,FILE,1500) \
+    AEGISM_ALARM_SFX(TONE,FILE,3000) \
+    AEGISM_ALARM_SFX(TONE,FILE,5000)
+#define AEGISM_ALARM_SOURCE(TONE,RANGE) class AEGISM_Alarm_##TONE##_##RANGE: AEGISM_Alarm_##TONE { sound = AEGISM_ALARM_QUOTE(AEGISM_Alarm_##TONE##_##RANGE##_Sfx); };
+#define AEGISM_ALARM_SOURCE_RANGES(TONE) \
+    AEGISM_ALARM_SOURCE(TONE,200) \
+    AEGISM_ALARM_SOURCE(TONE,800) \
+    AEGISM_ALARM_SOURCE(TONE,1500) \
+    AEGISM_ALARM_SOURCE(TONE,3000) \
+    AEGISM_ALARM_SOURCE(TONE,5000)
+
 // Site alarms (aegism_network_fnc_siteAlarm): one looping sound per tone,
 // built exactly like vanilla's own "Alarm" sound source (CfgSFX AlarmSfx,
-// CfgVehicles Sound_Alarm): volume 1, heard to 400m, played back to back.
+// CfgVehicles Sound_Alarm): volume 1, heard to 400m (the Site's Alarm Range
+// picks one of the others, below), played back to back.
 // Every tone is a distinct vanilla recording (the vanilla alarm_BLUFOR,
 // alarm_OPFOR and alarm_Independent files are byte-for-byte the same
 // recording, so they're one tone here: "base"). Lengths measured from the
@@ -94,6 +113,20 @@ class CfgSFX
         name = "AEGIS-M: Missile-lock tone";
         alarm[] = {"A3\Sounds_F\vehicles\air\noises\alarm_locked_by_missile_2", 1, 1, 400, 1, 0, 0, 0}; // 0.2s
     };
+
+    // Every tone at every other Alarm Range (Site setting): heard to that many
+    // metres. A sound's reach is fixed in its config -- a mission can't give
+    // a sound source one -- so each range is its own class,
+    // AEGISM_Alarm_<Tone>_<range>_Sfx. Volume stays 1, as vanilla's own
+    // battlefield sounds heard to 5 km have it.
+    AEGISM_ALARM_SFX_RANGES(Base,"A3\Sounds_F\sfx\alarm_BLUFOR")
+    AEGISM_ALARM_SFX_RANGES(Klaxon,"A3\Sounds_F\sfx\alarm")
+    AEGISM_ALARM_SFX_RANGES(Klaxon2,"A3\Sounds_F\sfx\alarm_3")
+    AEGISM_ALARM_SFX_RANGES(Siren,"A3\Sounds_F\sfx\siren")
+    AEGISM_ALARM_SFX_RANGES(Zone,"A3\Sounds_F_Orange\MissionSFX\Orange_ZoneRestriction_Warning")
+    AEGISM_ALARM_SFX_RANGES(HeliNato,"A3\Sounds_F\vehicles\air\noises\heli_alarm_bluefor")
+    AEGISM_ALARM_SFX_RANGES(HeliCsat,"A3\Sounds_F\vehicles\air\noises\heli_alarm_opfor")
+    AEGISM_ALARM_SFX_RANGES(Lock,"A3\Sounds_F\vehicles\air\noises\alarm_locked_by_missile_2")
 };
 
 class CfgVehicles
@@ -141,6 +174,15 @@ class CfgVehicles
         sound = "AEGISM_Alarm_Lock_Sfx";
         displayName = "AEGIS-M: Missile-lock tone";
     };
+    // The other Alarm Ranges: AEGISM_Alarm_<Tone>_<range>.
+    AEGISM_ALARM_SOURCE_RANGES(Base)
+    AEGISM_ALARM_SOURCE_RANGES(Klaxon)
+    AEGISM_ALARM_SOURCE_RANGES(Klaxon2)
+    AEGISM_ALARM_SOURCE_RANGES(Siren)
+    AEGISM_ALARM_SOURCE_RANGES(Zone)
+    AEGISM_ALARM_SOURCE_RANGES(HeliNato)
+    AEGISM_ALARM_SOURCE_RANGES(HeliCsat)
+    AEGISM_ALARM_SOURCE_RANGES(Lock)
 
     // ModuleDescription is a class NESTED in Module_F, so it is declared
     // there. It used to be declared at the root of CfgVehicles, which created
@@ -578,12 +620,12 @@ class CfgVehicles
             class CiwsCueAhead
             {
                 displayName = "Cue Before In Range (s)";
-                tooltip = "A CIWS gun is assigned a target this many seconds before it comes into the gun's reach (judged on where the target will be by then), so the crew's reaction and the barrel's swing are done by the time it can fire -- it holds meanwhile (CUED in the RPT, 'cued' on the debug overlays). Default 2. 0 = assigned only once it's in reach.";
+                tooltip = "A CIWS gun is assigned a target this many seconds before it comes into the gun's reach (judged on where the target will be by then), so the crew's reaction and the barrel's swing are done by the time it can fire -- it holds meanwhile (CUED in the RPT, 'cued' on the debug overlays). Default 5. 0 = assigned only once it's in reach.";
                 property = "ciwsCueAhead";
                 control = "Edit";
                 expression = "_this setVariable ['ciwsCueAhead', _value];";
                 typeName = "NUMBER";
-                defaultValue = "2";
+                defaultValue = "5";
             };
             class CiwsBurstMin
             {
@@ -648,14 +690,15 @@ class CfgVehicles
             class Emcon
             {
                 displayName = "Radar Emission";
-                tooltip = "When the Site's active radars emit. A radar only sees while it emits (aircraft and incoming rounds alike), and while it emits, enemy radar-warning receivers and anti-radiation missiles can find it. AI decides (default): as without AEGIS-M. Always on: always emitting. Silent until cued: off until another sensor finds a threat it covers (within its reach and arcs; one on a turret counts what its turret can turn to) -- an enemy radar heard by passive radar, an aircraft or round seen by IR or visual sensors, another radar, a linked Site, or datalink if the CBA setting Use Datalink Contacts is on. It then stays lit while anything is in its coverage, while a launcher's missiles are in flight at a target it covers, and Stay Lit After Last Contact after the last. A Site with no sensor but its radars never lights in this mode: use Intermittent. Intermittent: as Silent until cued, but searching meanwhile, Seconds On every Seconds On + Seconds Off. A narrow radar on its own turret (the vanilla radar truck's 120 degrees) is turned by AEGIS-M while lit: onto its most urgent contact, or sweeping round. A contact only passive radar hears gives a bearing, not a track: it cues radars but no weapon engages it until a radar, IR or visual sensor holds it. Logged as EMCON and CUE.";
+                tooltip = "When the Site's active radars emit. A radar only sees while it emits (aircraft and incoming rounds alike), and while it emits, enemy radar-warning receivers and anti-radiation missiles can find it. Automatic (default): while the Site is quiet, short search bursts (Seconds On every Seconds On + Seconds Off, the Site's radars in turn) to give little away; emitting continuously while the Site has any contact, is engaging or under fire, or one of its radars is shut down for an anti-radiation missile (the others take over), and for at least 60s after. AI decides: as without AEGIS-M. Always on: always emitting. Silent until cued: off until another sensor finds a threat it covers (within its reach and arcs; one on a turret counts what its turret can turn to) -- an enemy radar heard by passive radar, an aircraft or round seen by IR or visual sensors, another radar, a linked Site, or datalink if the CBA setting Use Datalink Contacts is on. It then stays lit while anything is in its coverage, while a launcher's missiles are in flight at a target it covers, and Stay Lit After Last Contact after the last. A Site with no sensor but its radars never lights in this mode: use Intermittent or Automatic. Intermittent: as Silent until cued, but searching meanwhile in bursts. In every mode a narrow radar on its own turret (the vanilla radar truck's 120 degrees) is turned by AEGIS-M: holding targets its Site's missiles are flying at, tracking the contacts nobody else holds, and searching the sectors searched least recently. A contact only passive radar hears gives a bearing, not a track: it cues radars but no weapon engages it until a radar, IR or visual sensor holds it. Logged as EMCON and CUE.";
                 property = "emcon";
                 control = "Combo";
                 expression = "_this setVariable ['emcon', _value];";
                 typeName = "STRING";
-                defaultValue = "'ai'";
+                defaultValue = "'auto'";
                 class Values
                 {
+                    class Auto { name = "Automatic"; value = "auto"; };
                     class Ai { name = "AI decides"; value = "ai"; };
                     class On { name = "Always on"; value = "on"; };
                     class Cued { name = "Silent until cued"; value = "cued"; };
@@ -665,7 +708,7 @@ class CfgVehicles
             class EmconHold
             {
                 displayName = "Stay Lit After Last Contact (s)";
-                tooltip = "Silent until cued and Intermittent: how long a radar stays lit after the last contact leaves its coverage, before it goes silent (or back to its intermittent search).";
+                tooltip = "Silent until cued and Intermittent: how long a radar stays lit after the last contact leaves its coverage, before it goes silent (or back to its intermittent search). Automatic stays lit at least 60s.";
                 property = "emconHold";
                 control = "Edit";
                 expression = "_this setVariable ['emconHold', _value];";
@@ -674,8 +717,8 @@ class CfgVehicles
             };
             class EmconBurstOn
             {
-                displayName = "Intermittent: Seconds On";
-                tooltip = "Intermittent: how long each search burst lasts. The intermittent radars of a Site (and the Sites linked with it) take turns, their bursts spread evenly over the cycle: three radars at 5s on, 15s off -- one comes on every 6.7s, with 1.7s gaps.";
+                displayName = "Search Burst: Seconds On";
+                tooltip = "Intermittent and Automatic: how long each search burst lasts. The radars of a Site (and the Sites linked with it) searching in bursts take turns, their bursts spread evenly over the cycle: three radars at 5s on, 15s off -- one comes on every 6.7s, with 1.7s gaps.";
                 property = "emconBurstOn";
                 control = "Edit";
                 expression = "_this setVariable ['emconBurstOn', _value];";
@@ -684,8 +727,8 @@ class CfgVehicles
             };
             class EmconBurstOff
             {
-                displayName = "Intermittent: Seconds Off";
-                tooltip = "Intermittent: how long a radar stays silent between search bursts.";
+                displayName = "Search Burst: Seconds Off";
+                tooltip = "Intermittent and Automatic: how long a radar stays silent between search bursts.";
                 property = "emconBurstOff";
                 control = "Edit";
                 expression = "_this setVariable ['emconBurstOff', _value];";
@@ -695,7 +738,7 @@ class CfgVehicles
             class ArmShutdown
             {
                 displayName = "Shut Down for Anti-Radiation Missiles";
-                tooltip = "On (default), in every Radar Emission mode: a radar shuts down as soon as the Site sees an anti-radiation missile (one with a passive radar seeker, like the HARM or Kh-58) homing on it, or with it emitting in the missile's seeker view -- whether or not that saves it -- and comes back once the missile is gone, or past when it would have arrived. The Site's other radars that cover the missile light up for it (Silent until cued, Intermittent), and its guns engage it as usual. Logged as ARM-SHUTDOWN.";
+                tooltip = "On (default), in every Radar Emission mode: a radar shuts down as soon as the Site sees an anti-radiation missile (one with a passive radar seeker, like the HARM or Kh-58) homing on it, or with it emitting in the missile's seeker view -- whether or not that saves it -- and comes back once the missile is gone, or past when it would have arrived. The Site's other radars that cover the missile light up for it (Silent until cued, Intermittent; in Automatic they all emit), and its guns engage it as usual. Logged as ARM-SHUTDOWN.";
                 property = "armShutdown";
                 control = "Checkbox";
                 expression = "_this setVariable ['armShutdown', _value];";
@@ -715,7 +758,7 @@ class CfgVehicles
             class AlarmWarning
             {
                 displayName = "Going-Live Warning";
-                tooltip = "Sounds from the moment the Site commits a weapon to a target (before its first shot: the crew's reaction and the turret's slew), and keeps sounding until the Warning Lasts time after its last shot. Plays from every non-vehicle object synced to this Site (a loudspeaker, a lamp post, a Game Logic -- anything that isn't a vehicle, a unit or a laptop, which is a status terminal), or from this module itself if none is. Heard to 400m, like vanilla's own alarm. The Incoming Alarm replaces it while a munition is inbound. Tone lengths are one cycle.";
+                tooltip = "Sounds from the moment the Site commits a weapon to a target (before its first shot: the crew's reaction and the turret's slew), and keeps sounding until the Warning Lasts time after its last shot. Plays from every non-vehicle object synced to this Site (a loudspeaker, a lamp post, a Game Logic -- anything that isn't a vehicle, a unit or a laptop, which is a status terminal), or from this module itself if none is. Heard as far as the Alarm Range (400m by default, like vanilla's own alarm). The Incoming Alarm replaces it while a munition is inbound. Tone lengths are one cycle.";
                 property = "alarmWarning";
                 control = "Combo";
                 expression = "_this setVariable ['alarmWarning', _value];";
@@ -755,6 +798,25 @@ class CfgVehicles
                     class HeliCsat { name = "Helicopter warning, CSAT (1.5s)"; value = "heliCsat"; };
                     class Lock { name = "Missile-lock tone (0.2s beep)"; value = "lock"; };
                     class Off { name = "Off"; value = "off"; };
+                };
+            };
+            class AlarmRange
+            {
+                displayName = "Alarm Range";
+                tooltip = "How far the Going-Live Warning and the Incoming Alarm are heard from each speaker. Default 400m, like vanilla's own alarm. A Custom sound keeps its own range.";
+                property = "alarmRange";
+                control = "Combo";
+                expression = "_this setVariable ['alarmRange', _value];";
+                typeName = "NUMBER";
+                defaultValue = "400";
+                class Values
+                {
+                    class R200 { name = "200 m"; value = 200; };
+                    class R400 { name = "400 m (default)"; value = 400; };
+                    class R800 { name = "800 m"; value = 800; };
+                    class R1500 { name = "1.5 km"; value = 1500; };
+                    class R3000 { name = "3 km"; value = 3000; };
+                    class R5000 { name = "5 km"; value = 5000; };
                 };
             };
             class AlarmHold

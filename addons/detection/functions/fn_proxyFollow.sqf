@@ -12,9 +12,9 @@ Description:
     way also reports the munition's real speed to the sensors; an attached
     one reports none of its own.
 
-    The proxy sits AEGISM_PROXY_TRAIL m behind the munition along its
-    flight, so the munition is always flying away from it and can never
-    strike its geometry.
+    The proxy sits AEGISM_PROXY_OFFSET m above the munition, square to its
+    flight: off its path, so neither the munition nor the next round of its
+    salvo can strike its geometry.
 
 Parameters:
     _proxy - the proxy <OBJECT>
@@ -35,9 +35,12 @@ Author:
 params ["_proxy", "_projectile"];
 
 private _velocity = velocity _projectile;
-private _position = getPosASL _projectile;
+// Up, less its part along the flight; flying straight up or down, sideways.
+private _up = [0, 0, 1];
 if ((vectorMagnitude _velocity) > 1) then {
-    _position = _position vectorDiff ((vectorNormalized _velocity) vectorMultiply AEGISM_PROXY_TRAIL);
+    private _along = vectorNormalized _velocity;
+    _up = _up vectorDiff (_along vectorMultiply (_along select 2));
+    if ((vectorMagnitude _up) < 0.1) then { _up = [1, 0, 0]; };
 };
-_proxy setPosASL _position;
+_proxy setPosASL ((getPosASL _projectile) vectorAdd ((vectorNormalized _up) vectorMultiply AEGISM_PROXY_OFFSET));
 _proxy setVelocity _velocity;

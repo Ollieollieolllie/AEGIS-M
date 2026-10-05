@@ -53,6 +53,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 params ["_system", "_turretPath", "_target", ["_weaponClass", ""]];
 
 private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
@@ -79,8 +81,10 @@ if ((_ts getOrDefault ["lockTarget", objNull]) isNotEqualTo _wanted) then {
     _gunner enableAI "TARGET";
     _gunner reveal [_wanted, 4];
     _gunner doTarget _wanted;
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCK-ON: %1 turret %2 -- gunner %3 locking %4 (%5), %6m; %7 s to lock.", _system, _turretPath, _gunner, _wanted, typeOf _wanted, round (_system distance _wanted),
-        getNumber (configFile >> "CfgWeapons" >> _weaponClass >> "weaponLockDelay")];
+    if (AEGISM_RPT_VERBOSE) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCK-ON: %1 turret %2 -- gunner %3 locking %4 (%5), %6m; %7 s to lock.", _system, _turretPath, _gunner, _wanted, typeOf _wanted, round (_system distance _wanted),
+            getNumber (configFile >> "CfgWeapons" >> _weaponClass >> "weaponLockDelay")];
+    };
 };
 
 ((_ts get "lockSince") + getNumber (configFile >> "CfgWeapons" >> _weaponClass >> "weaponLockDelay") - time) max 0

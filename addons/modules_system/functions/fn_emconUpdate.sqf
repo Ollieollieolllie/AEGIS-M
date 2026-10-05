@@ -11,6 +11,15 @@ Description:
     Set with setVehicleRadar (0 the AI decides, 1 on, 2 off), only when what
     it wants changes.
 
+        auto - Automatic (the default): while the Site is quiet, short
+            search bursts as intermittent's below -- the Site's radars in
+            turn, giving little away; emitting continuously while there's
+            reason to ("alert"): a contact anywhere in the Site's picture,
+            the Site engaging or firing (within its Warning Lasts After
+            Last Shot), a munition inbound on it, or another of its radars
+            shut down for an anti-radiation missile (the others take over
+            its sector) -- and for at least AEGISM_AUTO_HOLD s after. Lit
+            for a contact it covers and for fire control as cued is.
         ai - the AI decides, as without AEGIS-M. A radar AEGIS-M had set is
             handed back once; one it never set isn't touched.
         on - always emitting.
@@ -35,19 +44,17 @@ Description:
     down whether or not that saves it (aegism_detect_fnc_armInbound marks
     it), until the missile is gone or past when it would have arrived. Its
     Site's other radars that cover the missile are cued by it, to keep the
-    track (in cued and intermittent modes).
+    track (in cued and intermittent modes); in auto they all emit.
 
     A narrow radar on a turret with no AEGIS-M weapon on it (the vanilla
-    radar truck's 120 degrees) is pointed by AEGIS-M while lit (aegism_
-    intercept_fnc_lockTurret): at its most urgent contact -- a target its
-    Site's missiles are flying at, then one under engagement, then soonest
-    impact, then nearest -- or, with nothing to look at, sweeping round in
-    steps of three quarters of its arc every AEGISM_SWEEP_DWELL s. Handed
-    back to its crew while silent.
+    radar truck's 120 degrees) is pointed by AEGIS-M in every mode, AI
+    decides included -- fire control, tracking and searching in turn
+    (aegism_system_fnc_radarSchedule) -- rather than left facing wherever
+    its crew looked.
 
     Records on the vehicle ("AEGISM_emcon", for the debug overlays, aegism_
     fnc_emconText): mode, applied (the last setVehicleRadar value, -1
-    none), desired, reason ("ai", "on", "arm", "guiding", "cued",
+    none), desired, reason ("ai", "on", "arm", "guiding", "cued", "alert",
     "holding", "burst", "pause", "silent"), detail, since.
 
     Logged: EMCON (its mode; going silent, or back to searching), CUE (lit
@@ -66,9 +73,12 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-#define AEGISM_SWEEP_DWELL 2
-// How far out the point a radar turret is aimed at lies, metres.
-#define AEGISM_LOOK_DISTANCE 2000
+// Automatic: emitting at least this long after the last reason to.
+#define AEGISM_AUTO_HOLD 60
+// A munition inbound counts this long after it was last seen (the pools'
+// own contact expiry, as the Site's Incoming Alarm, aegism_network_fnc_
+// siteAlarm).
+#define AEGISM_INCOMING_HOLD 3
 
 params ["_vehicle"];
 
@@ -78,7 +88,7 @@ if (isNil "_system" || {!(_system getOrDefault ["hasRadar", false])}) exitWith {
 
 private _settings = _vehicle getVariable "AEGISM_resolvedEngagementSettings";
 if (isNil "_settings") then { _settings = [_vehicle] call aegism_system_fnc_resolveEngagementSettings; };
-private _mode = _settings getOrDefault ["emcon", "ai"];
+private _mode = _settings getOrDefault ["emcon", "auto"];
 private _hold = _settings getOrDefault ["emconHold", 10];
 private _burstOn = (_settings getOrDefault ["emconBurstOn", 5]) max 1;
 private _burstOff = (_settings getOrDefault ["emconBurstOff", 15]) max 0;
@@ -88,7 +98,7 @@ private _state = _vehicle getVariable "AEGISM_emcon";
 if (isNil "_state") then {
     _state = createHashMapFromArray [
         ["mode", ""], ["applied", -1], ["desired", 0], ["reason", ""], ["detail", ""], ["since", time],
-        ["litUntil", -1], ["turret", []], ["sweepAt", -1], ["sweepBearing", random 360]
+        ["litUntil", -1]
     ];
     _vehicle setVariable ["AEGISM_emcon", _state, false];
 };
@@ -109,6 +119,7 @@ if ((_state get "mode") != _mode) then {
             case "on": { "Always on" };
             case "cued": { format ["Silent until cued -- lights up for a contact in its coverage another sensor finds, stays lit %1s after the last", _hold] };
             case "intermittent": { format ["Intermittent -- searches %1s on, %2s off; lit while a contact is in its coverage, and %3s after the last", _burstOn, _burstOff, _hold] };
+            case "auto": { format ["Automatic -- searches %1s on, %2s off (the Site's radars in turn) while the Site is quiet; emits while the Site has a contact, is engaging or under fire, or another of its radars is shut down for an anti-radiation missile, and %3s after", _burstOn, _burstOff, _hold max AEGISM_AUTO_HOLD] };
             default { "AI decides" };
         },
         ["", " -- shuts down for an anti-radiation missile inbound on it"] select _armShutdown];
@@ -150,7 +161,7 @@ private _claims = if (isNull _network) then { createHashMap } else { _network ge
 private _guided = [];   // [target, launcher]
 private _covered = [];  // [contact key, pool entry]
 private _armCues = [];  // missiles
-if (_arm isEqualTo [] && {_mode in ["on", "cued", "intermittent"]}) then {
+if (_arm isEqualTo [] && {_mode in ["on", "cued", "intermittent", "auto"]}) then {
     if (isNull _network) then {
         // Standalone: its own launchers' missiles in flight.
         {
@@ -186,29 +197,49 @@ if (_arm isEqualTo [] && {_mode in ["on", "cued", "intermittent"]}) then {
     } forEach _members;
 };
 
+// --- Automatic: a reason for the Site's radars to emit (see the header) ---
+private _alert = "";
+if (_mode == "auto" && {_arm isEqualTo []}) then {
+    private _pool = ([_network, _vehicle] select (isNull _network)) getVariable ["AEGISM_pooledContacts", createHashMap];
+    private _contacts = { !isNull (_x getOrDefault ["object", objNull]) && {alive (_x get "object")} } count (values _pool);
+    private _shutDown = _members findIf { _x != _vehicle && {((_x getVariable ["AEGISM_emcon", createHashMap]) getOrDefault ["reason", ""]) == "arm"} };
+    private _liveWindow = if (isNull _network) then { 10 } else { ([_network] call aegism_fnc_siteSettingsSource) getVariable ["alarmHold", 10] };
+    private _lastShotAt = (_vehicle getVariable ["AEGISM_lastShotAt", -1e9]) max (_network getVariable ["AEGISM_lastShotAt", -1e9]);
+    _alert = switch (true) do {
+        case (_shutDown != -1): { format ["%1 is shut down for an anti-radiation missile -- covering for it", (_members select _shutDown) call _fnName] };
+        case (time - (_network getVariable ["AEGISM_incomingAt", -1e9]) <= AEGISM_INCOMING_HOLD): { "a munition is inbound on the Site" };
+        case (count _claims > 0 || {time - _lastShotAt <= _liveWindow}): { "the Site is engaging" };
+        case (_contacts > 0): { format ["%1 contact%2 in the Site's picture", _contacts, ["s", ""] select (_contacts == 1)] };
+        default { "" };
+    };
+};
+
 // --- Emit or not ---
-// Intermittent radars of its linked group search in turn, their bursts
-// spread evenly over the cycle: random phases left stretches where every
-// radar was silent at once, and munitions released then went unseen.
+// The radars of its linked group searching in bursts (Intermittent, and
+// Automatic while quiet) search in turn, their bursts spread evenly over the
+// cycle: random phases left stretches where every radar was silent at once,
+// and munitions released then went unseen.
 private _period = _burstOn + _burstOff;
 private _searchers = _members select {
     ((_x getVariable ["AEGISM_system", createHashMap]) getOrDefault ["hasRadar", false])
-        && {((_x getVariable ["AEGISM_resolvedEngagementSettings", createHashMap]) getOrDefault ["emcon", "ai"]) == "intermittent"}
+        && {((_x getVariable ["AEGISM_resolvedEngagementSettings", createHashMap]) getOrDefault ["emcon", "auto"]) in ["intermittent", "auto"]}
 };
 private _slot = (_searchers find _vehicle) max 0;
 private _phaseTime = (time + _period * _slot / ((count _searchers) max 1)) mod _period;
 ([] call {
     if (_arm isNotEqualTo []) exitWith { [2, "arm"] };
     if (_mode == "on") exitWith { [1, "on"] };
-    if !(_mode in ["cued", "intermittent"]) exitWith { [0, "ai"] };
+    if !(_mode in ["cued", "intermittent", "auto"]) exitWith { [0, "ai"] };
     if (_guided isNotEqualTo []) exitWith { [1, "guiding"] };
     if (_covered isNotEqualTo [] || {_armCues isNotEqualTo []}) exitWith { [1, "cued"] };
+    if (_alert != "") exitWith { [1, "alert"] };
     if (time < (_state get "litUntil")) exitWith { [1, "holding"] };
     if (_mode == "cued") exitWith { [2, "silent"] };
     if (_phaseTime < _burstOn) exitWith { [1, "burst"] };
     [2, "pause"]
 }) params ["_desired", "_reason"];
-if (_reason in ["guiding", "cued"]) then { _state set ["litUntil", time + _hold]; };
+if (_mode == "auto") then { _hold = _hold max AEGISM_AUTO_HOLD; };
+if (_reason in ["guiding", "cued", "alert"]) then { _state set ["litUntil", time + _hold]; };
 
 // Its most urgent contact: a target missiles are flying at; then, of the
 // contacts it covers, one under engagement, soonest impact, nearest; then an
@@ -249,9 +280,10 @@ private _detail = switch (_reason) do {
             format ["an anti-radiation missile on another Site radar, %1 out", (_vehicle distance _focus) call _fnRange]
         }
     };
-    case "holding": { format ["holding: %1 in %2s", ["silent", "back to searching"] select (_mode == "intermittent"), ceil ((_state get "litUntil") - time)] };
-    case "burst": { format ["intermittent search: silent in %1s", ceil (_burstOn - _phaseTime)] };
-    case "pause": { format ["intermittent: next search in %1s", ceil (_period - _phaseTime)] };
+    case "alert": { "alert: " + _alert };
+    case "holding": { format ["holding: %1 in %2s", ["silent", "back to search bursts"] select (_mode in ["intermittent", "auto"]), ceil ((_state get "litUntil") - time)] };
+    case "burst": { format ["search burst: silent in %1s", ceil (_burstOn - _phaseTime)] };
+    case "pause": { format ["next search burst in %1s", ceil (_period - _phaseTime)] };
     case "silent": { "silent until cued" };
     default { "the AI decides" };
 };
@@ -268,13 +300,16 @@ if (_reason != _previous) then {
             _vehicle, _ammo, round (_vehicle distance _missile), _why, _seenBy, _sources joinString ", ",
             switch (true) do {
                 case (_others isEqualTo []): { "It's the Site's only radar: the Site has its other sensors until it's back." };
-                case (_emitting isEqualTo []): { format ["Its Site's other radars (%1) are silent; those that cover the missile light up for it unless they're on AI decides or Always on.", _others] };
+                case (_emitting isEqualTo []): { format ["Its Site's other radars (%1) are silent; in Automatic they all light up, in Silent until cued or Intermittent those that cover the missile do.", _others] };
                 default { format ["Still emitting on its Site: %1.", _emitting] };
             }];
     };
     if (_previous == "arm") then {
         diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " ARM-SHUTDOWN: %1 radar back -- %2; now %3.", _vehicle,
             [_armEnded, "Shut Down for Anti-Radiation Missiles was turned off"] select (_armEnded == ""), _detail];
+    };
+    if (_reason == "alert" && {_previous in ["", "silent", "pause", "burst"]}) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " EMCON: %1 emitting continuously -- %2 (Automatic).", _vehicle, _alert];
     };
     if (_reason in ["cued", "guiding"] && {_previous in ["", "silent", "pause", "burst"]}) then {
         diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " CUE: %1 lit for %2 -- %3 (%4).", _vehicle, _focus,
@@ -284,11 +319,12 @@ if (_reason != _previous) then {
                     format ["%1 at %2m, found by %3", _focusEntry get "class", round (_vehicle distance _focus), ["its Site's picture", _seen joinString ", "] select (_seen isNotEqualTo [])]
                 } else { format ["an anti-radiation missile inbound on another Site radar, %1m out", round (_vehicle distance _focus)] }
             },
-            ["Silent until cued", "Intermittent"] select (_mode == "intermittent")];
+            switch (_mode) do { case "intermittent": { "Intermittent" }; case "auto": { "Automatic" }; default { "Silent until cued" }; }];
     };
-    if (_reason in ["silent", "pause", "burst"] && {_previous in ["cued", "guiding", "holding"]}) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " EMCON: %1 %2 -- nothing in its coverage for %3s.", _vehicle,
-            ["goes silent", "back to its intermittent search"] select (_mode == "intermittent"), _hold];
+    if (_reason in ["silent", "pause", "burst"] && {_previous in ["cued", "guiding", "alert", "holding"]}) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " EMCON: %1 %2 -- %3 for %4s.", _vehicle,
+            ["goes silent", "back to search bursts"] select (_mode in ["intermittent", "auto"]),
+            ["nothing in its coverage", "the Site quiet"] select (_mode == "auto"), _hold];
     };
     _state set ["reason", _reason];
 };
@@ -302,38 +338,10 @@ if (_desired != _applied && {_desired != 0 || {_applied > 0}}) then {
 _state set ["desired", _desired];
 _state set ["detail", _detail];
 
-// --- Point a narrow radar on a turret no AEGIS-M weapon uses ---
+// --- Point a narrow radar on a turret no AEGIS-M weapon uses: tracking and
+// searching in turn, in every mode (aegism_system_fnc_radarSchedule) ---
 private _weaponTurrets = ((_system getOrDefault ["launcherWeapons", []]) + (_system getOrDefault ["ciwsWeapons", []])) apply { _x select 0 };
 private _pointable = (_system getOrDefault ["sensors", []]) select {
     (_x select 0) == "radar" && {(_x select 3) isNotEqualTo []} && {(_x select 2) < 360} && {!((_x select 3) in _weaponTurrets)}
 };
-if (_pointable isNotEqualTo []) then {
-    (_pointable select 0) params ["", "", "_arc", "_turretPath", "", "", "", ["_verticalArc", 360]];
-    private _aimAt = [];
-    if (_desired == 1) then {
-        if (!isNull _focus) then {
-            _aimAt = getPosASL _focus;
-        } else {
-            // Sweeping: a bearing a little short of one arc on every dwell,
-            // pitched up a quarter of its vertical arc (within its elevation
-            // limits) so the beam covers the horizon and well above it.
-            if (time >= (_state get "sweepAt")) then {
-                _state set ["sweepAt", time + AEGISM_SWEEP_DWELL];
-                _state set ["sweepBearing", ((_state get "sweepBearing") + _arc * 0.75) mod 360];
-            };
-            ([_vehicle, _turretPath] call aegism_intercept_fnc_turretConfig) params ["", "", "", "_minElev", "_maxElev"];
-            private _bearing = _state get "sweepBearing";
-            private _pitch = (((_verticalArc min 180) / 4) max _minElev) min _maxElev;
-            _aimAt = (eyePos _vehicle) vectorAdd ([sin _bearing * cos _pitch, cos _bearing * cos _pitch, sin _pitch] vectorMultiply AEGISM_LOOK_DISTANCE);
-        };
-    };
-    if (_aimAt isNotEqualTo []) then {
-        [_vehicle, _turretPath, _aimAt] call aegism_intercept_fnc_lockTurret;
-        _state set ["turret", _turretPath];
-    } else {
-        if ((_state get "turret") isNotEqualTo []) then {
-            [_vehicle, _state get "turret", objNull] call aegism_intercept_fnc_lockTurret;
-            _state set ["turret", []];
-        };
-    };
-};
+if (_pointable isNotEqualTo []) then { [_vehicle, _pointable select 0] call aegism_system_fnc_radarSchedule; };

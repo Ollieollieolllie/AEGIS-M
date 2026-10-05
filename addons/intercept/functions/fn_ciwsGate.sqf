@@ -51,6 +51,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 #define AEGISM_AIM_SETTLE_TICKS 2
 // Engagement loop tick (modules_system moduleInit): "settled" is measured
 // over this many seconds per settle tick.
@@ -77,14 +79,18 @@ if (_feasible && {_inRange} && {!_aligned} && {time - _improvedAt >= AEGISM_AIM_
             _aligned = true;
             if ((_ts getOrDefault ["lastDitchLogged", objNull]) != _target) then {
                 _ts set ["lastDitchLogged", _target];
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LAST-DITCH: %1 (ciws) on %2 -- impact in %3s, turret settled %4 deg off the aim point (gate %5): firing anyway.",
-                    _system, _target, round (_timeToImpact * 10) / 10, round (_angle * 100) / 100, round (_tolerance * 100) / 100];
+                if (AEGISM_RPT_VERBOSE) then {
+                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LAST-DITCH: %1 (ciws) on %2 -- impact in %3s, turret settled %4 deg off the aim point (gate %5): firing anyway.",
+                        _system, _target, round (_timeToImpact * 10) / 10, round (_angle * 100) / 100, round (_tolerance * 100) / 100];
+                };
             };
         } else {
             if ((_ts getOrDefault ["lastDitchHeld", objNull]) != _target) then {
                 _ts set ["lastDitchHeld", _target];
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LAST-DITCH-HOLD: %1 (ciws) on %2 -- impact in %3s, turret settled %4 deg off the aim point, over %5x the %6 deg gate: no chance of a hit, holding fire.",
-                    _system, _target, round (_timeToImpact * 10) / 10, round (_angle * 100) / 100, AEGISM_LAST_DITCH_MAX_GATES, round (_tolerance * 100) / 100];
+                if (AEGISM_RPT_VERBOSE) then {
+                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LAST-DITCH-HOLD: %1 (ciws) on %2 -- impact in %3s, turret settled %4 deg off the aim point, over %5x the %6 deg gate: no chance of a hit, holding fire.",
+                        _system, _target, round (_timeToImpact * 10) / 10, round (_angle * 100) / 100, AEGISM_LAST_DITCH_MAX_GATES, round (_tolerance * 100) / 100];
+                };
             };
         };
     };

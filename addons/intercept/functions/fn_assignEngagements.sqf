@@ -134,6 +134,7 @@ Author:
 ---------------------------------------------------------------------------- */
 
 #include "..\..\main\perf.hpp"
+#include "..\..\main\rpt.hpp"
 
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
 #define AEGISM_CIWS_IDLE_GRACE 8
@@ -810,8 +811,10 @@ if (count _tierReaches > 1 && {_anyFree}) then {
 
                 if (_held isNotEqualTo [] && {!(_entry getOrDefault ["reserveLogged", false])}) then {
                     _entry set ["reserveLogged", true];
-                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " RESERVE: %1 (%2, impact in %3s) -- the %4m launcher tier is predicted to kill it in time, holding %5.",
-                        _object, _class, round _timeToImpact, round _reserveReach, _held];
+                    if (AEGISM_RPT_VERBOSE) then {
+                        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " RESERVE: %1 (%2, impact in %3s) -- the %4m launcher tier is predicted to kill it in time, holding %5.",
+                            _object, _class, round _timeToImpact, round _reserveReach, _held];
+                    };
                 };
 
                 // CIWS last resort (each gun's own setting): while a launcher
@@ -915,7 +918,9 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                                 // tier can take in time: the reserve steps in.
                                 if (_role == "launcher" && {_reserveReach < 0} && {count _tierReaches > 1} && {_isMunition} && {_timeToImpact < 1e9}
                                     && {(_bestInfo select 5) > (_tierReaches select 0)}) then {
-                                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SATURATION: no shorter-range launcher can kill %1 in time (impact in %2s) -- %3 steps in from the reserve.", _object, round _timeToImpact, _bestSystem];
+                                    if (AEGISM_RPT_VERBOSE) then {
+                                        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SATURATION: no shorter-range launcher can kill %1 in time (impact in %2s) -- %3 steps in from the reserve.", _object, round _timeToImpact, _bestSystem];
+                                    };
                                 };
                             };
                         };

@@ -35,6 +35,7 @@ Author:
 ---------------------------------------------------------------------------- */
 
 #include "..\..\main\perf.hpp"
+#include "..\..\main\rpt.hpp"
 
 #define AEGISM_MUNITION_LOG_INTERVAL 10
 
@@ -69,7 +70,9 @@ if (!_fromSystem && {time > (_unit getVariable ["AEGISM_munitionLogAt", -1e9]) +
     private _hostileWatchers = {
         !isNil { _x getVariable "AEGISM_system" } && {[side _x, _shooterSide] call aegism_detect_fnc_isHostile}
     } count (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MUNITION: %1 (%2) fired %3 (%4) -- %5", _unit, _shooterSide, _ammo, _class,
-        [format ["%1 AEGIS-M sensor vehicle(s) hostile to %2 will track it once their sensors see it.", _hostileWatchers, _shooterSide],
-         format ["no AEGIS-M sensor vehicle is hostile to %1 (IFF: friendly) -- tracked and engaged only if predicted to hit a Site whose doctrine engages friendly threats (see FRIENDLY-THREAT).", _shooterSide]] select (_hostileWatchers == 0)];
+    if (AEGISM_RPT_VERBOSE) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MUNITION: %1 (%2) fired %3 (%4) -- %5", _unit, _shooterSide, _ammo, _class,
+            [format ["%1 AEGIS-M sensor vehicle(s) hostile to %2 will track it once their sensors see it.", _hostileWatchers, _shooterSide],
+             format ["no AEGIS-M sensor vehicle is hostile to %1 (IFF: friendly) -- tracked and engaged only if predicted to hit a Site whose doctrine engages friendly threats (see FRIENDLY-THREAT).", _shooterSide]] select (_hostileWatchers == 0)];
+    };
 };

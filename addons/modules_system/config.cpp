@@ -326,6 +326,7 @@ class Cfg3DEN
                         class Values
                         {
                             class Site { name = "Site setting"; value = ""; };
+                            class Auto { name = "Automatic"; value = "auto"; };
                             class Ai { name = "AI decides"; value = "ai"; };
                             class On { name = "Always on"; value = "on"; };
                             class Cued { name = "Silent until cued"; value = "cued"; };
@@ -333,8 +334,8 @@ class Cfg3DEN
                         };
                     };
                     AEGISM_OVR_NUMBER(AEGISM_ovr_emconHold,"AEGISM_ovr_emconHold","if (_value != '') then {_this setVariable ['AEGISM_ovr_emconHold', parseNumber _value]};","Stay Lit After Last Contact (s)","Blank = Site setting.");
-                    AEGISM_OVR_NUMBER(AEGISM_ovr_emconBurstOn,"AEGISM_ovr_emconBurstOn","if (_value != '') then {_this setVariable ['AEGISM_ovr_emconBurstOn', parseNumber _value]};","Intermittent: Seconds On","Blank = Site setting.");
-                    AEGISM_OVR_NUMBER(AEGISM_ovr_emconBurstOff,"AEGISM_ovr_emconBurstOff","if (_value != '') then {_this setVariable ['AEGISM_ovr_emconBurstOff', parseNumber _value]};","Intermittent: Seconds Off","Blank = Site setting.");
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_emconBurstOn,"AEGISM_ovr_emconBurstOn","if (_value != '') then {_this setVariable ['AEGISM_ovr_emconBurstOn', parseNumber _value]};","Search Burst: Seconds On","Blank = Site setting.");
+                    AEGISM_OVR_NUMBER(AEGISM_ovr_emconBurstOff,"AEGISM_ovr_emconBurstOff","if (_value != '') then {_this setVariable ['AEGISM_ovr_emconBurstOff', parseNumber _value]};","Search Burst: Seconds Off","Blank = Site setting.");
                     class AEGISM_ovr_armShutdown: AEGISM_ovr_costValueJudgment
                     {
                         displayName = "Shut Down for Anti-Radiation Missiles";

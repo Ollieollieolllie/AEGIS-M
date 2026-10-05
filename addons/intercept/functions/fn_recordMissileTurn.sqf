@@ -36,6 +36,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 // aegism_intercept_fnc_launchSolution's own on-bore tolerance.
 #define AEGISM_LAUNCH_ON_BORE 2
 
@@ -56,15 +58,17 @@ if (_turned) then {
 };
 _table set [_ammoClass, [_flights, _turnedFlights, _rate]];
 
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSILE-TURN: %1 launched %2 deg off the intercept -- fastest sustained turn %3 deg/s; %4. %5",
-    _ammoClass, round (_offBore * 10) / 10, round (_peakRate * 10) / 10,
-    if (_flightTime >= 0) then {
-        format ["intercepted after %1s (predicted %2s)", round (_flightTime * 10) / 10, round (_predictedFlight * 10) / 10]
-    } else {
-        "no intercept by AEGIS-M's fuse (it missed, or the game's own proximity fuse or the target's end came first)"
-    },
-    if (_turnedFlights > 0) then {
-        format ["Turn rate now %1 deg/s, from %2 turning flight(s) of %3.", round (_rate * 10) / 10, _turnedFlights, _flights]
-    } else {
-        format ["Launched straight, so it doesn't set the turn rate (%1 flight(s), none turning yet).", _flights]
-    }];
+if (AEGISM_RPT_VERBOSE) then {
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSILE-TURN: %1 launched %2 deg off the intercept -- fastest sustained turn %3 deg/s; %4. %5",
+        _ammoClass, round (_offBore * 10) / 10, round (_peakRate * 10) / 10,
+        if (_flightTime >= 0) then {
+            format ["intercepted after %1s (predicted %2s)", round (_flightTime * 10) / 10, round (_predictedFlight * 10) / 10]
+        } else {
+            "no intercept by AEGIS-M's fuse (it missed, or the game's own proximity fuse or the target's end came first)"
+        },
+        if (_turnedFlights > 0) then {
+            format ["Turn rate now %1 deg/s, from %2 turning flight(s) of %3.", round (_rate * 10) / 10, _turnedFlights, _flights]
+        } else {
+            format ["Launched straight, so it doesn't set the turn rate (%1 flight(s), none turning yet).", _flights]
+        }];
+};

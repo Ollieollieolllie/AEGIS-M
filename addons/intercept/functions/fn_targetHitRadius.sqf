@@ -39,6 +39,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 params ["_target"];
 
 if (isNull _target) exitWith { 0 };
@@ -67,9 +69,11 @@ private _fnBox = {
     private _size = _max vectorDiff _min;
     format ["%1 x %2 x %3 m", (_size select 0) toFixed 2, (_size select 1) toFixed 2, (_size select 2) toFixed 2]
 };
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TARGET-SIZE: %1 -- collision box %2, visual box %3: hit radius %4m (half the %5 box's diagonal).",
-    _type,
-    [[_geometryMin, _geometryMax] call _fnBox, "none"] select !_useGeometry,
-    [_visualMin, _visualMax] call _fnBox,
-    _cached toFixed 2, ["visual", "collision"] select _useGeometry];
+if (AEGISM_RPT_VERBOSE) then {
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TARGET-SIZE: %1 -- collision box %2, visual box %3: hit radius %4m (half the %5 box's diagonal).",
+        _type,
+        [[_geometryMin, _geometryMax] call _fnBox, "none"] select !_useGeometry,
+        [_visualMin, _visualMax] call _fnBox,
+        _cached toFixed 2, ["visual", "collision"] select _useGeometry];
+};
 _cached

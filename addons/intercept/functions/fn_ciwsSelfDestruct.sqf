@@ -45,6 +45,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 #define AEGISM_SELF_DESTRUCT_MARGIN 0.15
 #define AEGISM_SELF_DESTRUCT_REFRESH 1
 #define AEGISM_MAX_DRAG_EXPONENT 30
@@ -87,10 +89,12 @@ if (_fuze isEqualTo [] || {(_fuze select 0) != _ammo} || {time - (_fuze select 2
     if (_byLifetime) then { _seconds = _lifetime - AEGISM_SELF_DESTRUCT_MARGIN; };
 
     if (abs ((_fuze param [1, -1]) - _seconds) > 0.01) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SELF-DESTRUCT-FUZE: %1 turret %2 -- %3 rounds burst %4s after firing, %5 (muzzle %6 m/s, airFriction %7, lifetime %8s).",
-            _system, _turretPath, _ammo, round (_seconds * 100) / 100,
-            if (_byLifetime) then { "just before their lifetime runs out" } else { format ["once past the gun's %1m reach", round _reach] },
-            round _v0, _k, _lifetime];
+        if (AEGISM_RPT_VERBOSE) then {
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SELF-DESTRUCT-FUZE: %1 turret %2 -- %3 rounds burst %4s after firing, %5 (muzzle %6 m/s, airFriction %7, lifetime %8s).",
+                _system, _turretPath, _ammo, round (_seconds * 100) / 100,
+                if (_byLifetime) then { "just before their lifetime runs out" } else { format ["once past the gun's %1m reach", round _reach] },
+                round _v0, _k, _lifetime];
+        };
     };
     _fuze = [_ammo, _seconds, time];
     _ts set ["selfDestructFuze", _fuze];
@@ -123,7 +127,9 @@ _ts set ["selfDestructRunning", true];
     if (_queue isEqualTo []) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         _ts set ["selfDestructRunning", false];
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SELF-DESTRUCT: %1 turret %2 -- %3 round(s)%4 self-destructed %5s after firing; %6 had already hit something or been fuzed.", _system, _turretPath, _detonated,
-            ["", format [" of %1", _ammo]] select (_ammo != ""), round (((_ts getOrDefault ["selfDestructFuze", ["", 0]]) select 1) * 100) / 100, _gone];
+        if (AEGISM_RPT_VERBOSE) then {
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SELF-DESTRUCT: %1 turret %2 -- %3 round(s)%4 self-destructed %5s after firing; %6 had already hit something or been fuzed.", _system, _turretPath, _detonated,
+                ["", format [" of %1", _ammo]] select (_ammo != ""), round (((_ts getOrDefault ["selfDestructFuze", ["", 0]]) select 1) * 100) / 100, _gone];
+        };
     };
 }, 0, [_system, _turretPath, _ts, _queue, 0, 0, ""]] call CBA_fnc_addPerFrameHandler;

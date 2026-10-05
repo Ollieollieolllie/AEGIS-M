@@ -125,6 +125,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 #define AEGISM_CIWS_ROF_THRESHOLD 0.3
 
 params ["_vehicle", ["_quiet", false]];
@@ -307,7 +309,9 @@ private _fnModeStats = {
 
         if (!_airCapable) exitWith {
             if (_quiet) exitWith {};
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1's %2 (ammo %3) ignored -- ammo airLock < 1, cannot engage air targets.", _vehicle, _weaponClass, _ammoClassName];
+            if (AEGISM_RPT_VERBOSE) then {
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1's %2 (ammo %3) ignored -- ammo airLock < 1, cannot engage air targets.", _vehicle, _weaponClass, _ammoClassName];
+            };
         };
 
         if (_class == "missile") exitWith {
@@ -326,7 +330,9 @@ private _fnModeStats = {
             _ciwsWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, 0, _modeMin, _modeMax, _burstTime];
         } else {
             if (_quiet) exitWith {};
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1's %2 (fastest mode reloadTime=%3) did not qualify as CIWS -- threshold is reloadTime > 0 and < %4.", _vehicle, _weaponClass, _fastestReload, AEGISM_CIWS_ROF_THRESHOLD];
+            if (AEGISM_RPT_VERBOSE) then {
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1's %2 (fastest mode reloadTime=%3) did not qualify as CIWS -- threshold is reloadTime > 0 and < %4.", _vehicle, _weaponClass, _fastestReload, AEGISM_CIWS_ROF_THRESHOLD];
+            };
         };
     };
 } forEach (magazinesAllTurrets _vehicle);

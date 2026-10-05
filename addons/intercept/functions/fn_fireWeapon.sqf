@@ -61,6 +61,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 // aegism_intercept_fnc_launchSolution's own on-bore tolerance: off by more,
 // a launch is off-bore (OFFBORE-LAUNCH).
 #define AEGISM_LAUNCH_ON_BORE 2
@@ -144,12 +146,14 @@ if (_isCiws) then {
             default { "" };
         }, round (_offBore * 10) / 10];
     if (_offBore > AEGISM_LAUNCH_ON_BORE) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OFFBORE-LAUNCH: %1 turret %2 -- %3 deg off the intercept on %4: %5.", _system, _turretPath, round _offBore, _target,
-            if (_calibrated) then {
-                format ["predicted turn %1s, flight %2s", round (_turnTime * 10) / 10, round (_predictedFlight * 10) / 10]
-            } else {
-                format ["its turn rate isn't measured yet, so its flight (%1s) is predicted as if straight -- this flight measures it", round (_predictedFlight * 10) / 10]
-            }];
+        if (AEGISM_RPT_VERBOSE) then {
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OFFBORE-LAUNCH: %1 turret %2 -- %3 deg off the intercept on %4: %5.", _system, _turretPath, round _offBore, _target,
+                if (_calibrated) then {
+                    format ["predicted turn %1s, flight %2s", round (_turnTime * 10) / 10, round (_predictedFlight * 10) / 10]
+                } else {
+                    format ["its turn rate isn't measured yet, so its flight (%1s) is predicted as if straight -- this flight measures it", round (_predictedFlight * 10) / 10]
+                }];
+        };
     };
     // An aircraft: its gunner has held a lock on it (aegism_intercept_fnc_
     // gunnerLock), so the missile leaves with the aircraft warned. Logged:
@@ -158,8 +162,10 @@ if (_isCiws) then {
     // logged once per missile as MISSILE-WARNING; added once per aircraft,
     // where it's simulated here).
     if (!_targetIsMunition) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCK: %1 fires on %2 -- its sensors show this launcher as %3; gunner's assigned target %4.", _system, _target,
-            ((getSensorThreats _target) select { (_x param [0, objNull]) isEqualTo _system }) apply { _x select [1] }, assignedTarget _gunner];
+        if (AEGISM_RPT_VERBOSE) then {
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCK: %1 fires on %2 -- its sensors show this launcher as %3; gunner's assigned target %4.", _system, _target,
+                ((getSensorThreats _target) select { (_x param [0, objNull]) isEqualTo _system }) apply { _x select [1] }, assignedTarget _gunner];
+        };
         if (local _target && {!(_target getVariable ["AEGISM_warningLogged", false])}) then {
             _target setVariable ["AEGISM_warningLogged", true];
             _target addEventHandler ["IncomingMissile", {

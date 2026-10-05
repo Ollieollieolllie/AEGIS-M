@@ -43,6 +43,7 @@ class CfgFunctions
             class ciwsSpot {};
             class interceptHit {};
             class interceptorPFH {};
+            class interceptorLost {};
             class debugSetFireHold {};
             class debugBenchmark {};
         };

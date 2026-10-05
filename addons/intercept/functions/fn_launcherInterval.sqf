@@ -31,6 +31,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 params ["_system", "_weaponInfo", "_settings"];
 _weaponInfo params ["_turretPath", "_weaponClass"];
 
@@ -44,8 +46,10 @@ private _interval = if (_configured > 0) then { _configured } else {
 private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 if ((_ts getOrDefault ["intervalLogged", -1]) != _interval) then {
     _ts set ["intervalLogged", _interval];
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-RATE: %1 (%2) %3 -- %4s between missiles (%5).", _system, typeOf _system, _weaponClass, _interval,
-        ["Seconds Between Missiles setting", format ["auto, %1 reloadTime", _mode param [0, ""]]] select (_configured <= 0)];
+    if (AEGISM_RPT_VERBOSE) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-RATE: %1 (%2) %3 -- %4s between missiles (%5).", _system, typeOf _system, _weaponClass, _interval,
+            ["Seconds Between Missiles setting", format ["auto, %1 reloadTime", _mode param [0, ""]]] select (_configured <= 0)];
+    };
 };
 
 _interval

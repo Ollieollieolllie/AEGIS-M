@@ -46,6 +46,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 params ["_vehicle", "_turretPath"];
 
 private _cache = missionNamespace getVariable "AEGISM_cacheTurrets";
@@ -108,7 +110,9 @@ _cached = [
     _mount
 ];
 _cache set [_key, _cached];
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TURRET-RATE: %1 turret %2 -- %3 mount: traverses %4 deg/s, elevates %5 deg/s (maxHorizontalRotSpeed %6, maxVerticalRotSpeed %7 x 45 deg/s), elevation %8 to %9 deg, traverse %10 to %11 deg (left positive).",
-    typeOf _vehicle, _turretPath, _mount, round _traverseRate, round _elevateRate,
-    getNumber (_turretCfg >> "maxHorizontalRotSpeed"), getNumber (_turretCfg >> "maxVerticalRotSpeed"), _minElevation, _maxElevation, _minTurn, _maxTurn];
+if (AEGISM_RPT_VERBOSE) then {
+    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TURRET-RATE: %1 turret %2 -- %3 mount: traverses %4 deg/s, elevates %5 deg/s (maxHorizontalRotSpeed %6, maxVerticalRotSpeed %7 x 45 deg/s), elevation %8 to %9 deg, traverse %10 to %11 deg (left positive).",
+        typeOf _vehicle, _turretPath, _mount, round _traverseRate, round _elevateRate,
+        getNumber (_turretCfg >> "maxHorizontalRotSpeed"), getNumber (_turretCfg >> "maxVerticalRotSpeed"), _minElevation, _maxElevation, _minTurn, _maxTurn];
+};
 _cached

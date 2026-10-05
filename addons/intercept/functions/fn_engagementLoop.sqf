@@ -80,6 +80,7 @@ Author:
 ---------------------------------------------------------------------------- */
 
 #include "..\..\main\perf.hpp"
+#include "..\..\main\rpt.hpp"
 
 #define AEGISM_CIWS_REACTION_CAP 1
 // The Site's Warning Lasts After Last Shot default: how long after its last
@@ -249,8 +250,10 @@ private _fnExecute = {
         _state set ["status", "reacting"];
         if !(_state getOrDefault ["reactionLogged", false]) then {
             _state set ["reactionLogged", true];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " REACTING: %1 (%2) on %3 -- crew reaction %4s%5, turret slewing meanwhile.", _system, _role, _target, round (_reactionTime * 100) / 100,
-                ["", " (in combat)"] select _inCombat];
+            if (AEGISM_RPT_VERBOSE) then {
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " REACTING: %1 (%2) on %3 -- crew reaction %4s%5, turret slewing meanwhile.", _system, _role, _target, round (_reactionTime * 100) / 100,
+                    ["", " (in combat)"] select _inCombat];
+            };
         };
     };
 
@@ -331,7 +334,9 @@ private _fnExecute = {
         _state set ["status", "cued"];
         if !(_state getOrDefault ["cuedLogged", false]) then {
             _state set ["cuedLogged", true];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " CUED: %1 (%2) on %3 at %4m -- not in reach yet; crew reacted, barrel on it, holding until it can be reached.", _system, _role, _target, round (_system distance _target)];
+            if (AEGISM_RPT_VERBOSE) then {
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " CUED: %1 (%2) on %3 at %4m -- not in reach yet; crew reacted, barrel on it, holding until it can be reached.", _system, _role, _target, round (_system distance _target)];
+            };
         };
     };
     if (!_feasible) exitWith {
@@ -357,13 +362,15 @@ private _fnExecute = {
         if !(_state getOrDefault ["rangeHoldLogged", false]) then {
             _state set ["rangeHoldLogged", true];
             (_ts getOrDefault ["solve", []]) params ["", "", "", "", "", "", "", ["_interceptDistance", 0], "", "", ["_openFireRange", 0], ["_minRange", 0]];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " RANGE-HOLD: %1 (%2) tracking %3 -- intercept at %4m, %5: holding fire (see OPEN-FIRE-RANGE).",
-                _system, _role, _target, round _interceptDistance,
-                if (_interceptDistance < _minRange) then {
-                    format ["inside the round's %1m arming distance", round _minRange]
-                } else {
-                    format ["beyond its %1m open-fire range, where one burst is less than %2 percent likely to hit", round _openFireRange, _engagementSettings getOrDefault ["ciwsOpenFireChance", 40]]
-                }];
+            if (AEGISM_RPT_VERBOSE) then {
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " RANGE-HOLD: %1 (%2) tracking %3 -- intercept at %4m, %5: holding fire (see OPEN-FIRE-RANGE).",
+                    _system, _role, _target, round _interceptDistance,
+                    if (_interceptDistance < _minRange) then {
+                        format ["inside the round's %1m arming distance", round _minRange]
+                    } else {
+                        format ["beyond its %1m open-fire range, where one burst is less than %2 percent likely to hit", round _openFireRange, _engagementSettings getOrDefault ["ciwsOpenFireChance", 40]]
+                    }];
+            };
         };
     };
 
@@ -386,8 +393,10 @@ private _fnExecute = {
                         [" (its turn rate not measured yet)", format [" (%1s)", round (_turnTime * 10) / 10]] select _calibrated];
                 };
             };
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6%7.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
-                ["", " (or the turret settled, within the missile's post-launch cone)"] select !_isCiws, _limitNote];
+            if (AEGISM_RPT_VERBOSE) then {
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6%7.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
+                    ["", " (or the turret settled, within the missile's post-launch cone)"] select !_isCiws, _limitNote];
+            };
         };
     };
 
@@ -397,7 +406,9 @@ private _fnExecute = {
         _state set ["status", "locking"];
         if !(_state getOrDefault ["lockingLogged", false]) then {
             _state set ["lockingLogged", true];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCKING: %1 (%2) on %3 -- aligned, holding fire %4 s more for its gunner's lock.", _system, _role, _target, (round (_lockWait * 10)) / 10];
+            if (AEGISM_RPT_VERBOSE) then {
+                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCKING: %1 (%2) on %3 -- aligned, holding fire %4 s more for its gunner's lock.", _system, _role, _target, (round (_lockWait * 10)) / 10];
+            };
         };
     };
 

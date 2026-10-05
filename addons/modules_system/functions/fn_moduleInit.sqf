@@ -62,6 +62,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 // Seconds between sensor reads while any munition is in flight (once a
 // second otherwise).
 #define AEGISM_SENSOR_READ_FAST 0.25
@@ -90,7 +92,9 @@ private _sensorText = ((_capabilities get "sensors") apply {
 if (_sensorText == "") then { _sensorText = "none"; };
 if (!_hasAnyCapability) exitWith {
     _vehicle setVariable ["AEGISM_systemInitialized", true, false];
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar, IR or visual sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
+    if (AEGISM_RPT_VERBOSE) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar, IR or visual sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
+    };
 };
 
 // Adoption policy: a vehicle synced to a Site is always adopted (the

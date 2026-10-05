@@ -379,6 +379,10 @@ private _fnSiteStats = {
                     if (_label == "") then { _label = ["SILENT", "EMITTING"] select (isVehicleRadarOn _vehicle); };
                     _text = _text + " " + _label;
                     if !(_detail in ["", "always on", "the AI decides"]) then { _text = _text + format [" (%1)", _detail]; };
+                    // Where a turning radar's beam is and why (aegism_system_
+                    // fnc_radarSchedule): SEARCH 120 deg, TRACK 2 (045 deg).
+                    private _beamText = (_vehicle getVariable ["AEGISM_radarBeam", createHashMap]) getOrDefault ["text", ""];
+                    if (_beamText != "") then { _text = _text + " " + _beamText; };
                 };
                 _sensorParts pushBack _text;
             };

@@ -105,13 +105,15 @@ records which kinds of sensor saw it.
   the sensors see instead. Every sensor vehicle of a Site that sees a
   munition adds its kind to the contact, so a radar and a Spartan's IR both
   show.
-  It's created a tenth of a second after launch and attached 5 m behind its
-  munition at once, so the engine carries it; an ammo type that doesn't
+  It's created a tenth of a second after launch and attached 6 m above its
+  munition at once, so the engine carries it. It sits off the flight path:
+  trailing behind, it was where the next rocket of a ripple flew, and the
+  rockets flew into it. An ammo type that doesn't
   carry an attached object (`PROXY-ATTACH` in the RPT, once per type -- the
   MLRS carrier stage `R_230mm_HE` doesn't) has its proxies moved every
   frame instead, at the munition's own velocity. A proxy moved that way is
   a free vehicle, so it isn't made until its munition is clear of whatever
-  fired it (the shooter's size, plus the proxy's, plus 5 m), half a second
+  fired it (the shooter's size, plus the proxy's, plus 6 m), half a second
   after launch at the latest. An attached proxy shows no speed of its own,
   and sensors filter targets out of ground clutter by their speed (the
   vanilla radar template's clutter reaches 200 m up, with a 21 m/s speed
@@ -120,7 +122,13 @@ records which kinds of sensor saw it.
   highest any AEGIS-M sensor's clutter reaches (each sensor's own
   `maxGroundNoiseDistance`), its proxy is detached and moved with it at its
   velocity from then on (`PROXY-LOW`, once per type). It's deleted with its
-  munition. There's one
+  munition. It's also what a gunner's radar shows and locks, so a weapon
+  that shoots the proxy down -- any weapon, a player's included --
+  destroys its munition in the air (`PROXY-HIT`). A rocket of a salvo
+  detonating can take out the ones flying beside it this way; collisions
+  don't count. (Proxies
+  exist only on the server, so in multiplayer only the host's own sensors
+  and weapons see them.) There's one
   proxy class per kind of munition (`AEGISM_MunitionProxy_missile` /
   `_rocket` / `_bomb` / `_artilleryShell`), so each can carry its own
   signature. A cluster carrier's bomblets get none (they're not followed at
@@ -156,10 +164,11 @@ override too), applied with `setVehicleRadar`:
 
 | Mode | What its radars do |
 |---|---|
-| AI decides (default) | As without AEGIS-M. |
+| Automatic (default) | While the Site is quiet, short search bursts (5 s on every 20 s by default, the Site's radars taking turns) so little is given away. It emits continuously while there's a reason to, and for at least 60 s after. The reasons are a contact anywhere in the Site's picture, the Site engaging or firing, a munition inbound, or another of its radars shut down for an anti-radiation missile (the rest take over). |
+| AI decides | As without AEGIS-M. |
 | Always on | Emit all the time. |
 | Silent until cued | Off until another sensor finds a threat the radar covers. |
-| Intermittent | As Silent until cued, but searching meanwhile: 5 s on every 20 s by default. A linked group's intermittent radars take turns, their bursts spread evenly over the cycle (three radars: one comes on every 6.7 s, with 1.7 s gaps). |
+| Intermittent | As Silent until cued, but searching meanwhile: 5 s on every 20 s by default. A linked group's radars searching in bursts (Intermittent or Automatic) take turns, their bursts spread evenly over the cycle (three radars: one comes on every 6.7 s, with 1.7 s gaps). |
 
 - **Cues** are contacts in the Site's picture (the whole linked group's):
   an enemy radar heard by passive radar, an aircraft or round seen by IR or
@@ -173,9 +182,34 @@ override too), applied with `setVehicleRadar`:
   launcher's missiles are in flight at a target it covers (fire control),
   and for **Stay Lit After Last Contact** (10 s) after the last.
 - **A narrow radar on its own turret** (no AEGIS-M weapon on it, like the
-  radar truck's) is turned by AEGIS-M while lit: onto its most urgent
-  contact, or sweeping round in steps of three quarters of its arc every
-  2 s. It's handed back to its crew while silent.
+  radar truck's) is turned by AEGIS-M in every mode, AI decides included,
+  sharing its beam between three jobs:
+  - **Fire control:** while the Site's missiles fly at targets it can
+    reach, it holds as many of them as it can and doesn't search.
+  - **Track:** otherwise it's centred on the contacts it can bring into its
+    arc, holding the most important at once. A contact under engagement
+    counts most, then munitions by time to impact, then one only passive
+    radar hears (a radar look turns it into a track), then aircraft. A
+    contact another Site sensor holds counts for less: the radar is for
+    what nobody holds. It stays put unless another centre is clearly
+    better. Every 6 s it looks at the arc beside its track that was
+    searched longer ago, then swings back.
+  - **Search:** with nothing to track, a steady sweep round, three quarters
+    of its arc per step, 2 s per sector. It skips arcs another radar of the
+    Site (or of its linked Sites) is looking at, even one still swinging
+    there, or searched in the last 4 s, so several radars spread round the
+    sky. It dwells twice as long on bearings contacts came from in the last
+    5 minutes.
+  - **Sharing:** a contact another of the Site's radars is already tracking
+    counts for a tenth, so a second radar searches rather than doubling up.
+    A target missiles are flying at counts in full for every radar.
+
+  Each dwell starts once the turret has had time to swing there (its own
+  traverse rate). A silent radar keeps pointing where it would look, so
+  it's on it the moment it lights. The debug overlays show its job
+  (`SEARCH 120 deg`, `SEARCH 120 deg (swinging)`, `TRACK 2 (045 deg)`,
+  `FIRE CONTROL 1 (...)`), and at RPT Detail Verbose each new task and
+  search dwell is logged (`RADAR-TASK`).
 - A Site with no sensor but its radars never lights in Silent until cued:
   use Intermittent. Munitions don't emit, so passive radar never cues on
   them; IR, visual and other radars do.
@@ -374,7 +408,13 @@ can fire at in time (`LATE` in the RPT when none can: it's left to the
 guns). A queued round it can no longer reach in time (by more than half a
 second), or has no missile left for, is **handed off** to a launcher that
 can (`HANDOFF`), or released if none can; an empty launcher gives its
-targets back at once. Between targets a launcher or gun stays pointed at
+targets back at once. A missile whose target is gone before it gets there
+(another weapon killed it first), or whose seeker turns to something else,
+follows another incoming munition the Site is tracking if that's what its
+seeker took. Otherwise it self-destructs where it is (`INTERCEPTOR-LOST`).
+Left free, such missiles found
+the next thing in their seeker's view and shot down an aircraft the Site
+wasn't allowed to engage. Between targets a launcher or gun stays pointed at
 the contact it's most likely to get next -- one no weapon of its kind has
 yet, soonest impact first -- rather than going back to its crew, which
 turned it away between the rockets of a salvo; it's handed back once
@@ -559,10 +599,26 @@ thing, labels stacked rather than drawn over each other:
   sensor (most tanks and IFVs) isn't shown: it's only used synced to a
   Site.
 
-An assigned weapon that isn't firing always logs why: `REACTING`, `SLEWING`, `NO-SOLUTION`, `LOS-BLOCKED` (the line from the weapon's own muzzle to the target, naming what's in the way: terrain, or the object, its class and how far its top is above the muzzle), `FIRE-SKIP`, or
+An assigned weapon that can't fire logs why: `NO-SOLUTION`, `LOS-BLOCKED` (the line from the weapon's own muzzle to the target, naming what's in the way: terrain, or the object, its class and how far its top is above the muzzle), `FIRE-SKIP`, or
 `ASSIGN-CLEAR` with a reason. Every AEGIS-M RPT line carries the mission's
 game time (`[AEGIS-M] t=123.4 ...`): the RPT's own timestamp is wall-clock
 time, which keeps running while the game is paused.
+
+**RPT Detail** (CBA setting "AEGIS-M > Debug > RPT Detail", server): at
+Normal, the default, the RPT gets what AEGIS-M decides and why. That covers
+detections, assignments, shots, intercepts, munitions it ignored or never
+saw, alarms, radar emission, anything stopping a weapon, and its setup.
+Verbose adds the step-by-step detail:
+- each weapon's wait: `REACTING`, `SLEWING`, `CUED`, `RANGE-HOLD`, `LOCKING`;
+- CIWS bursts: `SPOTTING`, `BURST-END`, `SELF-DESTRUCT`, `LAST-DITCH`;
+- missile launches: `MISSILE-TURN`, `OFFBORE-LAUNCH`, `LOCK-ON`, `LOCK`;
+- per-weapon calibration: `KINEMATICS`, `AGILITY`, `TURRET-RATE`,
+  `TARGET-SIZE`, `OPEN-FIRE-RANGE`, `FIRE-RATE`;
+- layered reserve: `RESERVE`, `SATURATION`;
+- every enemy shot fired (`MUNITION`) and munition proxy behaviour
+  (`PROXY-ATTACH`, `PROXY-LOW`);
+- rejected detections (`DETECT-REJECT`) and per-weapon `DISCOVERY` lines;
+- each turning radar's task and search dwells (`RADAR-TASK`).
 
 **Site status hint** (CBA setting "AEGIS-M > Debug > Site Status Hint", off
 by default) shows a live board in the hint box: the nearest Site's vehicles
@@ -677,7 +733,7 @@ envelope, and all threat classes are engaged.
 | Max Range (m) | 0 | 0 = the gun's own reach (Cheetah 35 mm: 2500 m). |
 | Min Elevation (deg) | 5 | Never engages below it; holds fire while the barrel is below it. |
 | Open Fire at Hit Chance (%) | 40 | Tracks from its full reach, but only fires where one burst is at least this likely to hit -- from the gun's measured scatter (its rounds' misses about where it now aims: an aiming error its spotting has since corrected doesn't count), the target's straying, the round's flight time, the hit radius and the rounds per burst; never past the round's lifetime reach or inside its arming distance. Lower = earlier, farther, more rounds per hit. 0 = its full reach. |
-| Cue Before In Range (s) | 2 | A gun is assigned a target this long before it comes into reach (judged on where the target will be by then), so its crew's reaction and its barrel's swing are done by the time it can fire; it holds meanwhile (`CUED` in the RPT). 0 = assigned only once in reach. |
+| Cue Before In Range (s) | 5 | A gun is assigned a target this long before it comes into reach (judged on where the target will be by then), so its crew's reaction and its barrel's swing are done by the time it can fire; it holds meanwhile (`CUED` in the RPT). 0 = assigned only once in reach. |
 | Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
 | Pause Between Bursts (s) | 1 | Gap after a burst before firing again at the same target. After a kill the gun goes straight on to its next target. |
 | Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |
@@ -687,9 +743,9 @@ envelope, and all threat classes are engaged.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Radar Emission | AI decides | When the Site's active radars emit: AI decides, Always on, Silent until cued, or Intermittent. |
-| Stay Lit After Last Contact (s) | 10 | Silent until cued and Intermittent: how long a radar stays lit after the last contact leaves its coverage. |
-| Intermittent: Seconds On / Off | 5 / 15 | Intermittent: each search burst's length, and the silence between bursts. |
+| Radar Emission | Automatic | When the Site's active radars emit: Automatic, AI decides, Always on, Silent until cued, or Intermittent. |
+| Stay Lit After Last Contact (s) | 10 | Silent until cued and Intermittent: how long a radar stays lit after the last contact leaves its coverage (Automatic: at least 60 s). |
+| Search Burst: Seconds On / Off | 5 / 15 | Intermittent, and Automatic while quiet: each search burst's length, and the silence between bursts. |
 | Shut Down for Anti-Radiation Missiles | On | In every mode, a radar shuts down while the Site sees an anti-radiation missile homing on it, or with it emitting in the missile's seeker view. |
 
 **Alarms**
@@ -698,6 +754,7 @@ envelope, and all threat classes are engaged.
 |---|---|---|
 | Going-Live Warning | Base alarm | Sounds from the moment the Site commits a weapon to a target (before its first shot) until the time below after its last shot. |
 | Incoming Alarm | Auto | Sounds while a munition threatening a Site vehicle is inbound (seen by a Site radar in the last 3 s -- the pool's own contact expiry), and replaces the warning meanwhile. Auto: BLUFOR the NATO helicopter warning, OPFOR the CSAT one, anyone else the Klaxon. |
+| Alarm Range | 400 m | How far both alarms are heard from each speaker: 200 m, 400 m (vanilla's own alarm), 800 m, 1.5 km, 3 km or 5 km. A custom sound keeps its own range. |
 | Warning Lasts After Last Shot (s) | 10 | How long the warning keeps going after the last missile or gun round. |
 | Custom Warning / Incoming Sound | blank | Any looping sound source class (CfgVehicles, like vanilla's `Sound_Alarm`) -- e.g. from a sound mod with a real national siren or a spoken "incoming" -- replacing that state's tone. |
 
@@ -706,8 +763,8 @@ The tones are the distinct alarm recordings in the base game: Base alarm
 Restricted-zone warning (4.6 s), Helicopter warning NATO (2.0 s) and CSAT
 (1.5 s), Missile-lock tone (0.2 s beep), or Off. (Vanilla's BLUFOR, OPFOR
 and Independent alarms are the same recording, so they're one tone here.)
-Each plays like vanilla's own alarm sound source: volume 1, heard to 400 m,
-looped by the engine. The speakers are the non-vehicle objects synced to
+Each plays like vanilla's own alarm sound source: volume 1, heard to the
+Alarm Range (400 m by default, as vanilla's is), looped by the engine. The speakers are the non-vehicle objects synced to
 the Site -- a loudspeaker prop, a lamp post, a Game Logic, but not a
 laptop (that's a status terminal) -- or the Site module itself when none
 is. Only a change of alarm state crosses the

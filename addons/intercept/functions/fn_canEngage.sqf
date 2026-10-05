@@ -31,7 +31,7 @@ Description:
     it is released instead of claimed forever.
 
     A gun is also CUED onto a target that isn't in its reach yet but will
-    be within its "Cue Before In Range" time (CIWS setting, 2 s by default):
+    be within its "Cue Before In Range" time (CIWS setting, 5 s by default):
     the same checks for a burst opened that many seconds from now, on the
     target projected to then. Assigned that early, its crew has reacted and
     its barrel is on the target by the time it can fire (it holds fire,
@@ -193,7 +193,7 @@ if (!_isCiws) then {
     // Not in reach yet: cued if it will be within the gun's cue time (CIWS
     // setting "Cue Before In Range"), so its crew has reacted and its barrel
     // is on it by then.
-    private _cueAhead = _settings getOrDefault ["ciwsCueAhead", 2];
+    private _cueAhead = _settings getOrDefault ["ciwsCueAhead", 5];
     if ((_now select 0) || {_cueAhead <= 0}) exitWith { _now };
     private _cued = [_cueAhead] call _fnSolve;
     if (_cued select 0) exitWith { _cued + [_cueAhead] };

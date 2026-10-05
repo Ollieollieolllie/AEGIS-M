@@ -62,6 +62,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 #define AEGISM_AIM_STALE 0.5
 
 params ["_system", "_target", "_weaponInfo", "_duration"];
@@ -108,9 +110,11 @@ private _roundLifetime = ([_weaponClass, _magazineClass] call aegism_intercept_f
             _ts set ["rateRounds", (_ts getOrDefault ["rateRounds", 0]) + _fired];
             _ts set ["rateTime", (_ts getOrDefault ["rateTime", 0]) + _firingTime];
         };
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " BURST-END: %1 fired %2 round(s) of %3 at %4 in %5s%6%7.", _system, _fired, _weaponClass, _targetDesc, round ((time - _startedAt) * 10) / 10,
-            if (_fired > 0 && {_firingTime > 0}) then { format [" (%1/s over the %2s it was on target)", round (_fired / _firingTime), round (_firingTime * 10) / 10] } else { "" },
-            ["", format [" (held %1s: barrel below the %2 deg CIWS minimum elevation)", round (_elevationHeld * 10) / 10, _minElevation]] select (_elevationHeld > 0)];
+        if (AEGISM_RPT_VERBOSE) then {
+            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " BURST-END: %1 fired %2 round(s) of %3 at %4 in %5s%6%7.", _system, _fired, _weaponClass, _targetDesc, round ((time - _startedAt) * 10) / 10,
+                if (_fired > 0 && {_firingTime > 0}) then { format [" (%1/s over the %2s it was on target)", round (_fired / _firingTime), round (_firingTime * 10) / 10] } else { "" },
+                ["", format [" (held %1s: barrel below the %2 deg CIWS minimum elevation)", round (_elevationHeld * 10) / 10, _minElevation]] select (_elevationHeld > 0)];
+        };
 
         if (_fired > 0) then {
             [{
@@ -119,17 +123,21 @@ private _roundLifetime = ([_weaponClass, _magazineClass] call aegism_intercept_f
                 private _stats = (_ts getOrDefault ["spotStats", createHashMap]) getOrDefault [_burstId, []];
                 ((_ts getOrDefault ["corrections", createHashMap]) getOrDefault [_targetClass, [0, 0]]) params ["_lead", "_elevation"];
                 if (_stats isEqualTo []) exitWith {
-                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SPOTTING: %1 burst %2 at %3 -- no measured round passed the target.", _system, _burstId, _targetDesc];
+                    if (AEGISM_RPT_VERBOSE) then {
+                        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SPOTTING: %1 burst %2 at %3 -- no measured round passed the target.", _system, _burstId, _targetDesc];
+                    };
                 };
                 _stats params ["_rounds", "_sumAhead", "_sumHigh", "_sumDeviation", "_deviations"];
                 private _ahead = _sumAhead / _rounds;
                 private _high = _sumHigh / _rounds;
                 private _strayed = if (_deviations > 0) then { format ["; the target strayed %1m from that track on average (evasion)", round (_sumDeviation / _deviations * 10) / 10] } else { "" };
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SPOTTING: %1 burst %2 at %3 -- %4 round(s) measured against its predicted track, on average %5m %6 and %7m %8 of it%9; %10 aim correction now lead %11 ms, elevation %12 mrad.",
-                    _system, _burstId, _targetDesc, _rounds,
-                    round (abs _ahead * 10) / 10, ["behind", "ahead"] select (_ahead >= 0),
-                    round (abs _high * 10) / 10, ["low", "high"] select (_high >= 0),
-                    _strayed, _targetClass, round (_lead * 1000), round (_elevation * 10000) / 10];
+                if (AEGISM_RPT_VERBOSE) then {
+                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SPOTTING: %1 burst %2 at %3 -- %4 round(s) measured against its predicted track, on average %5m %6 and %7m %8 of it%9; %10 aim correction now lead %11 ms, elevation %12 mrad.",
+                        _system, _burstId, _targetDesc, _rounds,
+                        round (abs _ahead * 10) / 10, ["behind", "ahead"] select (_ahead >= 0),
+                        round (abs _high * 10) / 10, ["low", "high"] select (_high >= 0),
+                        _strayed, _targetClass, round (_lead * 1000), round (_elevation * 10000) / 10];
+                };
             }, [_system, _ts, _burstId, _targetDesc, _targetClass], _roundLifetime max 0] call CBA_fnc_waitAndExecute;
         };
     };

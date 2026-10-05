@@ -164,6 +164,9 @@ private _fnRadarLine = {
     if (!alive _system) exitWith { [] };
     ([_system] call aegism_fnc_emconText) params ["_label", "_detail", "_hex"];
     if (_label == "") exitWith { [] };
+    // A turning radar's beam (aegism_system_fnc_radarSchedule).
+    private _beamText = (_system getVariable ["AEGISM_radarBeam", createHashMap]) getOrDefault ["text", ""];
+    if (_beamText != "") then { _detail = ([_detail, _beamText] - [""]) joinString "; "; };
     [format ["<t align='left' size='0.72'>    <t color='%1'>RDR %2</t> <t color='%3'>%4</t></t><br/>", _hex, _label, COL_DIM, _detail]]
 };
 

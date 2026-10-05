@@ -11,17 +11,19 @@
 //   moved every frame (an ammo type that didn't carry one, aegism_detect_
 //       fnc_proxyCheckAttach) - a free, simulated vehicle, so not until its
 //       munition is clear of whatever fired it: farther from the shooter than
-//       the shooter's bounding radius, plus AEGISM_PROXY_TRAIL, plus the
+//       the shooter's bounding radius, plus AEGISM_PROXY_OFFSET, plus the
 //       proxy's own bounding radius -- or AEGISM_PROXY_MAX_DELAY s after
 //       launch at the latest (half a second puts a rocket about a hundred
 //       metres clear).
 #define AEGISM_PROXY_MIN_DELAY 0.1
 #define AEGISM_PROXY_MAX_DELAY 0.5
 
-// The proxy sits this far behind its munition, along its flight, so the
-// munition always flies away from it and can never strike it. A few metres
-// are nothing to a sensor kilometres away.
-#define AEGISM_PROXY_TRAIL 5
+// The proxy sits this far above its munition, square to its flight: off the
+// path, so neither the munition nor the next round of its salvo can strike
+// it. (It used to trail 5 m behind -- right where the next rocket of a
+// ripple flies, and they flew into it.) A few metres are nothing to a sensor
+// kilometres away.
+#define AEGISM_PROXY_OFFSET 6
 
 // How long after attaching to check the proxy really came along: at least
 // AEGISM_PROXY_ATTACH_CHECK s, and once the munition is more than twice
@@ -32,7 +34,7 @@
 #define AEGISM_PROXY_ATTACH_CHECK 0.25
 #define AEGISM_PROXY_ATTACH_TIMEOUT 2
 
-// An attached proxy sits AEGISM_PROXY_TRAIL m behind its munition. One the
+// An attached proxy sits AEGISM_PROXY_OFFSET m from its munition. One the
 // munition didn't carry stays where it was made -- the MLRS carrier was 135 m
 // from it a quarter second after it was made half a second after launch, in
 // testing.

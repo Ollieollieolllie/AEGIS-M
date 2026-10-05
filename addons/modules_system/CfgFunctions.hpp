@@ -17,6 +17,7 @@ class CfgFunctions
             class scanForRoles {};
             class radarCovers {};
             class emconUpdate {};
+            class radarSchedule {};
             class debugCheckCiws {};
         };
     };

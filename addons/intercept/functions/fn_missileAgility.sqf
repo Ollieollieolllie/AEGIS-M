@@ -52,6 +52,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 params ["_ammoClass"];
 
 private _cache = missionNamespace getVariable "AEGISM_cacheAgility";
@@ -78,11 +80,13 @@ if (isNil "_config") then {
     private _engineSteers = (getNumber (_ammoCfg >> "maneuvrability")) > 0;
     _config = [_guided, _aceDeclared, _aceRate, _aceCone, _keepCone, _loal, _engineSteers];
     _cache set [_ammoClass, _config];
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " AGILITY: %1 -- %2", _ammoClass,
-        if (!_guided) then { "unguided" } else {
-            format ["ACE guidance declared %1 (turn %2 deg/s, post-launch cone %3 deg); engine guidance %4: post-launch cone %5 deg (missileKeepLockedCone), locks on after launch %6, turn rate measured in flight (MISSILE-TURN).",
-                _aceDeclared, _aceRate, _aceCone, ["off (maneuvrability 0)", "on"] select _engineSteers, _keepCone, _loal]
-        }];
+    if (AEGISM_RPT_VERBOSE) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " AGILITY: %1 -- %2", _ammoClass,
+            if (!_guided) then { "unguided" } else {
+                format ["ACE guidance declared %1 (turn %2 deg/s, post-launch cone %3 deg); engine guidance %4: post-launch cone %5 deg (missileKeepLockedCone), locks on after launch %6, turn rate measured in flight (MISSILE-TURN).",
+                    _aceDeclared, _aceRate, _aceCone, ["off (maneuvrability 0)", "on"] select _engineSteers, _keepCone, _loal]
+            }];
+    };
 };
 _config params ["_guided", "_aceDeclared", "_aceRate", "_aceCone", "_keepCone", "", "_engineSteers"];
 

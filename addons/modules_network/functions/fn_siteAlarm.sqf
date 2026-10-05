@@ -16,7 +16,8 @@ Description:
     the next.
 
     Each state's tone is a looping sound source (this addon's CfgVehicles
-    AEGISM_Alarm_*, or the Site's custom class) created at every speaker --
+    AEGISM_Alarm_*, heard to the Site's Alarm Range -- or the Site's custom
+    class, at its own range) created at every speaker --
     each non-vehicle object synced to the Site, or the Site logic itself if
     there is none. The engine loops it, and deleting it stops it at once, so
     the network only carries a change of state, never the repeats. (A laptop
@@ -65,12 +66,17 @@ private _fnClass = {
     };
     if (_tone == "off") exitWith { "" };
     private _class = "AEGISM_Alarm_" + (toUpper (_tone select [0, 1])) + (_tone select [1]);
+    // Heard to the Site's Alarm Range: each range is its own class
+    // (AEGISM_Alarm_<Tone>_<range>, this addon's config), 400 m the plain one.
+    private _ranged = _class + "_" + str _range;
+    if (isClass (configFile >> "CfgVehicles" >> _ranged)) exitWith { _ranged };
     ["", _class] select (isClass (configFile >> "CfgVehicles" >> _class))
 };
 
 // Its alarm settings: its own, or, linked under a Shared Site Coordinator,
 // that Site's (aegism_fnc_siteSettingsSource).
 private _settings = [_logic] call aegism_fnc_siteSettingsSource;
+private _range = round (_settings getVariable ["alarmRange", 400]);
 private _state = "";
 private _class = "";
 if (time - (_logic getVariable ["AEGISM_incomingAt", -1e9]) <= AEGISM_INCOMING_HOLD) then {

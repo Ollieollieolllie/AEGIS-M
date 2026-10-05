@@ -66,6 +66,7 @@ Author:
 ---------------------------------------------------------------------------- */
 
 #include "..\..\main\perf.hpp"
+#include "..\..\main\rpt.hpp"
 
 // How many rounds' worth of evidence the config dispersion counts as,
 // against the gun's own measured misses.
@@ -160,16 +161,18 @@ if (isNil "_logged") then { _logged = createHashMap; _ts set ["openFireLogged", 
 private _lastLogged = _logged getOrDefault [_targetClass, -1];
 if (_lastLogged < 0 || {abs (_range - _lastLogged) > AEGISM_OPEN_FIRE_LOG_CHANGE * (_lastLogged max 1)}) then {
     _logged set [_targetClass, _range];
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OPEN-FIRE-RANGE: %1 %2 vs %3 -- fires inside %4 (round reach %5m in its %6s life%7). There one %8s burst, ~%9 rounds at %10/s (%11), puts a round within %12m of the target %13 percent of the time: rounds scatter %14 mrad RMS (%15), the target strays %16 m/s of flight from its predicted track.",
-        _system, _weaponClass, _targetClass,
-        [format ["%1m", round _range], "its full reach"] select (_range >= _reach),
-        round (_reach min 1e5), _lifetime, [format [", arms at %1m", _minRange], ""] select (_minRange <= 0),
-        round (_burstLength * 10) / 10, round _roundsPerBurst, round _rate, ["config fire rate", "measured"] select _rateMeasured,
-        round (_hitRadius * 100) / 100, round (_chance * 100),
-        round ((sqrt ([_range min (_reach min 1e5)] call _fnScatterSq)) * 10000) / 10,
-        [format ["config dispersion %1 mrad plus its fire gate, nothing measured yet", round (_dispersion * 10000) / 10],
-         format ["measured over %1 rounds, blended with config dispersion %2 mrad plus its fire gate", round _rounds, round (_dispersion * 10000) / 10]] select (_rounds >= 1),
-        round ((sqrt _strayRateSq) * 100) / 100];
+    if (AEGISM_RPT_VERBOSE) then {
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OPEN-FIRE-RANGE: %1 %2 vs %3 -- fires inside %4 (round reach %5m in its %6s life%7). There one %8s burst, ~%9 rounds at %10/s (%11), puts a round within %12m of the target %13 percent of the time: rounds scatter %14 mrad RMS (%15), the target strays %16 m/s of flight from its predicted track.",
+            _system, _weaponClass, _targetClass,
+            [format ["%1m", round _range], "its full reach"] select (_range >= _reach),
+            round (_reach min 1e5), _lifetime, [format [", arms at %1m", _minRange], ""] select (_minRange <= 0),
+            round (_burstLength * 10) / 10, round _roundsPerBurst, round _rate, ["config fire rate", "measured"] select _rateMeasured,
+            round (_hitRadius * 100) / 100, round (_chance * 100),
+            round ((sqrt ([_range min (_reach min 1e5)] call _fnScatterSq)) * 10000) / 10,
+            [format ["config dispersion %1 mrad plus its fire gate, nothing measured yet", round (_dispersion * 10000) / 10],
+             format ["measured over %1 rounds, blended with config dispersion %2 mrad plus its fire gate", round _rounds, round (_dispersion * 10000) / 10]] select (_rounds >= 1),
+            round ((sqrt _strayRateSq) * 100) / 100];
+    };
 };
 
 [_range, _minRange]
