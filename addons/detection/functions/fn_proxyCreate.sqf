@@ -51,7 +51,7 @@ if (isNull _projectile || {!alive _projectile}) exitWith {};
 // munition is clear of whatever fired it (proxy.hpp), checked every frame.
 private _follow = (typeOf _projectile) in (missionNamespace getVariable ["AEGISM_proxyFollowAmmo", createHashMap]);
 private _wait = false;
-if (_follow && {time < (_flags getOrDefault ["firedAt", time]) + AEGISM_PROXY_MAX_DELAY}) then {
+if (_follow && {CBA_missionTime < (_flags getOrDefault ["firedAt", CBA_missionTime]) + AEGISM_PROXY_MAX_DELAY}) then {
     private _shooter = (getShotParents _projectile) param [0, objNull];
     private _proxyRadius = missionNamespace getVariable ["AEGISM_proxyRadius", -1];
     _wait = !isNull _shooter && {_proxyRadius < 0 || {(_projectile distance _shooter) <= ((boundingBoxReal _shooter) select 2) + AEGISM_PROXY_OFFSET + _proxyRadius}};
@@ -78,7 +78,7 @@ _proxy addEventHandler ["HandleDamage", {
         _proxy setVariable ["AEGISM_proxyDamage", _total];
         private _munition = _entry select 0;
         if (_total >= 1 && {!isNull _munition} && {alive _munition}) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PROXY-HIT: %1 (%2) destroyed -- its sensor proxy was shot down by %3 (%4, %5).",
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PROXY-HIT: %1 (%2) destroyed -- its sensor proxy was shot down by %3 (%4, %5).",
                 typeOf _munition, _proxy getVariable ["AEGISM_proxyKey", "?"], _attacker, typeOf _attacker, _ammo];
             [_munition] call aegism_detect_fnc_destroyMunition;
         };
@@ -105,7 +105,7 @@ if (_follow) then {
 } else {
     // Attached straight from where it's made, never free on the way.
     _proxy attachTo [_projectile, [0, 0, AEGISM_PROXY_OFFSET]];
-    _flags set ["attachCheckAt", time + AEGISM_PROXY_ATTACH_CHECK];
+    _flags set ["attachCheckAt", CBA_missionTime + AEGISM_PROXY_ATTACH_CHECK];
     _flags set ["attachFrom", getPosASL _projectile];
 };
 _entry set [6, _proxy];

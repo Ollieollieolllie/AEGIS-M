@@ -73,7 +73,7 @@ private _watched = !(_projectile getVariable ["AEGISM_fromSystem", false]) || {
 // frame; "attachCheckAt": when to check its proxy came along when attached;
 // "arm": an anti-radiation missile's last known state (aegism_detect_fnc_
 // munitionCheck, logged as ARM-END when it's gone).
-private _entry = [_projectile, _class, _shooterSide, _key, [], time, objNull, createHashMapFromArray [["firedAt", time], ["ammo", typeOf _projectile]]];
+private _entry = [_projectile, _class, _shooterSide, _key, [], CBA_missionTime, objNull, createHashMapFromArray [["firedAt", CBA_missionTime], ["ammo", typeOf _projectile]]];
 _tracked pushBack _entry;
 
 if (_watched) then {

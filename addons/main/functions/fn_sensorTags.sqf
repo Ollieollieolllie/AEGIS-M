@@ -30,7 +30,7 @@ params ["_sources"];
 private _names = createHashMapFromArray [["activeradar", "RDR"], ["passiveradar", "PAS"], ["ir", "IR"], ["visual", "VIS"], ["datalink", "DL"]];
 private _tags = [];
 {
-    if (time - _y <= AEGISM_SOURCE_WINDOW) then { _tags pushBackUnique (_names getOrDefault [_x, toUpper _x]); };
+    if (CBA_missionTime - _y <= AEGISM_SOURCE_WINDOW) then { _tags pushBackUnique (_names getOrDefault [_x, toUpper _x]); };
 } forEach _sources;
 _tags sort true;
 _tags joinString " "

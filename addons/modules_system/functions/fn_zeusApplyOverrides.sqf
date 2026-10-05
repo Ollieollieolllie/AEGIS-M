@@ -32,7 +32,7 @@ if (isNull _vehicle) exitWith {};
 
 if (!isServer || {isNil {_vehicle getVariable "AEGISM_system"}}) exitWith {
     if (isServer) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OVERRIDES: %1 edited in Zeus -- takes effect once it's an AEGIS-M System (synced to a Site, or a self-contained AA vehicle).", _vehicle];
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " OVERRIDES: %1 edited in Zeus -- takes effect once it's an AEGIS-M System (synced to a Site, or a self-contained AA vehicle).", _vehicle];
     };
 };
 
@@ -41,4 +41,4 @@ private _summary = "off -- follows its Site's settings";
 if (_vehicle getVariable ["AEGISM_ovr_enabled", false]) then {
     _summary = if (_overrides isEqualTo []) then { "on, but every setting is left on 'Site setting'" } else { "on: " + (_overrides joinString ", ") };
 };
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OVERRIDES: %1 edited in Zeus -- %2", _vehicle, _summary];
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " OVERRIDES: %1 edited in Zeus -- %2", _vehicle, _summary];

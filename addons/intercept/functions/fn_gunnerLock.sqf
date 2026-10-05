@@ -77,14 +77,14 @@ if (isNull _gunner) exitWith { 0 };
 
 if ((_ts getOrDefault ["lockTarget", objNull]) isNotEqualTo _wanted) then {
     _ts set ["lockTarget", _wanted];
-    _ts set ["lockSince", time];
+    _ts set ["lockSince", CBA_missionTime];
     _gunner enableAI "TARGET";
     _gunner reveal [_wanted, 4];
     _gunner doTarget _wanted;
     if (AEGISM_RPT_VERBOSE) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCK-ON: %1 turret %2 -- gunner %3 locking %4 (%5), %6m; %7 s to lock.", _system, _turretPath, _gunner, _wanted, typeOf _wanted, round (_system distance _wanted),
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LOCK-ON: %1 turret %2 -- gunner %3 locking %4 (%5), %6m; %7 s to lock.", _system, _turretPath, _gunner, _wanted, typeOf _wanted, round (_system distance _wanted),
             getNumber (configFile >> "CfgWeapons" >> _weaponClass >> "weaponLockDelay")];
     };
 };
 
-((_ts get "lockSince") + getNumber (configFile >> "CfgWeapons" >> _weaponClass >> "weaponLockDelay") - time) max 0
+((_ts get "lockSince") + getNumber (configFile >> "CfgWeapons" >> _weaponClass >> "weaponLockDelay") - CBA_missionTime) max 0

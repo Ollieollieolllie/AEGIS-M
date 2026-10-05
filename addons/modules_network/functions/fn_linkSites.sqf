@@ -222,12 +222,12 @@ private _fnLinkText = {
         } forEach _groupSites;
 
         if (count _groupSites > 1) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LINK: Sites %1 now work as one, linked by %2 link(s): %3 -- %4 coordinates every target across all %5 vehicle(s); %6; contacts and assignments are shared, and their alarms sound together.%7",
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LINK: Sites %1 now work as one, linked by %2 link(s): %3 -- %4 coordinates every target across all %5 vehicle(s); %6; contacts and assignments are shared, and their alarms sound together.%7",
                 _groupSites, count _links, (_links apply { _x call _fnLinkText }) joinString "; ", _lead, count _groupMembers,
                 ["each vehicle keeps its own Site's settings (no Shared Site Coordinator)", format ["%1 is the Shared Site Coordinator: its settings apply to every vehicle of the group", _lead]] select (_lead getVariable ["sharedCoordinator", false]),
                 ["", format [" WARNING: %1 are all ticked Shared Site Coordinator -- %2, set up first, leads.", _coordinators, _lead]] select (count _coordinators > 1)];
         } else {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " UNLINK: Site %1 works on its own again, with its own settings -- %2. It keeps its own vehicles' assignments and a copy of the contacts.", _lead,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " UNLINK: Site %1 works on its own again, with its own settings -- %2. It keeps its own vehicles' assignments and a copy of the contacts.", _lead,
                 if (_lost isEqualTo []) then { "its last link is gone" } else { "lost " + ((_lost apply { _x call _fnLostText }) joinString "; ") }];
         };
 
@@ -238,7 +238,7 @@ private _fnLinkText = {
         // The same group, its links changed: one of several lost (still
         // linked by the rest), or a new one.
         if (count _groupSites > 1 && {_lost isNotEqualTo [] || {_gained isNotEqualTo []}}) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LINK-CHANGE: Sites %1 still work as one, linked by %2 link(s)%3%4.", _groupSites, count _links,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LINK-CHANGE: Sites %1 still work as one, linked by %2 link(s)%3%4.", _groupSites, count _links,
                 ["", " -- lost " + ((_lost apply { _x call _fnLostText }) joinString "; ")] select (_lost isNotEqualTo []),
                 ["", " -- new " + ((_gained apply { _x call _fnLinkText }) joinString "; ")] select (_gained isNotEqualTo [])];
         };

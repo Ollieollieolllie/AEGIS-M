@@ -32,6 +32,6 @@ params ["_projectile", "_target", "_why"];
 if (isNull _projectile || {!alive _projectile}) exitWith {};
 
 private _launcher = (getShotParents _projectile) param [0, objNull];
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " INTERCEPTOR-LOST: %1 from %2 -- %3; self-destructed so its seeker can't take anything else.",
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " INTERCEPTOR-LOST: %1 from %2 -- %3; self-destructed so its seeker can't take anything else.",
     typeOf _projectile, _launcher, _why];
 triggerAmmo _projectile;

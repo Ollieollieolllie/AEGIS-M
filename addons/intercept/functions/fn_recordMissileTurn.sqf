@@ -59,7 +59,7 @@ if (_turned) then {
 _table set [_ammoClass, [_flights, _turnedFlights, _rate]];
 
 if (AEGISM_RPT_VERBOSE) then {
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSILE-TURN: %1 launched %2 deg off the intercept -- fastest sustained turn %3 deg/s; %4. %5",
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSILE-TURN: %1 launched %2 deg off the intercept -- fastest sustained turn %3 deg/s; %4. %5",
         _ammoClass, round (_offBore * 10) / 10, round (_peakRate * 10) / 10,
         if (_flightTime >= 0) then {
             format ["intercepted after %1s (predicted %2s)", round (_flightTime * 10) / 10, round (_predictedFlight * 10) / 10]

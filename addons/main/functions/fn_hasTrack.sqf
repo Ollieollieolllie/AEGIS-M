@@ -33,7 +33,7 @@ params ["_entry"];
 private _recent = false;
 private _tracked = false;
 {
-    if (time - _y <= AEGISM_SOURCE_WINDOW) then {
+    if (CBA_missionTime - _y <= AEGISM_SOURCE_WINDOW) then {
         _recent = true;
         if (_x != "passiveradar") then { _tracked = true; };
     };

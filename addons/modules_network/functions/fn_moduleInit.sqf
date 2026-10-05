@@ -279,7 +279,7 @@ if (isServer) then {
         params ["_logic", "_logicNetId"];
         private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
         missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners - [_logic]];
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " WARNING: Site (netId %1) was deleted -- pruned from AEGISM_allPoolOwners. Any vehicle still referencing it will lose battery contacts/deconfliction.", _logicNetId];
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " WARNING: Site (netId %1) was deleted -- pruned from AEGISM_allPoolOwners. Any vehicle still referencing it will lose battery contacts/deconfliction.", _logicNetId];
     }
 ] call aegism_fnc_pollSyncedObjects;
 
@@ -304,10 +304,10 @@ if (isServer) then {
         };
         // Paused (game time not moving): nothing has changed. A paused
         // game used to keep the coordinator running twice a second.
-        if (time == _lastTime) exitWith {};
-        if (time < _lastTime + AEGISM_COORDINATOR_INTERVAL && {!(_logic getVariable ["AEGISM_assignNow", false])}) exitWith {};
+        if (CBA_missionTime == _lastTime) exitWith {};
+        if (CBA_missionTime < _lastTime + AEGISM_COORDINATOR_INTERVAL && {!(_logic getVariable ["AEGISM_assignNow", false])}) exitWith {};
         _logic setVariable ["AEGISM_assignNow", false, false];
-        _args set [2, time];
+        _args set [2, CBA_missionTime];
         // Linked to another Site through a shared vehicle: the group's lead
         // coordinates the whole group (aegism_network_fnc_linkSites).
         [] call aegism_network_fnc_linkSites;
@@ -323,4 +323,4 @@ if (isServer) then {
     }, 0, [_logic, ["", "", []], -1]] call CBA_fnc_addPerFrameHandler;
 };
 
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];

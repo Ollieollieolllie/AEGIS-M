@@ -88,7 +88,7 @@ private _playerCrew = _crewElsewhere && {((units group _gunner) findIf { isPlaye
 if (_crewElsewhere) then {
     if ((_ts getOrDefault ["nonLocalLogged", -1]) != owner _gunner) then {
         _ts set ["nonLocalLogged", owner _gunner];
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " NONLOCAL: %1 turret %2 crew (%3) is simulated on machine %4, not the server -- %5",
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " NONLOCAL: %1 turret %2 crew (%3) is simulated on machine %4, not the server -- %5",
             _system, _turretPath, _gunner, owner _gunner,
             ["its AI group is being moved to the server so AEGIS-M can guide its missiles.", "a player is in that group, so it can't be moved: missiles fired from it won't get AEGIS-M's target."] select _playerCrew];
     };
@@ -97,7 +97,7 @@ if (_crewElsewhere) then {
 if (_crewElsewhere && {!_playerCrew}) exitWith { -1 };
 
 if (random 1 > _reliability) exitWith {
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-SKIP: %1 (%2) at %3 -- crew reliability roll failed (reliability=%4), losing this fire cycle.", _system, _role, _target, _reliability];
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FIRE-SKIP: %1 (%2) at %3 -- crew reliability roll failed (reliability=%4), losing this fire cycle.", _system, _role, _target, _reliability];
     0
 };
 
@@ -131,13 +131,13 @@ private _contextLifetime = [2, _burstDuration + 0.5] select _isCiws;
 // interceptorPFH, MISSILE-TURN).
 (_ts getOrDefault ["launchPlan", []]) params [["_planTarget", objNull], ["_way", ""], ["_offBore", 0], ["_turnTime", 0], ["_predictedFlight", -1], ["_calibrated", true]];
 if (_planTarget != _target) then { _way = ""; _offBore = 0; _turnTime = 0; _predictedFlight = -1; };
-_ts set ["capture", [_target, _role, _interceptors, time + _contextLifetime, _targetIsMunition, _turretPath, _weaponClass, [_offBore, _predictedFlight, time]]];
+_ts set ["capture", [_target, _role, _interceptors, CBA_missionTime + _contextLifetime, _targetIsMunition, _turretPath, _weaponClass, [_offBore, _predictedFlight, CBA_missionTime]]];
 
 if (_isCiws) then {
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];
     [_system, _target, _weaponInfo, _burstDuration] call aegism_intercept_fnc_ciwsBurst;
 } else {
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE: %1 (%2) fires %3 (%4, %5 rounds left) at %6 (%7) -- %8, launched %9, %10 deg off the intercept.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _role,
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FIRE: %1 (%2) fires %3 (%4, %5 rounds left) at %6 (%7) -- %8, launched %9, %10 deg off the intercept.", _system, typeOf _system, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target, _role,
         switch (_way) do {
             case "onBore": { "on it" };
             case "slew": { "as close as the turret gets" };
@@ -147,7 +147,7 @@ if (_isCiws) then {
         }, round (_offBore * 10) / 10];
     if (_offBore > AEGISM_LAUNCH_ON_BORE) then {
         if (AEGISM_RPT_VERBOSE) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OFFBORE-LAUNCH: %1 turret %2 -- %3 deg off the intercept on %4: %5.", _system, _turretPath, round _offBore, _target,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " OFFBORE-LAUNCH: %1 turret %2 -- %3 deg off the intercept on %4: %5.", _system, _turretPath, round _offBore, _target,
                 if (_calibrated) then {
                     format ["predicted turn %1s, flight %2s", round (_turnTime * 10) / 10, round (_predictedFlight * 10) / 10]
                 } else {
@@ -163,14 +163,14 @@ if (_isCiws) then {
     // where it's simulated here).
     if (!_targetIsMunition) then {
         if (AEGISM_RPT_VERBOSE) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCK: %1 fires on %2 -- its sensors show this launcher as %3; gunner's assigned target %4.", _system, _target,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LOCK: %1 fires on %2 -- its sensors show this launcher as %3; gunner's assigned target %4.", _system, _target,
                 ((getSensorThreats _target) select { (_x param [0, objNull]) isEqualTo _system }) apply { _x select [1] }, assignedTarget _gunner];
         };
         if (local _target && {!(_target getVariable ["AEGISM_warningLogged", false])}) then {
             _target setVariable ["AEGISM_warningLogged", true];
             _target addEventHandler ["IncomingMissile", {
                 params ["_target", "_ammo", "_vehicle"];
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSILE-WARNING: %1 (%2) is warned of an incoming %3 from %4.", _target, typeOf _target, _ammo, _vehicle];
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSILE-WARNING: %1 (%2) is warned of an incoming %3 from %4.", _target, typeOf _target, _ammo, _vehicle];
             }];
         };
     };
@@ -192,7 +192,7 @@ if (!_isCiws) then {
         private _commanded = (_ts getOrDefault ["shots", 0]) - _shotsBefore;
         // A reload in the window refills the count; only an excess is an anomaly.
         if (_consumed > _commanded) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-ANOMALY: %1 -- %2 fire command(s) consumed %3 missiles.", _system, _commanded, _consumed];
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FIRE-ANOMALY: %1 -- %2 fire command(s) consumed %3 missiles.", _system, _commanded, _consumed];
         };
     }, [_system, _magazineClass, _turretPath, _ammoBefore, _ts, _shotsBefore], 1] call CBA_fnc_waitAndExecute;
 };

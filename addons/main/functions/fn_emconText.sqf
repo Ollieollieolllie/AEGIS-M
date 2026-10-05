@@ -41,7 +41,7 @@ private _detail = _state getOrDefault ["detail", ""];
 private _on = isVehicleRadarOn _vehicle;
 private _silent = _reason in ["arm", "silent", "pause"];
 
-if (_reason != "ai" && {time - (_state getOrDefault ["since", time]) > 2} && {_on == _silent}) then {
+if (_reason != "ai" && {CBA_missionTime - (_state getOrDefault ["since", CBA_missionTime]) > 2} && {_on == _silent}) then {
     _detail = _detail + (["; but its radar isn't on", "; but its radar is still on"] select _on);
 };
 

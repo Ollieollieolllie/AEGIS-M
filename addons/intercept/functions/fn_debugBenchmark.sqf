@@ -71,7 +71,7 @@ if (_role == "ciws") then {
     // A steer needs a fresh solve on this target; diag_codePerformance runs
     // within one frame, so time stands still and the solve stays fresh.
     [_system, _target, _weaponInfo, _role] call aegism_intercept_fnc_aimWeapon;
-    _ts set ["trackTarget", [_target, _weaponInfo, time]];
+    _ts set ["trackTarget", [_target, _weaponInfo, CBA_missionTime]];
     _ts set ["aim_ciws", []];
     ["ciwsTrack steer", {
         // Cleared each call, or the tracker would return this frame's aim.

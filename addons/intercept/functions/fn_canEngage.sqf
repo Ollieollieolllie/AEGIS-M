@@ -7,13 +7,17 @@ Description:
     assignEngagements) and standalone target selection (aegism_intercept_
     fnc_selectTarget) share.
 
-        launcher - the target is inside the missile's envelope NOW (lock
-            range, doctrine limits: aegism_intercept_fnc_inEnvelope), and a
-            missile can be put onto it (aegism_intercept_fnc_launchSolution):
-            it can catch it on its real speed profile, launched along the
-            closest direction the turret can reach -- straight, or off-bore
-            within the missile's post-launch cone and turn (a vertical
-            launch cell, a turret at its limit). Against an incoming
+        launcher - a missile can be put onto it (aegism_intercept_fnc_
+            launchSolution): it can catch it on its real speed profile,
+            launched along the closest direction the turret can reach --
+            straight, or off-bore within the missile's post-launch cone and
+            turn (a vertical launch cell, a turret at its limit) -- and the
+            point where it MEETS the target is inside the missile's envelope
+            (lock range, doctrine limits: aegism_intercept_fnc_inEnvelope's
+            rule). Not the target's current position: an incoming munition
+            is launched at while still beyond the missile's reach, so the
+            missile meets it out near the edge of it instead of well inside
+            -- and there's time left for a second shot. Against an incoming
             munition, the turret's swing plus the missile's flight must
             beat its impact -- or, only when that's too late, a launch now,
             before the turret is round.
@@ -37,12 +41,13 @@ Description:
     its barrel is on the target by the time it can fire (it holds fire,
     "cued", until then).
 
-    A gun first rules out, without solving anything, a target too far to
-    reach at all: the intercept has to be within the gun's range, and the
-    target can't cover more than speed x t + g t^2 / 2 in the round's flight
-    time t to that range (or its lifetime, CfgAmmo timeToLive, if shorter).
-    The coordinator checks every free contact against every gun, most of
-    them far out of reach.
+    Both first rule out, without solving anything, a target too far to
+    reach at all: the intercept has to be within the weapon's range, and the
+    target can't cover more than speed x t + g t^2 / 2 in the round's or
+    missile's flight time t to that range (or its lifetime, CfgAmmo
+    timeToLive, if shorter; aegism_intercept_fnc_missileFlightTime for a
+    missile). The coordinator checks every free contact against every
+    weapon, most of them far out of reach.
 
     No acceleration sampling, so calling this has no side effects: the
     intercept is estimated from velocity -- plus gravity for a gun against
@@ -78,7 +83,6 @@ PERF_INC(PERF_CAN_ENGAGE);
 
 private _origin = eyePos _system;
 private _targetPos = getPosASL _target;
-private _height = (ASLToAGL _targetPos) select 2;
 private _currentDistance = _origin distance _targetPos;
 private _isCiws = _role == "ciws";
 
@@ -88,9 +92,13 @@ private _fnEnvelopeReason = {
 };
 
 if (!_isCiws) then {
-    private _elevation = [_origin, _targetPos] call aegism_intercept_fnc_elevationAngle;
-    if !([_settings, _weaponInfo, _currentDistance, _height, _role, _elevation] call aegism_intercept_fnc_inEnvelope) exitWith {
-        [false, [_currentDistance, _height, _elevation] call _fnEnvelopeReason]
+    ([_settings, _weaponInfo, _role] call aegism_intercept_fnc_envelopeBounds) params ["_minRange", "_maxRange", "_minAltitude", "_maxAltitude"];
+    // Too far to meet inside its reach at all (see header), before solving
+    // anything: the coordinator checks every free contact against every
+    // launcher, most of them far out of reach.
+    private _span = if (_maxRange > 0) then { [_weaponInfo, _maxRange] call aegism_intercept_fnc_missileFlightTime } else { -1 };
+    if (_span >= 0 && {_currentDistance > _maxRange + (vectorMagnitude velocity _target) * _span + 0.5 * AEGISM_GRAVITY * _span * _span}) exitWith {
+        [false, format ["beyond reach (%1m)", round _currentDistance]]
     };
     // How a missile gets onto it (aegism_intercept_fnc_launchSolution):
     // straight, after the turret swings to the closest direction it can
@@ -109,8 +117,15 @@ if (!_isCiws) then {
     } else { 1e10 };
     private _muzzle = ([_system, _weaponInfo select 0, _role] call aegism_intercept_fnc_turretPoints) select 0;
     ([_system, _weaponInfo, _target, _muzzle, true, true, false, 0, false, _timeToImpact] call aegism_intercept_fnc_launchSolution)
-        params ["_launchable", "_reason", "", "", "_flightTime", "_slewTime"];
+        params ["_launchable", "_reason", "", "", "_flightTime", "_slewTime", "", "", "", "_interceptPoint", "_interceptDistance"];
     if (!_launchable) exitWith { [false, _reason] };
+    // Where the missile meets it has to be inside the envelope (aegism_
+    // intercept_fnc_inEnvelope's rule) -- not where it is now: launched at an
+    // incoming munition still beyond its reach, it meets it inside.
+    private _interceptHeight = (ASLToAGL _interceptPoint) select 2;
+    if (_interceptDistance < _minRange || {_interceptDistance > _maxRange} || {_interceptHeight < _minAltitude} || {_maxAltitude > 0 && {_interceptHeight > _maxAltitude}}) exitWith {
+        [false, [_interceptDistance, _interceptHeight, [_origin, _interceptPoint] call aegism_intercept_fnc_elevationAngle] call _fnEnvelopeReason]
+    };
     if (_timeToImpact < 1e9 && {_slewTime + (_flightTime max 0) >= _timeToImpact}) exitWith {
         [false, format ["can't get a missile onto it in time (turret swing %1s + missile flight %2s vs impact in %3s)", round (_slewTime * 10) / 10, round (_flightTime * 10) / 10, round (_timeToImpact * 10) / 10]]
     };

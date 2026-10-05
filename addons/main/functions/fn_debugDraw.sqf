@@ -151,11 +151,11 @@ private _sightings = [];            // [sensor vehicle, contact key -> heard by 
             {
                 private _key = _x;
                 private _kinds = [];
-                { if (time - _y <= AEGISM_SIGHT_WINDOW) then { _kinds pushBack _x; }; } forEach (_y getOrDefault ["sources", createHashMap]);
+                { if (CBA_missionTime - _y <= AEGISM_SIGHT_WINDOW) then { _kinds pushBack _x; }; } forEach (_y getOrDefault ["sources", createHashMap]);
                 if (_kinds isNotEqualTo []) then { _seen set [_key, _kinds isEqualTo ["passiveradar"]]; };
             } forEach _pool;
             (_owner getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_munitions"];
-            if (time - _readAt <= AEGISM_SIGHT_WINDOW) then {
+            if (CBA_missionTime - _readAt <= AEGISM_SIGHT_WINDOW) then {
                 { _seen set [_x, false]; } forEach _munitions;
             };
             _sightings pushBack [_owner, _seen];
@@ -165,7 +165,7 @@ private _sightings = [];            // [sensor vehicle, contact key -> heard by 
             if (!isNull _object) then {
                 private _known = _contacts get _x;
                 if (isNil "_known") then {
-                    _known = [_object, _y getOrDefault ["class", ""], [1e10, time], createHashMap];
+                    _known = [_object, _y getOrDefault ["class", ""], [1e10, CBA_missionTime], createHashMap];
                     _contacts set [_x, _known];
                 };
                 // One per contact; the Site's entry carries its time to impact.
@@ -315,7 +315,7 @@ private _byRole = createHashMap;    // [system netId, role] -> [urgency, label, 
         default { AEGISM_ICON_TARGET };
     };
     drawIcon3D [_icon, _color, _position, 0.6, 0.6, 0, "", 2];
-    private _remaining = _tti - (time - _ttiAt);
+    private _remaining = _tti - (CBA_missionTime - _ttiAt);
     private _text = toUpper _class;
     if (_tti < 1e9) then { _text = format ["%1  %2s", _text, (round (_remaining * 10) / 10) max 0]; };
     private _tags = [_seen] call aegism_fnc_sensorTags;

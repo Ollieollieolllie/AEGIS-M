@@ -46,10 +46,12 @@ Description:
             "onBore" / "slew" - barrel within AEGISM_AIM_ON_TARGET degrees
                 of the launch direction, OR the turret has stopped closing
                 on it (the angle hasn't shrunk for AEGISM_AIM_SETTLE_TICKS
-                checks in a row: trailing a fast-moving lead point), with
-                the barrel's own angle off the intercept still inside the
-                missile's post-launch cone (aegism_intercept_fnc_
-                missileAgility)
+                checks in a row: trailing a fast-moving lead point, or
+                stopped at its limit), with the barrel's own angle off the
+                intercept still inside the off-bore limit for the way it
+                launches (the missile's post-launch cone, and Max Off-Bore
+                Launch While Swinging or At Turret Limit: aegism_intercept_
+                fnc_launchSolution)
             An off-bore launch also needs its first leg clear -- to where
             the missile's turn ends, or (its turn not known yet) its own
             arming distance (CfgAmmo fuseDistance) straight along the
@@ -138,10 +140,10 @@ if (!_isCiws) exitWith {
     // whichever way wins now: "now" is decided again every tick, and waiting
     // out the crew's reaction must not freeze it where it is.
     private _aimPoint = if (_feasible) then { _origin vectorAdd (_reachDir vectorMultiply (_interceptDistance max 1)) } else { getPosASLVisual _target };
-    if (time - (_ts getOrDefault ["ciwsAimAt", -1e9]) > AEGISM_CIWS_AIM_OWNERSHIP) then {
-        if ((_system turretLocal _turretPath) || {time - (_ts getOrDefault ["lockAt", -1e9]) >= AEGISM_REMOTE_LOCK_INTERVAL}) then {
+    if (CBA_missionTime - (_ts getOrDefault ["ciwsAimAt", -1e9]) > AEGISM_CIWS_AIM_OWNERSHIP) then {
+        if ((_system turretLocal _turretPath) || {CBA_missionTime - (_ts getOrDefault ["lockAt", -1e9]) >= AEGISM_REMOTE_LOCK_INTERVAL}) then {
             [_system, _turretPath, _aimPoint vectorAdd _cameraOffset] call aegism_intercept_fnc_lockTurret;
-            _ts set ["lockAt", time];
+            _ts set ["lockAt", CBA_missionTime];
         };
     };
 
@@ -161,21 +163,21 @@ if (!_isCiws) exitWith {
     // Off-bore: the first leg of its flight has to be clear (see header).
     if (_aligned && {_barrelOffBore > AEGISM_AIM_ON_TARGET}) then {
         (_ts getOrDefault ["launchPath", [-1e9, objNull, true]]) params ["_checkedAt", "_checkedTarget", "_clear"];
-        if (time - _checkedAt > AEGISM_LAUNCH_PATH_REUSE || {_checkedTarget != _target}) then {
+        if (CBA_missionTime - _checkedAt > AEGISM_LAUNCH_PATH_REUSE || {_checkedTarget != _target}) then {
             private _legEnd = if (_calibrated && {_turnTime > 0}) then { _turnEnd } else {
                 _origin vectorAdd (_barrel vectorMultiply ((([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics) select 9) max 1))
             };
             _clear = (lineIntersectsSurfaces [_origin, _legEnd, _system, _target, true, 1]) isEqualTo [];
-            _ts set ["launchPath", [time, _target, _clear]];
+            _ts set ["launchPath", [CBA_missionTime, _target, _clear]];
             if (!_clear) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LAUNCH-PATH-BLOCKED: %1 turret %2 on %3 -- an off-bore launch (%4 deg off) would fly into something within %5m; holding.",
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LAUNCH-PATH-BLOCKED: %1 turret %2 on %3 -- an off-bore launch (%4 deg off) would fly into something within %5m; holding.",
                     _system, _turretPath, _target, round _barrelOffBore, round (_origin distance _legEnd)];
             };
         };
         if (!_clear) then { _aligned = false; };
     };
 
-    _ts set ["aim_launcher", [_angle, AEGISM_AIM_ON_TARGET, time, _target, _feasible, _aligned, _aimPoint]];
+    _ts set ["aim_launcher", [_angle, AEGISM_AIM_ON_TARGET, CBA_missionTime, _target, _feasible, _aligned, _aimPoint]];
     _ts set ["launchPlan", [_target, _way, _barrelOffBore, _turnTime, _tof, _calibrated, _reason, _slewTime]];
     [_aligned, _angle, AEGISM_AIM_ON_TARGET, _aimPoint, _feasible, true]
 };
@@ -192,7 +194,7 @@ _correction params ["_leadCorrection", "_elevationCorrection"];
 private _ballistic = _isCiws && {_targetClass in ["artilleryShell", "rocket", "bomb"]};
 ([_system, _origin, _target, _weaponInfo, _role, !_ballistic, 0, _ballistic, _leadCorrection] call aegism_intercept_fnc_computeLeadPoint) params ["_aimPoint", "_feasible", "_tof", "_interceptDistance", "_track"];
 if (_isCiws) then {
-    _ts set ["track", [time] + _track];
+    _ts set ["track", [CBA_missionTime] + _track];
     _ts set ["trackTof", _tof];
 };
 
@@ -217,10 +219,10 @@ if (_elevationCorrection != 0) then {
 };
 
 // The gun owns its turret while it aims (see header).
-_ts set ["ciwsAimAt", time];
-if ((_system turretLocal _turretPath) || {time - (_ts getOrDefault ["lockAt", -1e9]) >= AEGISM_REMOTE_LOCK_INTERVAL}) then {
+_ts set ["ciwsAimAt", CBA_missionTime];
+if ((_system turretLocal _turretPath) || {CBA_missionTime - (_ts getOrDefault ["lockAt", -1e9]) >= AEGISM_REMOTE_LOCK_INTERVAL}) then {
     [_system, _turretPath, _aimPoint vectorAdd _cameraOffset] call aegism_intercept_fnc_lockTurret;
-    _ts set ["lockAt", time];
+    _ts set ["lockAt", CBA_missionTime];
 };
 
 private _barrel = [_system, _turretPath, _weaponClass] call aegism_intercept_fnc_barrelDirection;
@@ -240,7 +242,7 @@ if (_interceptDistance > 0) then {
 private _aimVelocity = [0, 0, 0];
 private _previous = _ts getOrDefault ["solve", []];
 if (_previous isNotEqualTo [] && {(_previous select 8) == _target}) then {
-    private _dt = time - (_previous select 0);
+    private _dt = CBA_missionTime - (_previous select 0);
     if (_dt > 0 && {_dt <= AEGISM_AIM_VELOCITY_MAX_GAP}) then {
         _aimVelocity = (_aimPoint vectorDiff (_previous select 1)) vectorMultiply (1 / _dt);
     };
@@ -257,7 +259,7 @@ private _hitRadius = if (_targetClass in ["missile", "rocket", "bomb", "artiller
 } else { _targetRadius };
 ([_system, _turretPath, _weaponInfo, _targetClass, _hitRadius, _settings] call aegism_intercept_fnc_openFireRange) params ["_openFireRange", "_minRange"];
 
-_ts set ["solve", [time, _aimPoint, _aimVelocity, _cameraOffset, _origin, _tolerance, _feasible, _interceptDistance, _target, _targetClass, _openFireRange, _minRange]];
+_ts set ["solve", [CBA_missionTime, _aimPoint, _aimVelocity, _cameraOffset, _origin, _tolerance, _feasible, _interceptDistance, _target, _targetClass, _openFireRange, _minRange]];
 
 private _aligned = [_system, _ts, _target, _targetClass, _angle, _tolerance, _feasible, _aimPoint, _interceptDistance, _openFireRange, _minRange] call aegism_intercept_fnc_ciwsGate;
 [_aligned, _angle, _tolerance, _aimPoint, _feasible, _interceptDistance <= _openFireRange && {_interceptDistance >= _minRange}]

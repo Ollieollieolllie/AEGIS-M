@@ -131,8 +131,8 @@ private _fnCue = {
         private _object = _y getOrDefault ["object", objNull];
         if (!isNull _object && {alive _object} && {(_y getOrDefault ["class", ""]) in _allowlist} && {[_y] call aegism_fnc_hasTrack}) then {
             private _taken = ((_claims getOrDefault [_x, []]) findIf { (_x get "role") == _role }) != -1;
-            (_y getOrDefault ["tti", [1e10, time]]) params ["_tti", "_ttiAt"];
-            _scored pushBack [parseNumber _taken, _tti - (time - _ttiAt), _eye distance (getPosASL _object), count _objects];
+            (_y getOrDefault ["tti", [1e10, CBA_missionTime]]) params ["_tti", "_ttiAt"];
+            _scored pushBack [parseNumber _taken, _tti - (CBA_missionTime - _ttiAt), _eye distance (getPosASL _object), count _objects];
             _objects pushBack _object;
         };
     } forEach _pool;
@@ -144,8 +144,8 @@ private _fnCue = {
     private _turretPath = _x select 0;
     private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
     private _lockedAt = _ts getOrDefault ["lockAt", -1];
-    if (_lockedAt >= 0 && {time - _lockedAt > AEGISM_TURRET_RELEASE} && {time >= (_ts getOrDefault ["cueAt", -1])}) then {
-        _ts set ["cueAt", time + AEGISM_CUE_INTERVAL];
+    if (_lockedAt >= 0 && {CBA_missionTime - _lockedAt > AEGISM_TURRET_RELEASE} && {CBA_missionTime >= (_ts getOrDefault ["cueAt", -1])}) then {
+        _ts set ["cueAt", CBA_missionTime + AEGISM_CUE_INTERVAL];
         // A launcher's gunner lets go of the aircraft it locked: a cue is no lock.
         if (!_isCiws) then { [_system, _turretPath, objNull] call aegism_intercept_fnc_gunnerLock; };
         private _cue = call _fnCue;
@@ -207,7 +207,7 @@ if (!isNull _network) then {
     _lastShotAt = _lastShotAt max (_network getVariable ["AEGISM_lastShotAt", -1e9]);
     _liveWindow = ([_network] call aegism_fnc_siteSettingsSource) getVariable ["alarmHold", AEGISM_LIVE_WINDOW_DEFAULT];
 };
-private _inCombat = time - _lastShotAt <= _liveWindow;
+private _inCombat = CBA_missionTime - _lastShotAt <= _liveWindow;
 if (_inCombat) then { _reactionTime = _reactionTime * (_crewMods getOrDefault ["combatReactionMult", 1]); };
 private _salvoSize = _engagementSettings getOrDefault ["salvoSize", 1];
 
@@ -237,8 +237,8 @@ private _fnExecute = {
     // lock still needs.
     private _lockWait = 0;
     private _aim = if (_isCiws) then {
-        _ts set ["tickAt", time];
-        _ts set ["trackTarget", [_target, _weaponInfo, time]];
+        _ts set ["tickAt", CBA_missionTime];
+        _ts set ["trackTarget", [_target, _weaponInfo, CBA_missionTime]];
         [_system, _turretPath] call aegism_intercept_fnc_ciwsTrack
     } else {
         _lockWait = [_system, _turretPath, _target, _weaponClass] call aegism_intercept_fnc_gunnerLock;
@@ -246,19 +246,19 @@ private _fnExecute = {
     };
     _aim params ["_aligned", "_angle", "_tolerance", "_aimPoint", "_feasible", ["_inRange", true]];
 
-    if (time < (_state get "assignedAt") + _reactionTime) exitWith {
+    if (CBA_missionTime < (_state get "assignedAt") + _reactionTime) exitWith {
         _state set ["status", "reacting"];
         if !(_state getOrDefault ["reactionLogged", false]) then {
             _state set ["reactionLogged", true];
             if (AEGISM_RPT_VERBOSE) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " REACTING: %1 (%2) on %3 -- crew reaction %4s%5, turret slewing meanwhile.", _system, _role, _target, round (_reactionTime * 100) / 100,
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " REACTING: %1 (%2) on %3 -- crew reaction %4s%5, turret slewing meanwhile.", _system, _role, _target, round (_reactionTime * 100) / 100,
                     ["", " (in combat)"] select _inCombat];
             };
         };
     };
 
-    if (time - (_state getOrDefault ["losAt", -1e9]) >= AEGISM_LOS_REUSE) then {
-        _state set ["losAt", time];
+    if (CBA_missionTime - (_state getOrDefault ["losAt", -1e9]) >= AEGISM_LOS_REUSE) then {
+        _state set ["losAt", CBA_missionTime];
         // From the weapon's own muzzle (aegism_intercept_fnc_turretPoints):
         // where its rounds or missiles leave, and where a missile's seeker
         // sits. It used to be the vehicle's eye point (eyePos), which can sit
@@ -279,12 +279,12 @@ private _fnExecute = {
     // CIWS burst in progress: aegism_intercept_fnc_ciwsBurst fires it; cut
     // it short if it's on another target (re-assigned) or LOS is lost.
     (_ts getOrDefault ["burst", [-1, objNull, 0]]) params ["_burstEndsAt", "_burstTarget", "_burstId"];
-    if (_isCiws && {time < _burstEndsAt}) exitWith {
+    if (_isCiws && {CBA_missionTime < _burstEndsAt}) exitWith {
         if (_burstTarget != _target || {!_losClear}) then {
-            _ts set ["burst", [time, _burstTarget, _burstId]];
+            _ts set ["burst", [CBA_missionTime, _burstTarget, _burstId]];
             _state set ["status", ["slewing", "losBlocked"] select !_losClear];
         } else {
-            _state set ["lastShotAt", time];
+            _state set ["lastShotAt", CBA_missionTime];
             _state set ["status", "firing"];
         };
     };
@@ -303,9 +303,9 @@ private _fnExecute = {
     private _interval = _baseInterval * (_crewMods get "shotIntervalMult");
     private _intervalFrom = if (_isCiws) then { [-1, _burstEndsAt] select (_burstTarget == _target) } else { _ts getOrDefault ["shotAt", -1] };
 
-    if (_intervalFrom >= 0 && {time < _intervalFrom + _interval}) exitWith { _state set ["status", "reloading"]; };
-    if (time < (_state getOrDefault ["nextAttemptAt", -1])) exitWith { _state set ["status", "reloading"]; };
-    if (!_isCiws && {time < (_ts getOrDefault ["holdUntil", -1])}) exitWith { _state set ["status", "reloading"]; };
+    if (_intervalFrom >= 0 && {CBA_missionTime < _intervalFrom + _interval}) exitWith { _state set ["status", "reloading"]; };
+    if (CBA_missionTime < (_state getOrDefault ["nextAttemptAt", -1])) exitWith { _state set ["status", "reloading"]; };
+    if (!_isCiws && {CBA_missionTime < (_ts getOrDefault ["holdUntil", -1])}) exitWith { _state set ["status", "reloading"]; };
 
     if (!_losClear) exitWith {
         _state set ["status", "losBlocked"];
@@ -316,7 +316,7 @@ private _fnExecute = {
             (_state getOrDefault ["losHit", []]) params [["_hitPos", []], "", ["_hitObject", objNull], ["_hitParent", objNull]];
             private _blocker = [_hitParent, _hitObject] select (isNull _hitParent);
             private _losFrom = _state getOrDefault ["losFrom", _weaponPos];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOS-BLOCKED: %1 (%2) cannot see %3 (%4m, %5 deg up from its muzzle) -- blocked by %6 -- holding, re-checking every tick.", _system, _role, _target, round (_losFrom distance _target),
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LOS-BLOCKED: %1 (%2) cannot see %3 (%4m, %5 deg up from its muzzle) -- blocked by %6 -- holding, re-checking every tick.", _system, _role, _target, round (_losFrom distance _target),
                 round (((_losFrom vectorFromTo (getPosASL _target)) select 2) call { asin ((_this max -1) min 1) }),
                 switch (true) do {
                     case (_hitPos isEqualTo []): { "something" };
@@ -335,14 +335,14 @@ private _fnExecute = {
         if !(_state getOrDefault ["cuedLogged", false]) then {
             _state set ["cuedLogged", true];
             if (AEGISM_RPT_VERBOSE) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " CUED: %1 (%2) on %3 at %4m -- not in reach yet; crew reacted, barrel on it, holding until it can be reached.", _system, _role, _target, round (_system distance _target)];
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " CUED: %1 (%2) on %3 at %4m -- not in reach yet; crew reacted, barrel on it, holding until it can be reached.", _system, _role, _target, round (_system distance _target)];
             };
         };
     };
     if (!_feasible) exitWith {
         _state set ["status", "noSolution"];
-        if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
-            _state set ["lastSlewLog", time];
+        if (CBA_missionTime > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
+            _state set ["lastSlewLog", CBA_missionTime];
             // A launcher's own reason (aegism_intercept_fnc_launchSolution):
             // its missile can't catch it, can't be guided onto it from where
             // it would leave, or can't turn onto it in time.
@@ -351,7 +351,7 @@ private _fnExecute = {
                 _why = (_ts getOrDefault ["launchPlan", []]) param [6, ""];
                 if (_why == "") then { _why = "no launch solution"; };
             };
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " NO-SOLUTION: %1 (%2) holding on %3 -- %4.", _system, _role, _target, _why];
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " NO-SOLUTION: %1 (%2) holding on %3 -- %4.", _system, _role, _target, _why];
         };
     };
 
@@ -363,7 +363,7 @@ private _fnExecute = {
             _state set ["rangeHoldLogged", true];
             (_ts getOrDefault ["solve", []]) params ["", "", "", "", "", "", "", ["_interceptDistance", 0], "", "", ["_openFireRange", 0], ["_minRange", 0]];
             if (AEGISM_RPT_VERBOSE) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " RANGE-HOLD: %1 (%2) tracking %3 -- intercept at %4m, %5: holding fire (see OPEN-FIRE-RANGE).",
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " RANGE-HOLD: %1 (%2) tracking %3 -- intercept at %4m, %5: holding fire (see OPEN-FIRE-RANGE).",
                     _system, _role, _target, round _interceptDistance,
                     if (_interceptDistance < _minRange) then {
                         format ["inside the round's %1m arming distance", round _minRange]
@@ -376,8 +376,8 @@ private _fnExecute = {
 
     if (!_aligned) exitWith {
         _state set ["status", "slewing"];
-        if (time > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
-            _state set ["lastSlewLog", time];
+        if (CBA_missionTime > (_state getOrDefault ["lastSlewLog", -1e9]) + AEGISM_SLEW_LOG_INTERVAL) then {
+            _state set ["lastSlewLog", CBA_missionTime];
             // Why a turret can't get there: its aim point past the turret's own
             // limits (aegism_intercept_fnc_turretCanPoint). A launcher's aim
             // point is already the closest it can reach (a missile launched
@@ -394,7 +394,7 @@ private _fnExecute = {
                 };
             };
             if (AEGISM_RPT_VERBOSE) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6%7.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " SLEWING: %1 (%2) on %3 -- barrel %4 deg off aim point, need <= %5%6%7.", _system, _role, _target, round (_angle * 10) / 10, round (_tolerance * 100) / 100,
                     ["", " (or the turret settled, within the missile's post-launch cone)"] select !_isCiws, _limitNote];
             };
         };
@@ -407,7 +407,7 @@ private _fnExecute = {
         if !(_state getOrDefault ["lockingLogged", false]) then {
             _state set ["lockingLogged", true];
             if (AEGISM_RPT_VERBOSE) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LOCKING: %1 (%2) on %3 -- aligned, holding fire %4 s more for its gunner's lock.", _system, _role, _target, (round (_lockWait * 10)) / 10];
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LOCKING: %1 (%2) on %3 -- aligned, holding fire %4 s more for its gunner's lock.", _system, _role, _target, (round (_lockWait * 10)) / 10];
             };
         };
     };
@@ -422,7 +422,7 @@ private _fnExecute = {
     private _result = [_system, _target, _weaponInfo, _crewMods get "reliability", _role, _state get "interceptors", _burstDuration] call aegism_intercept_fnc_fireWeapon;
     switch (_result) do {
         case 1: {
-            _state set ["lastShotAt", time];
+            _state set ["lastShotAt", CBA_missionTime];
             _state set ["roundsFired", (_state get "roundsFired") + 1];
             _state set ["status", ["firing", "inFlight"] select (!_isCiws && {(_state get "roundsFired") >= _salvoSize})];
             if (!_isCiws) then {
@@ -433,22 +433,22 @@ private _fnExecute = {
                 // A gap longer than twice the estimate was idle time, not
                 // firing rate, and is ignored.
                 private _spacing = _ts getOrDefault ["spacing", _interval / ((_crewMods get "reliability") max 0.05)];
-                private _gap = time - (_ts getOrDefault ["shotAt", -1e9]);
+                private _gap = CBA_missionTime - (_ts getOrDefault ["shotAt", -1e9]);
                 if (_gap <= 2 * _spacing) then {
                     _ts set ["spacing", (1 - AEGISM_SPACING_SMOOTHING) * _spacing + AEGISM_SPACING_SMOOTHING * _gap];
                 };
             };
-            _ts set ["shotAt", time];
+            _ts set ["shotAt", CBA_missionTime];
         };
         case 0: {
             _state set ["status", "crewFailed"];
-            _state set ["nextAttemptAt", time + _interval];
+            _state set ["nextAttemptAt", CBA_missionTime + _interval];
             // Site launcher, nothing fired at this contact yet: the crew's
             // lost cycle holds the turret, and the coordinator hands the
             // contact to another weapon (aegism_intercept_fnc_assign
             // Engagements, "crew failed to fire").
             if (!_isCiws && {!isNull _network} && {(_state get "roundsFired") == 0}) then {
-                _ts set ["holdUntil", time + _interval];
+                _ts set ["holdUntil", CBA_missionTime + _interval];
                 _state set ["crewFailed", true];
             };
         };
@@ -525,9 +525,9 @@ private _taken = [];
         private _inFlight = (_ts getOrDefault ["inFlight_launcher", []]) select {
             _x params ["_flightTarget", "_interceptors", "_lastShotAt"];
             private _alive = !isNull _flightTarget && {alive _flightTarget};
-            private _flying = time <= _lastShotAt + AEGISM_INTERCEPTOR_SETTLE || {(_interceptors findIf { !isNull _x && {alive _x} }) != -1};
+            private _flying = CBA_missionTime <= _lastShotAt + AEGISM_INTERCEPTOR_SETTLE || {(_interceptors findIf { !isNull _x && {alive _x} }) != -1};
             if (_alive && {!_flying}) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MISSED: %1 (%2) salvo at %3 failed -- re-engaging.", _system, _role, _flightTarget];
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSED: %1 (%2) salvo at %3 failed -- re-engaging.", _system, _role, _flightTarget];
             };
             _alive && _flying
         };
@@ -546,15 +546,15 @@ private _taken = [];
     (_ts getOrDefault [_selectKey, [-1e9, objNull, []]]) params ["_selectedAt", "_selectedTarget", "_selectedWeapon"];
     private _currentAim = _ts getOrDefault ["aim_ciws", []];
     private _selection = switch (true) do {
-        case (!_isCiws && {time - _selectedAt < AEGISM_SELECT_REUSE} && {!isNull _selectedTarget} && {alive _selectedTarget}
+        case (!_isCiws && {CBA_missionTime - _selectedAt < AEGISM_SELECT_REUSE} && {!isNull _selectedTarget} && {alive _selectedTarget}
             && {!(_selectedTarget in _exclude)} && {_selectedWeapon in _weapons}): { [_selectedTarget, _selectedWeapon] };
-        case (_isCiws && {time - _selectedAt < AEGISM_SELECT_REUSE} && {!isNull _current} && {alive _current} && {_selectedTarget == _current}
+        case (_isCiws && {CBA_missionTime - _selectedAt < AEGISM_SELECT_REUSE} && {!isNull _current} && {alive _current} && {_selectedTarget == _current}
             && {!(_current in _exclude)} && {_selectedWeapon in _weapons}
             && {(_currentAim param [3, objNull]) == _current} && {!(_currentAim param [7, true])}): { [_current, _selectedWeapon] };
-        case (isNull _selectedTarget && {isNull _current} && {time - _selectedAt < AEGISM_SELECT_EMPTY_RETRY}): { [objNull, []] };
+        case (isNull _selectedTarget && {isNull _current} && {CBA_missionTime - _selectedAt < AEGISM_SELECT_EMPTY_RETRY}): { [objNull, []] };
         default {
             private _picked = [_weaponPos, _turretCandidates, _engagementSettings, _weapons, _role, _system, _current, _turretPath] call aegism_intercept_fnc_selectTarget;
-            _ts set [_selectKey, [time, _picked select 0, _picked select 1]];
+            _ts set [_selectKey, [CBA_missionTime, _picked select 0, _picked select 1]];
             _picked
         };
     };
@@ -569,7 +569,7 @@ private _taken = [];
             _state = createHashMapFromArray [
                 ["targetKey", _targetKey],
                 ["target", _target],
-                ["assignedAt", time],
+                ["assignedAt", CBA_missionTime],
                 ["lastShotAt", -1],
                 ["roundsFired", 0],
                 ["interceptors", []]
@@ -585,7 +585,7 @@ private _taken = [];
             private _moreValuable = { ([_x select 1] call aegism_intercept_fnc_threatValue) > _targetValue } count _candidates;
             private _totalAmmo = 0;
             { _x params ["_weaponTurret", "", "_magClass"]; _totalAmmo = _totalAmmo + (_system magazineTurretAmmo [_magClass, _weaponTurret]); } forEach _readyWeapons;
-            if (_moreValuable >= _totalAmmo) then { _state set ["nextAttemptAt", time + 1]; };
+            if (_moreValuable >= _totalAmmo) then { _state set ["nextAttemptAt", CBA_missionTime + 1]; };
         };
 
         [_target, _weaponInfo, _state] call _fnExecute;

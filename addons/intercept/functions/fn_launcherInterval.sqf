@@ -47,7 +47,7 @@ private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 if ((_ts getOrDefault ["intervalLogged", -1]) != _interval) then {
     _ts set ["intervalLogged", _interval];
     if (AEGISM_RPT_VERBOSE) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FIRE-RATE: %1 (%2) %3 -- %4s between missiles (%5).", _system, typeOf _system, _weaponClass, _interval,
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FIRE-RATE: %1 (%2) %3 -- %4s between missiles (%5).", _system, typeOf _system, _weaponClass, _interval,
             ["Seconds Between Missiles setting", format ["auto, %1 reloadTime", _mode param [0, ""]]] select (_configured <= 0)];
     };
 };

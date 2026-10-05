@@ -89,8 +89,8 @@ if (!_fuzed && {!_spotting}) exitWith {};
 PERF_INC(PERF_ROUNDS_ADDED);
 
 private _tof = _ts getOrDefault ["trackTof", -1];
-private _windowAt = time + ((_tof * AEGISM_ROUND_WINDOW_FRACTION) max 0);
-private _expiresAt = time + ([_lifetime, 2 * _tof + 1] select (_tof > 0));
+private _windowAt = CBA_missionTime + ((_tof * AEGISM_ROUND_WINDOW_FRACTION) max 0);
+private _expiresAt = CBA_missionTime + ([_lifetime, 2 * _tof + 1] select (_tof > 0));
 private _spotData = if (_spotting) then {
     [_system, _turretPath, (_ts getOrDefault ["burst", [0, objNull, 0]]) select 2,
         +((_ts getOrDefault ["corrections", createHashMap]) getOrDefault [_targetClass, [0, 0]]), _track, _roundClass, _targetClass]
@@ -104,7 +104,7 @@ if (isNil "_rounds") then { _rounds = []; _ts set ["rounds", _rounds]; };
 // separation, 14 closed on target, 15 fuse done, 16 spotted, 17 last
 // round-ghost offset, 18 last ghost separation, 19 closed on ghost, 20
 // round-ghost relative velocity
-_rounds pushBack [_projectile, _target, time, getPosASLVisual _projectile, _windowAt, _expiresAt, _spotData, [0, _hitRadius] select _fuzed, _targetRadius, _armDistance,
+_rounds pushBack [_projectile, _target, CBA_missionTime, getPosASLVisual _projectile, _windowAt, _expiresAt, _spotData, [0, _hitRadius] select _fuzed, _targetRadius, _armDistance,
     false, [0, 0, 0], [0, 0, 0], 1e10, false, !_fuzed, !_spotting, [0, 0, 0], 1e10, false, [0, 0, 0]];
 
 if (_ts getOrDefault ["roundsRunning", false]) exitWith {};
@@ -119,7 +119,7 @@ _ts set ["roundsRunning", true];
     // The predicted target now: [position, velocity].
     private _fnGhost = {
         (_this select 4) params ["_trackTime", "_trackPos", "_trackVelocity", "_trackAcceleration"];
-        private _dt = time - _trackTime;
+        private _dt = CBA_missionTime - _trackTime;
         [
             _trackPos vectorAdd (_trackVelocity vectorMultiply _dt) vectorAdd (_trackAcceleration vectorMultiply (0.5 * _dt * _dt)),
             _trackVelocity vectorAdd (_trackAcceleration vectorMultiply _dt)
@@ -131,7 +131,7 @@ _ts set ["roundsRunning", true];
         params ["_round", "_miss", "_ghostPos", "_ghostVelocity"];
         _round params ["", "_target", "_launchTime", "", "", "", "_spot", "", "_targetRadius"];
         private _deviation = if (!isNull _target && {alive _target}) then { (getPosASLVisual _target) distance _ghostPos } else { -1 };
-        [_spot, _miss, _ghostPos, _ghostVelocity, time - _launchTime, _targetRadius, _deviation] call aegism_intercept_fnc_ciwsSpot;
+        [_spot, _miss, _ghostPos, _ghostVelocity, CBA_missionTime - _launchTime, _targetRadius, _deviation] call aegism_intercept_fnc_ciwsSpot;
     };
     // The round ended before passing the predicted target: extrapolate its
     // pass from its last relative motion -- only if it was still closing.
@@ -152,12 +152,12 @@ _ts set ["roundsRunning", true];
         private _projectile = _round select 0;
 
         private _remove = false;
-        if (isNull _projectile || {!alive _projectile} || {time > (_round select 5)}) then {
+        if (isNull _projectile || {!alive _projectile} || {CBA_missionTime > (_round select 5)}) then {
             if ((_round select 10) && {!(_round select 16)}) then { [_round] call _fnSpotExtrapolated; };
             _remove = true;
         } else {
             // Still on its way out: nothing to do yet (most rounds, most frames).
-            if (time < (_round select 4)) then {
+            if (CBA_missionTime < (_round select 4)) then {
                 PERF_INC(PERF_ROUND_WAITS);
             } else {
                 PERF_INC(PERF_ROUND_CHECKS);

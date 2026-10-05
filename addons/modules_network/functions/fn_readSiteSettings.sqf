@@ -40,7 +40,8 @@ private _allowlist = [];
         ["targetPriority", _logic getVariable ["targetPriority", "soonestImpact"]],
         ["salvoSize", _logic getVariable ["salvoSize", 1]],
         ["minShotInterval", _logic getVariable ["minShotInterval", 0]],
-        ["maxOffBore", _logic getVariable ["maxOffBore", 15]],
+        ["maxOffBoreSwing", _logic getVariable ["maxOffBoreSwing", 20]],
+        ["maxOffBoreLimit", _logic getVariable ["maxOffBoreLimit", 30]],
         ["ciwsBurstMin", _logic getVariable ["ciwsBurstMin", 3]],
         ["ciwsBurstMax", _logic getVariable ["ciwsBurstMax", 5]],
         ["ciwsBurstPause", _logic getVariable ["ciwsBurstPause", 1]],
@@ -58,7 +59,8 @@ private _allowlist = [];
         ["emconHold", _logic getVariable ["emconHold", 10]],
         ["emconBurstOn", _logic getVariable ["emconBurstOn", 5]],
         ["emconBurstOff", _logic getVariable ["emconBurstOff", 15]],
-        ["armShutdown", _logic getVariable ["armShutdown", true]]
+        ["armShutdown", _logic getVariable ["armShutdown", true]],
+        ["radarHoldSector", _logic getVariable ["radarHoldSector", false]]
     ],
     createHashMapFromArray [
         ["skillTier", _logic getVariable ["skillTier", "regular"]],

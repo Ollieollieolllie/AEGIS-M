@@ -74,8 +74,8 @@ if (isNil "_existing") then {
         ["object", _contactObject],
         ["class", _contactClass],
         ["confidence", _confidence],
-        ["firstSeen", time],
-        ["lastSeen", time],
+        ["firstSeen", CBA_missionTime],
+        ["lastSeen", CBA_missionTime],
         ["isMunition", _contactClass in ["missile", "rocket", "bomb", "artilleryShell"]],
         ["sources", createHashMap]
     ];
@@ -83,11 +83,11 @@ if (isNil "_existing") then {
 } else {
     _existing set ["class", _contactClass];
     _existing set ["confidence", _confidence];
-    _existing set ["lastSeen", time];
+    _existing set ["lastSeen", CBA_missionTime];
 };
 if (_sources isNotEqualTo []) then {
     private _seen = _existing getOrDefault ["sources", createHashMap];
-    { _seen set [_x, time]; } forEach _sources;
+    { _seen set [_x, CBA_missionTime]; } forEach _sources;
     _existing set ["sources", _seen];
 };
 

@@ -127,13 +127,13 @@ private _launchPos = getPosASLVisual _projectile;
     if (_isGuided) then {
         private _dir = vectorDirVisual _projectile;
         _windowAngle = _windowAngle + acos (((_dir vectorCos _lastDir) min 1) max -1);
-        _windowTime = _windowTime + (time - _lastTime);
+        _windowTime = _windowTime + (CBA_missionTime - _lastTime);
         if (_windowTime >= AEGISM_TURN_WINDOW) then {
             _peakRate = _peakRate max (_windowAngle / _windowTime);
             _windowAngle = 0;
             _windowTime = 0;
         };
-        _args set [13, [_dir, time, _windowAngle, _windowTime, _peakRate]];
+        _args set [13, [_dir, CBA_missionTime, _windowAngle, _windowTime, _peakRate]];
     };
 
     private _projPos = getPosASLVisual _projectile;
@@ -151,7 +151,7 @@ private _launchPos = getPosASLVisual _projectile;
 
     if (_minDistance <= _hitRadius && {(_launchPos distance _projPos) >= _armDistance}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-        if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, time - (_launch param [2, time])] call aegism_intercept_fnc_recordMissileTurn; };
+        if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, CBA_missionTime - (_launch param [2, CBA_missionTime])] call aegism_intercept_fnc_recordMissileTurn; };
         [_projectile, _target, _isMunitionTarget, _minDistance, _hitRadius] call aegism_intercept_fnc_interceptHit;
     };
 
@@ -164,4 +164,4 @@ private _launchPos = getPosASLVisual _projectile;
     _args set [9, _separation];
     _args set [10, _hasClosed];
 }, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosASLVisual _target, _launchPos distance (getPosASLVisual _target), false,
-    typeOf _projectile, _launch, [vectorDirVisual _projectile, time, 0, 0, 0], str _target]] call CBA_fnc_addPerFrameHandler;
+    typeOf _projectile, _launch, [vectorDirVisual _projectile, CBA_missionTime, 0, 0, 0], str _target]] call CBA_fnc_addPerFrameHandler;

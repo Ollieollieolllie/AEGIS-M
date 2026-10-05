@@ -310,7 +310,7 @@ private _fnModeStats = {
         if (!_airCapable) exitWith {
             if (_quiet) exitWith {};
             if (AEGISM_RPT_VERBOSE) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1's %2 (ammo %3) ignored -- ammo airLock < 1, cannot engage air targets.", _vehicle, _weaponClass, _ammoClassName];
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DISCOVERY: %1's %2 (ammo %3) ignored -- ammo airLock < 1, cannot engage air targets.", _vehicle, _weaponClass, _ammoClassName];
             };
         };
 
@@ -331,7 +331,7 @@ private _fnModeStats = {
         } else {
             if (_quiet) exitWith {};
             if (AEGISM_RPT_VERBOSE) then {
-                diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1's %2 (fastest mode reloadTime=%3) did not qualify as CIWS -- threshold is reloadTime > 0 and < %4.", _vehicle, _weaponClass, _fastestReload, AEGISM_CIWS_ROF_THRESHOLD];
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DISCOVERY: %1's %2 (fastest mode reloadTime=%3) did not qualify as CIWS -- threshold is reloadTime > 0 and < %4.", _vehicle, _weaponClass, _fastestReload, AEGISM_CIWS_ROF_THRESHOLD];
             };
         };
     };

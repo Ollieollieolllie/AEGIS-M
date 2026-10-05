@@ -164,12 +164,24 @@ override too), applied with `setVehicleRadar`:
 
 | Mode | What its radars do |
 |---|---|
-| Automatic (default) | While the Site is quiet, short search bursts (5 s on every 20 s by default, the Site's radars taking turns) so little is given away. It emits continuously while there's a reason to, and for at least 60 s after. The reasons are a contact anywhere in the Site's picture, the Site engaging or firing, a munition inbound, or another of its radars shut down for an anti-radiation missile (the rest take over). |
+| Automatic (default) | While the Site is quiet, a relay scan (below) so little is given away. It emits continuously while there's a reason to, and for at least 60 s after. The reasons are a contact anywhere in the Site's picture, the Site engaging or firing, a munition inbound, or another of its radars shut down for an anti-radiation missile (the rest take over). |
 | AI decides | As without AEGIS-M. |
 | Always on | Emit all the time. |
 | Silent until cued | Off until another sensor finds a threat the radar covers. |
-| Intermittent | As Silent until cued, but searching meanwhile: 5 s on every 20 s by default. A linked group's radars searching in bursts (Intermittent or Automatic) take turns, their bursts spread evenly over the cycle (three radars: one comes on every 6.7 s, with 1.7 s gaps). |
+| Intermittent | As Silent until cued, but searching meanwhile with the relay scan (below). |
 
+- **The relay scan.** While the Site is quiet (Intermittent, or Automatic with
+  nothing going on), its turning radars (like the radar truck's 120 degrees,
+  with those of the Sites linked to it) scan as one radar whose beam is
+  handed from vehicle to vehicle. A lap steps round the whole circle one arc
+  at a time (four 90-degree arcs for 120-degree radars), each lit by one
+  radar for Search Burst Seconds On, then all are silent for Seconds Off.
+  Each arc goes to whichever radar can swing onto it soonest, other than
+  the one lit before it, picked a step ahead, so it swings there while
+  silent and lights on it. Every bearing is scanned once a lap and no arc
+  twice; one radar emits at a time, and the emitter keeps moving from
+  vehicle to vehicle. Radars that see all round take turns bursting, as
+  before.
 - **Cues** are contacts in the Site's picture (the whole linked group's):
   an enemy radar heard by passive radar, an aircraft or round seen by IR or
   visual sensors, another radar's, a linked Site's, or datalink's where
@@ -182,34 +194,42 @@ override too), applied with `setVehicleRadar`:
   launcher's missiles are in flight at a target it covers (fire control),
   and for **Stay Lit After Last Contact** (10 s) after the last.
 - **A narrow radar on its own turret** (no AEGIS-M weapon on it, like the
-  radar truck's) is turned by AEGIS-M in every mode, AI decides included,
-  sharing its beam between three jobs:
-  - **Fire control:** while the Site's missiles fly at targets it can
-    reach, it holds as many of them as it can and doesn't search.
-  - **Track:** otherwise it's centred on the contacts it can bring into its
-    arc, holding the most important at once. A contact under engagement
-    counts most, then munitions by time to impact, then one only passive
-    radar hears (a radar look turns it into a track), then aircraft. A
-    contact another Site sensor holds counts for less: the radar is for
-    what nobody holds. It stays put unless another centre is clearly
-    better. Every 6 s it looks at the arc beside its track that was
-    searched longer ago, then swings back.
-  - **Search:** with nothing to track, a steady sweep round, three quarters
-    of its arc per step, 2 s per sector. It skips arcs another radar of the
-    Site (or of its linked Sites) is looking at, even one still swinging
-    there, or searched in the last 4 s, so several radars spread round the
-    sky. It dwells twice as long on bearings contacts came from in the last
-    5 minutes.
-  - **Sharing:** a contact another of the Site's radars is already tracking
-    counts for a tenth, so a second radar searches rather than doubling up.
-    A target missiles are flying at counts in full for every radar.
+  radar truck's) is turned by AEGIS-M in every mode, AI decides included.
+  A Site's turning radars, and those of the Sites linked with it, **divide
+  the sky** into equal home sectors, one each, measured from the middle of
+  them. With one radar the sector is the whole circle; with two, halves;
+  with three, thirds, the first centred on north. Each looks after its own
+  sector:
+  - **Fire control:** while the Site's missiles fly at targets in its
+    sector, it holds as many of them as it can and doesn't search.
+  - **Track:** otherwise it centres on the contacts in its sector, holding
+    the most important at once. A contact under engagement counts most,
+    then munitions by time to impact, then one only passive radar hears (a
+    radar look turns it into a track), then aircraft. A contact another
+    Site sensor holds counts for less: the radar is for what nobody holds.
+    It stays put unless another centre is clearly better. Every 6 s it
+    takes a look at the rest of its sector, then swings back.
+  - **Search:** with nothing to track, the turning radars rotate round
+    together, evenly spaced (two face opposite ways, three are 120 degrees
+    apart). They step on together, three quarters of the narrowest arc at a
+    time, paced for the slowest turret (the radar truck: 90 degrees every
+    4 s), by the mission clock, so they always keep their places. Every
+    radar looks all the way round, so radars far apart each see past their
+    own hills. At any moment their beams are spread round the sky; three
+    120-degree radars keep all round covered as they turn. Silent radars
+    turn too, so each is in place the moment it lights. With the Site
+    setting **Turning Radars Hold Their Sector** on, a radar whose arc
+    covers its sector holds it still instead.
+  - **A contact belongs to the radar whose sector it's in.** Another radar
+    tracks it only if the owner can't reach it, and then only one of them,
+    so radars don't leave their sectors uncovered to double up.
 
   Each dwell starts once the turret has had time to swing there (its own
   traverse rate). A silent radar keeps pointing where it would look, so
-  it's on it the moment it lights. The debug overlays show its job
-  (`SEARCH 120 deg`, `SEARCH 120 deg (swinging)`, `TRACK 2 (045 deg)`,
-  `FIRE CONTROL 1 (...)`), and at RPT Detail Verbose each new task and
-  search dwell is logged (`RADAR-TASK`).
+  it's on it the moment it lights. The debug overlays show its job and
+  sector (`SEARCH 120 deg, sector 60-180`, `(swinging)`, `TRACK 2 (045
+  deg, ...)`, `FIRE CONTROL 1 (...)`), and at RPT Detail Verbose each new
+  task and search position is logged (`RADAR-TASK`).
 - A Site with no sensor but its radars never lights in Silent until cued:
   use Intermittent. Munitions don't emit, so passive radar never cues on
   them; IR, visual and other radars do.
@@ -424,13 +444,23 @@ there's nothing left to engage.
 their missiles while the cheaper, shorter-range layer can cope. Every half
 second the Site plays each launcher tier forward (shortest reach first):
 its launchers' queues, cooldowns, measured shot spacing and missiles left,
-and when each incoming round will enter each launcher's envelope along its
-ballistic path. A round a cheaper tier is predicted to kill in time is left
+and the first moment along each incoming round's ballistic path that a
+missile fired at it would meet it inside each launcher's envelope. A round a cheaper tier is predicted to kill in time is left
 to it (`RESERVE` in the RPT); only rounds no cheaper tier can take in time
 -- the volume has saturated it -- open up the long-range launchers
 (`SATURATION`). So a Patriot battery sitting behind RAM launchers doesn't
 spend its missiles on MLRS rockets the RAMs will handle, but steps in, early
-and far out, for the part of a barrage they can't.
+and far out, for the part of a barrage they can't. If the cheaper tier was
+due to fire at a round 3 s ago and none of its launchers has it, or its shot
+missed, the reserve stops holding back for that round (`RESERVE-MISSED`):
+a long-range rocket coming down too steep for the RAMs once held every
+Patriot back until it was too late. And it only holds back at all if a
+long-range launcher would still have a second shot should the cheaper
+tier's planned kill miss (3 s to see the miss, then a shot that meets the
+round before it comes down). A high-arc rocket falls back into a RAM's
+reach only in its last seconds; planned to the RAMs there, it left the
+Patriots no second chance, so now the Patriots take it early
+(`RESERVE-RELEASED`).
 
 Guns are matched by warhead size, then distance. Automated (drone-crewed)
 systems ignore the crew model by default -- no reaction delay, no skipped
@@ -446,6 +476,14 @@ judged a miss only once its missiles are actually gone and the target still
 lives; the contact is then freed for reassignment -- to the same System
 again, a different/better-fit weapon, or CIWS. Two weapons sharing a turret
 are never assigned to different targets.
+
+**Launchers fire to meet the target at the edge of their reach.** A
+launcher is judged by where its missile would meet the target, not where
+the target is now. Against an incoming round it fires while the round is
+still beyond its reach (the missile's own lock range, `missileLockMaxDistance`,
+or the Site's Max Range), so the missile meets it out near the edge instead
+of well inside, with time left for a second shot. If a missile fired that
+far out loses its target, `INTERCEPTOR-LOST` shows it (see above).
 
 **Only what a weapon can actually reach.** Every turret's elevation and
 traverse limits, rotation rates and mount type (trainable, fixed bearing,
@@ -468,9 +506,15 @@ turn. For every launcher and target AEGIS-M works out how to launch:
   missile there after the target comes down.
 - **fixed mount**: along its barrel, whatever it points at.
 
-A launcher that can move never fires more than **Max Off-Bore Launch**
-(15 deg by default) off the intercept -- it swings round instead; a fixed
-mount is only limited by its missile. And a launch more than 2 deg off the
+A launcher that can move has two limits on how far off the intercept it
+fires. **Max Off-Bore Launch While Swinging** (20 deg by default) applies
+while its turret is still swinging round; further off, it finishes the
+swing instead. **Max Off-Bore Launch At Turret Limit** (30 deg by default)
+applies once the turret is as close as it can get: at its elevation or
+traverse limit, or a mount that can't move on one axis. A Spartan's RAM
+turret stops at 40 deg, and a high-arc rocket can only be met 55 deg up
+or more, so it fires from the limit and lets the missile turn up the rest
+of the way. A fixed mount is only limited by its missile. And a launch more than 2 deg off the
 intercept needs the missile to be able to get there after launch (`AGILITY`
 in the RPT, once per missile):
 - **Its post-launch cone**: vanilla `missileKeepLockedCone` (MIM-145 120
@@ -600,7 +644,9 @@ thing, labels stacked rather than drawn over each other:
   Site.
 
 An assigned weapon that can't fire logs why: `NO-SOLUTION`, `LOS-BLOCKED` (the line from the weapon's own muzzle to the target, naming what's in the way: terrain, or the object, its class and how far its top is above the muzzle), `FIRE-SKIP`, or
-`ASSIGN-CLEAR` with a reason. Every AEGIS-M RPT line carries the mission's
+`ASSIGN-CLEAR` with a reason. A threat munition 10 s from impact with no
+weapon on it at all is logged once (`UNENGAGED`), with each weapon's reason:
+held in reserve, out of its reach, busy or too late. Every AEGIS-M RPT line carries the mission's
 game time (`[AEGIS-M] t=123.4 ...`): the RPT's own timestamp is wall-clock
 time, which keeps running while the game is paused.
 
@@ -618,7 +664,10 @@ Verbose adds the step-by-step detail:
 - every enemy shot fired (`MUNITION`) and munition proxy behaviour
   (`PROXY-ATTACH`, `PROXY-LOW`);
 - rejected detections (`DETECT-REJECT`) and per-weapon `DISCOVERY` lines;
-- each turning radar's task and search dwells (`RADAR-TASK`).
+- each turning radar's task and search dwells (`RADAR-TASK`);
+- each sensor vehicle's first sight of each munition (`SIGHTED`): how long
+  after it was fired, how long its radar had been on, and where its beam
+  pointed.
 
 **Site status hint** (CBA setting "AEGIS-M > Debug > Site Status Hint", off
 by default) shows a live board in the hint box: the nearest Site's vehicles
@@ -720,11 +769,12 @@ envelope, and all threat classes are engaged.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Min Range (m) | 0 | Extra minimum on top of the missile's own (MIM-145: 1000 m). |
-| Max Range (m) | 0 | 0 = the missile's own reach (MIM-145: 16000 m). |
+| Min Range (m) | 0 | Extra minimum on top of the missile's own (MIM-145: 1000 m), for where the missile meets the target. |
+| Max Range (m) | 0 | 0 = the missile's own reach (MIM-145: 16000 m). Judged where the missile meets the target, so it fires at an incoming round still beyond this. |
 | Missiles per Target | 1 | Missiles fired before waiting for the result; re-engages if all miss. |
 | Seconds Between Missiles | 0 | Minimum gap between missiles from one launcher. 0 = Auto: each launcher's own fire rate, the `reloadTime` of its weapon's fire mode, which scales with the missile (MIM-145 Defender 4 s, Mk49 Spartan 2 s, Mk21 Centurion 1 s). The RPT logs each launcher's rate as `FIRE-RATE`. |
-| Max Off-Bore Launch (deg) | 15 | The most a launcher that can move may fire away from the intercept and leave the missile to turn (firing before its turret is round, or from a turret at its limit). A fixed mount -- a vertical launch cell -- is exempt: it can only fire off-bore. See **Launching off-bore**. |
+| Max Off-Bore Launch While Swinging (deg) | 20 | The most a launcher that can move may fire away from the intercept before its turret is round, leaving the missile to turn. A fixed mount -- a vertical launch cell -- is exempt: it can only fire off-bore. See **Launching off-bore**. |
+| Max Off-Bore Launch At Turret Limit (deg) | 30 | The same, once its turret is as close as it can get: at its elevation or traverse limit, or a mount that can't move on one axis. |
 
 **CIWS (Guns)**
 
@@ -745,8 +795,9 @@ envelope, and all threat classes are engaged.
 |---|---|---|
 | Radar Emission | Automatic | When the Site's active radars emit: Automatic, AI decides, Always on, Silent until cued, or Intermittent. |
 | Stay Lit After Last Contact (s) | 10 | Silent until cued and Intermittent: how long a radar stays lit after the last contact leaves its coverage (Automatic: at least 60 s). |
-| Search Burst: Seconds On / Off | 5 / 15 | Intermittent, and Automatic while quiet: each search burst's length, and the silence between bursts. |
+| Search Burst: Seconds On / Off | 5 / 15 | Intermittent, and Automatic while quiet. Turning radars: how long each arc of the relay scan is lit, and the silent pause after each lap (four arcs of 5 s and a 15 s pause revisit every bearing every 35 s). Other radars: each burst's length, and the silence between bursts. |
 | Shut Down for Anti-Radiation Missiles | On | In every mode, a radar shuts down while the Site sees an anti-radiation missile homing on it, or with it emitting in the missile's seeker view. |
+| Turning Radars Hold Their Sector | Off | Off: the turning radars rotate round together, evenly spaced, so each looks all the way round (radars far apart see past different hills). On: one whose arc covers its sector holds it still, all round seen at once with no movement. |
 
 **Alarms**
 

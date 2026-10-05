@@ -31,10 +31,16 @@ Description:
     (the aim's own on-target tolerance, aegism_intercept_fnc_aimWeapon) is
     off-bore, and needs the missile (aegism_intercept_fnc_missileAgility):
         - the target within its post-launch cone -- and, on a launcher that
-          can move, within the doctrine's Max Off-Bore Launch (15 deg by
-          default): it never fires wildly off the target when it could
-          swing round instead. A fixed mount (a vertical launch cell) is
-          only limited by the missile: off-bore is the only way it fires.
+          can move, within the doctrine's limit for the way it launches:
+          Max Off-Bore Launch While Swinging (20 deg by default) firing
+          "now", before the turret is round -- it never fires wildly off the
+          target when it could swing round instead -- and Max Off-Bore
+          Launch At Turret Limit (30 deg by default) for "slew", the turret
+          as close as it can get: at its elevation or traverse limit (a
+          Spartan's RAM turret stops at 40 deg, and high-arc rockets come
+          down steeper than that), or a mount that can't move on one axis.
+          A fixed mount (a vertical launch cell) is only limited by the
+          missile: off-bore is the only way it fires.
         - with its turn rate known: the turn flown (computeLeadPoint's
           off-bore solve -- flight time, and a minimum range inside which it
           can't turn in time)
@@ -77,7 +83,7 @@ Returns:
      s <NUMBER>, calibrated (false: off-bore on an unknown turn rate)
      <BOOLEAN>, intercept point ASL <ARRAY>, intercept distance m <NUMBER>,
      where the turn ends ASL <ARRAY>, straight intercept direction <ARRAY>,
-     the off-bore limit it was held to, deg <NUMBER>, the closest direction the turret can
+     the off-bore limit for the way it launches, deg <NUMBER>, the closest direction the turret can
      reach -- where it should keep swinging, whichever way wins <ARRAY>] <ARRAY>
 
 Examples:
@@ -113,7 +119,8 @@ private _fnWay = {
     if (_offBore <= AEGISM_LAUNCH_ON_BORE) exitWith {
         [true, "", [_way, "onBore"] select (_way == "slew"), _dir, _tof, _slew, _offBore, 0, true, _interceptPoint, _interceptDistance, _origin]
     };
-    if (_offBore > _cone) exitWith {
+    ([_way] call _fnCone) params ["_wayCone", "_coneSource"];
+    if (_offBore > _wayCone) exitWith {
         [false, format ["intercept %1 deg off the launch direction, beyond %2", round _offBore, _coneSource], _way, _dir, -1, _slew, _offBore, 0, true, _interceptPoint, _interceptDistance, _origin]
     };
     if (_turnRate <= 0) exitWith {
@@ -133,18 +140,22 @@ private _fnWay = {
 // turret config needn't say it's vertical.
 private _mount = ([_system, _turretPath] call aegism_intercept_fnc_turretConfig) select 10;
 
-// How far off-bore it may launch: the missile's own post-launch cone, and,
-// for a launcher that can move, the doctrine limit (Max Off-Bore Launch).
-// A fixed mount can't do otherwise, so only the missile limits it.
-private _coneSource = format ["the missile's %1 deg post-launch cone", round _cone];
-if (_mount != "fixed") then {
-    private _settings = _system getVariable "AEGISM_resolvedEngagementSettings";
-    if (isNil "_settings") then { _settings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
-    private _maxOffBore = _settings getOrDefault ["maxOffBore", 15];
-    if (_maxOffBore < _cone) then {
-        _cone = _maxOffBore;
-        _coneSource = format ["the launcher's %1 deg Max Off-Bore Launch", round _maxOffBore];
-    };
+// How far off-bore it may launch, one way: [degrees, what limits it]. The
+// missile's own post-launch cone, and, for a launcher that can move, the
+// doctrine limit for the way it launches (see header): "slew" -- the turret
+// as close as it can get, at its limit -- Max Off-Bore Launch At Turret
+// Limit; firing "now", while it swings, or with it trailing a target it's
+// still swinging after ("onBore"), Max Off-Bore Launch While Swinging. A
+// fixed mount can't do otherwise, so only the missile limits it.
+private _settings = _system getVariable "AEGISM_resolvedEngagementSettings";
+if (isNil "_settings") then { _settings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
+private _fnCone = {
+    params ["_way"];
+    if (_mount == "fixed") exitWith { [_cone, format ["the missile's %1 deg post-launch cone", round _cone]] };
+    private _atLimit = _way == "slew";
+    private _limit = _settings getOrDefault [["maxOffBoreSwing", "maxOffBoreLimit"] select _atLimit, [20, 30] select _atLimit];
+    if (_limit >= _cone) exitWith { [_cone, format ["the missile's %1 deg post-launch cone", round _cone]] };
+    [_limit, format ["the launcher's %1 deg Max Off-Bore Launch %2", round _limit, ["While Swinging", "At Turret Limit"] select _atLimit]]
 };
 
 private _reach = ([_system, _turretPath, _leadDir] call aegism_intercept_fnc_turretCanPoint) select 4;
@@ -178,4 +189,4 @@ if (_considerNow && {_slewTime > 0} && {_turnRate > 0} && {!(_best select 0) || 
     };
 };
 
-_best + [_leadDir, _cone, _reach]
+_best + [_leadDir, ([_best select 2] call _fnCone) select 0, _reach]

@@ -67,7 +67,7 @@ private _fnFollowLow = {
     if !((typeOf _projectile) in _logged) then {
         _logged set [typeOf _projectile, true];
         if (AEGISM_RPT_VERBOSE) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PROXY-LOW: %1 came within %2 of the ground (%3 m up, %4 m/s), where an AEGIS-M sensor can lose it in ground clutter -- its proxy now moves with it, showing its speed.",
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PROXY-LOW: %1 came within %2 of the ground (%3 m up, %4 m/s), where an AEGIS-M sensor can lose it in ground clutter -- its proxy now moves with it, showing its speed.",
                 typeOf _projectile, ["the height", format ["%1 m", round _height]] select (_height < 1e9), round ((ASLToAGL getPosASL _projectile) select 2), round (vectorMagnitude velocity _projectile)];
         };
     };
@@ -88,8 +88,8 @@ for "_i" from (count _tracked - 1) to 0 step -1 do {
         private _path = _flags getOrDefault ["path", []];
         if (_path isNotEqualTo [] && {(_entry select 4) isEqualTo []}) then {
             _path params ["_nearest", "_nearestVehicle", "_lowest", "_topSpeed", "_proxyOffset", "_proxySpeed", "_seenKinds", ["_elevation", 0]];
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " UNSEEN: %1 (%2, %3) gone %4s after it was fired, never in a Site's picture -- %5. At its checks: nearest AEGIS-M sensor vehicle %6m (%7, %11 deg up from it), lowest %8m above ground, top speed %9 m/s; its proxy %10.",
-                _flags getOrDefault ["ammo", "?"], _entry select 1, _key, (time - (_flags getOrDefault ["firedAt", time])) toFixed 1,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " UNSEEN: %1 (%2, %3) gone %4s after it was fired, never in a Site's picture -- %5. At its checks: nearest AEGIS-M sensor vehicle %6m (%7, %11 deg up from it), lowest %8m above ground, top speed %9 m/s; its proxy %10.",
+                _flags getOrDefault ["ammo", "?"], _entry select 1, _key, (CBA_missionTime - (_flags getOrDefault ["firedAt", CBA_missionTime])) toFixed 1,
                 ["no AEGIS-M sensor ever saw it", format ["seen by %1, but judged no threat", _seenKinds joinString ", "]] select (_seenKinds isNotEqualTo []),
                 round _nearest, _nearestVehicle, round _lowest, round _topSpeed,
                 if (_proxyOffset <= 0) then { "never made (gone too soon)" } else {
@@ -115,8 +115,8 @@ for "_i" from (count _tracked - 1) to 0 step -1 do {
             if (_lastPos isNotEqualTo [] && {_radars isNotEqualTo []}) then {
                 _nearest = ([_radars, [], { _x distance _lastPos }, "ASCEND"] call BIS_fnc_sortBy) select 0;
             };
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " ARM-END: %1 (%2) gone %3s after it was fired -- at its last check it was homing on %4; %5; %6.",
-                _ammo, _key, (time - (_flags getOrDefault ["firedAt", time])) toFixed 1,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ARM-END: %1 (%2) gone %3s after it was fired -- at its last check it was homing on %4; %5; %6.",
+                _ammo, _key, (CBA_missionTime - (_flags getOrDefault ["firedAt", CBA_missionTime])) toFixed 1,
                 if (isNull _homing) then { "nothing" } else {
                     format ["%1 (%2, radar %3)", _homing, ["destroyed", "alive"] select (alive _homing), ["off", "on"] select (isVehicleRadarOn _homing)]
                 },
@@ -138,23 +138,23 @@ for "_i" from (count _tracked - 1) to 0 step -1 do {
                 // Once the munition is well away from where the proxy was
                 // made, so one left behind is unmistakably off (proxy.hpp).
                 private _checkAt = _flags getOrDefault ["attachCheckAt", -1];
-                if (_checkAt >= 0 && {time >= _checkAt}
+                if (_checkAt >= 0 && {CBA_missionTime >= _checkAt}
                     && {((getPosASL _projectile) distance (_flags getOrDefault ["attachFrom", getPosASL _projectile])) > 2 * AEGISM_PROXY_ATTACH_TOLERANCE
-                        || {time >= _checkAt + AEGISM_PROXY_ATTACH_TIMEOUT}}) then {
+                        || {CBA_missionTime >= _checkAt + AEGISM_PROXY_ATTACH_TIMEOUT}}) then {
                     _flags set ["attachCheckAt", -1];
                     [_entry] call aegism_detect_fnc_proxyCheckAttach;
                     _checkAt = -1;
                 };
                 // Carried, and now low enough for a sensor's ground clutter
                 // (checked with the munition): moved with it from here on.
-                if (_checkAt < 0 && {!(_flags getOrDefault ["follow", false])} && {time >= (_entry select 5)}
+                if (_checkAt < 0 && {!(_flags getOrDefault ["follow", false])} && {CBA_missionTime >= (_entry select 5)}
                     && {((ASLToAGL getPosASL _projectile) select 2) < _clutterHeight}) then {
                     [_entry, _clutterHeight] call _fnFollowLow;
                 };
             };
         };
-        if (time >= (_entry select 5)) then {
-            _entry set [5, time + AEGISM_TRACK_INTERVAL];
+        if (CBA_missionTime >= (_entry select 5)) then {
+            _entry set [5, CBA_missionTime + AEGISM_TRACK_INTERVAL];
             PERF_INC(PERF_TRACKER_CHECKS);
             [_entry, _owners] call aegism_detect_fnc_munitionCheck;
         };

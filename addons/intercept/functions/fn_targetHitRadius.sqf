@@ -70,7 +70,7 @@ private _fnBox = {
     format ["%1 x %2 x %3 m", (_size select 0) toFixed 2, (_size select 1) toFixed 2, (_size select 2) toFixed 2]
 };
 if (AEGISM_RPT_VERBOSE) then {
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TARGET-SIZE: %1 -- collision box %2, visual box %3: hit radius %4m (half the %5 box's diagonal).",
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " TARGET-SIZE: %1 -- collision box %2, visual box %3: hit radius %4m (half the %5 box's diagonal).",
         _type,
         [[_geometryMin, _geometryMax] call _fnBox, "none"] select !_useGeometry,
         [_visualMin, _visualMax] call _fnBox,

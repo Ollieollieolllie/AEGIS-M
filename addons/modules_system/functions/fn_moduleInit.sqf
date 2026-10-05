@@ -93,7 +93,7 @@ if (_sensorText == "") then { _sensorText = "none"; };
 if (!_hasAnyCapability) exitWith {
     _vehicle setVariable ["AEGISM_systemInitialized", true, false];
     if (AEGISM_RPT_VERBOSE) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar, IR or visual sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DISCOVERY: %1 (%2) has no AEGIS-M-qualifying capability -- no radar, IR or visual sensor, no air-capable missile, no high-ROF air-capable gun.", _vehicle, typeOf _vehicle];
     };
 };
 
@@ -127,7 +127,7 @@ if (!_synced && !_standaloneEligible) exitWith {
         private _deferred = missionNamespace getVariable ["AEGISM_deferredSystems", []];
         _deferred pushBackUnique _vehicle;
         missionNamespace setVariable ["AEGISM_deferredSystems", _deferred, false];
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DISCOVERY: %1 (%2) has AEGIS-M capability (sensors: %3; launchers=%4 ciws=%5) but isn't active: %6. Deferred until synced.", _vehicle, typeOf _vehicle, _sensorText, count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _reason];
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DISCOVERY: %1 (%2) has AEGIS-M capability (sensors: %3; launchers=%4 ciws=%5) but isn't active: %6. Deferred until synced.", _vehicle, typeOf _vehicle, _sensorText, count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _reason];
     };
 };
 
@@ -165,7 +165,7 @@ missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
 
 private _overrides = [_vehicle] call aegism_system_fnc_resolveSettings;
 if (_overrides isNotEqualTo []) then {
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OVERRIDES: %1 uses its own vehicle settings instead of its Site's: %2", _vehicle, _overrides joinString ", "];
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " OVERRIDES: %1 uses its own vehicle settings instead of its Site's: %2", _vehicle, _overrides joinString ", "];
 };
 private _contactSource = _vehicle getVariable "AEGISM_resolvedContactSource";
 
@@ -203,15 +203,15 @@ if ("ownSensor" in _contactSource) then {
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
         // Paused (game time not moving): nothing to detect.
-        if (time == _lastTime) exitWith {};
-        _args set [1, time];
-        if (time >= _emconAt + 1) then {
-            _args set [2, time];
+        if (CBA_missionTime == _lastTime) exitWith {};
+        _args set [1, CBA_missionTime];
+        if (CBA_missionTime >= _emconAt + 1) then {
+            _args set [2, CBA_missionTime];
             [_vehicle] call aegism_system_fnc_emconUpdate;
         };
         private _interval = [1, AEGISM_SENSOR_READ_FAST] select ((missionNamespace getVariable ["AEGISM_trackedMunitions", []]) isNotEqualTo []);
-        if (time >= _readAt + _interval) then {
-            _args set [3, time];
+        if (CBA_missionTime >= _readAt + _interval) then {
+            _args set [3, CBA_missionTime];
             [_vehicle] call aegism_detect_fnc_confidenceLoop;
         };
     }, AEGISM_SENSOR_READ_FAST, [_vehicle, -1, -1e9, -1e9]] call CBA_fnc_addPerFrameHandler;
@@ -231,10 +231,10 @@ if ((_capabilities get "ciwsWeapons") isNotEqualTo []) then { _activeWeaponRoles
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
         // Paused (game time not moving): nothing to do.
-        if (time == _lastTime) exitWith {};
-        _args set [2, time];
+        if (CBA_missionTime == _lastTime) exitWith {};
+        _args set [2, CBA_missionTime];
         [_vehicle, _role] call aegism_intercept_fnc_engagementLoop;
     }, 0.1, [_vehicle, _x, -1]] call CBA_fnc_addPerFrameHandler;
 } forEach _activeWeaponRoles;
 
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " System initialized on %1 (%2) -- sensors: %3; launcherWeapons=%4 ciwsWeapons=%5 contactSource=%6", _vehicle, typeOf _vehicle, _sensorText, count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " System initialized on %1 (%2) -- sensors: %3; launcherWeapons=%4 ciwsWeapons=%5 contactSource=%6", _vehicle, typeOf _vehicle, _sensorText, count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];

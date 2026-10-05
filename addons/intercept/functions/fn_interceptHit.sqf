@@ -31,4 +31,4 @@ params ["_projectile", "_target", "_isMunitionTarget", "_minDistance", "_hitRadi
 // not shooting its sensor proxy down too (PROXY-HIT).
 if (_isMunitionTarget) then { [_target] call aegism_detect_fnc_destroyMunition; };
 triggerAmmo _projectile;
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " INTERCEPT: %1 hit %2 (closest %3m, hit radius %4m).", typeOf _projectile, _target, _minDistance, _hitRadius];
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " INTERCEPT: %1 hit %2 (closest %3m, hit radius %4m).", typeOf _projectile, _target, _minDistance, _hitRadius];

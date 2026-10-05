@@ -57,7 +57,7 @@ private _ammo = typeOf _projectile;
 
 // This gun's fuze time for this ammo: [ammo, seconds, worked out at].
 private _fuze = _ts getOrDefault ["selfDestructFuze", []];
-if (_fuze isEqualTo [] || {(_fuze select 0) != _ammo} || {time - (_fuze select 2) > AEGISM_SELF_DESTRUCT_REFRESH}) then {
+if (_fuze isEqualTo [] || {(_fuze select 0) != _ammo} || {CBA_missionTime - (_fuze select 2) > AEGISM_SELF_DESTRUCT_REFRESH}) then {
     // The ammo's lifetime and drag, read once per ammo type.
     private _cache = missionNamespace getVariable "AEGISM_cacheLifetime";
     if (isNil "_cache") then {
@@ -90,13 +90,13 @@ if (_fuze isEqualTo [] || {(_fuze select 0) != _ammo} || {time - (_fuze select 2
 
     if (abs ((_fuze param [1, -1]) - _seconds) > 0.01) then {
         if (AEGISM_RPT_VERBOSE) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SELF-DESTRUCT-FUZE: %1 turret %2 -- %3 rounds burst %4s after firing, %5 (muzzle %6 m/s, airFriction %7, lifetime %8s).",
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " SELF-DESTRUCT-FUZE: %1 turret %2 -- %3 rounds burst %4s after firing, %5 (muzzle %6 m/s, airFriction %7, lifetime %8s).",
                 _system, _turretPath, _ammo, round (_seconds * 100) / 100,
                 if (_byLifetime) then { "just before their lifetime runs out" } else { format ["once past the gun's %1m reach", round _reach] },
                 round _v0, _k, _lifetime];
         };
     };
-    _fuze = [_ammo, _seconds, time];
+    _fuze = [_ammo, _seconds, CBA_missionTime];
     _ts set ["selfDestructFuze", _fuze];
 };
 private _seconds = _fuze select 1;
@@ -104,7 +104,7 @@ if (_seconds <= 0 || {_seconds >= 1e10}) exitWith {};
 
 private _queue = _ts get "selfDestruct";
 if (isNil "_queue") then { _queue = []; _ts set ["selfDestruct", _queue]; };
-_queue pushBack [time + _seconds, _projectile];
+_queue pushBack [CBA_missionTime + _seconds, _projectile];
 
 if (_ts getOrDefault ["selfDestructRunning", false]) exitWith {};
 _ts set ["selfDestructRunning", true];
@@ -112,7 +112,7 @@ _ts set ["selfDestructRunning", true];
 [{
     params ["_args", "_pfhHandle"];
     _args params ["_system", "_turretPath", "_ts", "_queue", "_detonated", "_gone", "_ammo"];
-    while { _queue isNotEqualTo [] && {((_queue select 0) select 0) <= time} } do {
+    while { _queue isNotEqualTo [] && {((_queue select 0) select 0) <= CBA_missionTime} } do {
         private _projectile = (_queue deleteAt 0) select 1;
         if (!isNull _projectile && {alive _projectile}) then {
             if (_ammo == "") then { _ammo = typeOf _projectile; _args set [6, _ammo]; };
@@ -128,7 +128,7 @@ _ts set ["selfDestructRunning", true];
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         _ts set ["selfDestructRunning", false];
         if (AEGISM_RPT_VERBOSE) then {
-            diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SELF-DESTRUCT: %1 turret %2 -- %3 round(s)%4 self-destructed %5s after firing; %6 had already hit something or been fuzed.", _system, _turretPath, _detonated,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " SELF-DESTRUCT: %1 turret %2 -- %3 round(s)%4 self-destructed %5s after firing; %6 had already hit something or been fuzed.", _system, _turretPath, _detonated,
                 ["", format [" of %1", _ammo]] select (_ammo != ""), round (((_ts getOrDefault ["selfDestructFuze", ["", 0]]) select 1) * 100) / 100, _gone];
         };
     };

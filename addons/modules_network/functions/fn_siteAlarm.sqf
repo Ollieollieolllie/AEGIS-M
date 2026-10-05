@@ -79,11 +79,11 @@ private _settings = [_logic] call aegism_fnc_siteSettingsSource;
 private _range = round (_settings getVariable ["alarmRange", 400]);
 private _state = "";
 private _class = "";
-if (time - (_logic getVariable ["AEGISM_incomingAt", -1e9]) <= AEGISM_INCOMING_HOLD) then {
+if (CBA_missionTime - (_logic getVariable ["AEGISM_incomingAt", -1e9]) <= AEGISM_INCOMING_HOLD) then {
     _class = [_logic, _settings getVariable ["alarmIncoming", "auto"], _settings getVariable ["alarmIncomingCustom", ""]] call _fnClass;
     if (_class != "") then { _state = "incoming"; };
 };
-if (_state == "" && {count (_logic getVariable ["AEGISM_claims", createHashMap]) > 0 || {time - (_logic getVariable ["AEGISM_lastShotAt", -1e9]) <= (_settings getVariable ["alarmHold", 10])}}) then {
+if (_state == "" && {count (_logic getVariable ["AEGISM_claims", createHashMap]) > 0 || {CBA_missionTime - (_logic getVariable ["AEGISM_lastShotAt", -1e9]) <= (_settings getVariable ["alarmHold", 10])}}) then {
     _class = [_logic, _settings getVariable ["alarmWarning", "base"], _settings getVariable ["alarmWarningCustom", ""]] call _fnClass;
     if (_class != "") then { _state = "warning"; };
 };
@@ -101,7 +101,7 @@ if (_class != "") then {
     if (_speakers isEqualTo []) then { _speakers = [_logic]; };
     { _sources pushBack (createSoundSource [_class, getPosATL _x, [], 0]); } forEach _speakers;
 };
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " ALARM: Site %1 %2 -> %3%4", _logic, ["off", _alarm select 0] select ((_alarm select 0) != ""), ["off", _state] select (_state != ""),
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ALARM: Site %1 %2 -> %3%4", _logic, ["off", _alarm select 0] select ((_alarm select 0) != ""), ["off", _state] select (_state != ""),
     ["", format [" (%1 from %2 speaker(s): %3)", _class, count _speakers, _speakers apply { typeOf _x }]] select (_class != "")];
 _alarm set [0, _state];
 _alarm set [1, _class];

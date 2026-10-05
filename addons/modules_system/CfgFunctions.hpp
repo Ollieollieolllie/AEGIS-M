@@ -18,6 +18,8 @@ class CfgFunctions
             class radarCovers {};
             class emconUpdate {};
             class radarSchedule {};
+            class radarRelay {};
+            class turningRadar {};
             class debugCheckCiws {};
         };
     };

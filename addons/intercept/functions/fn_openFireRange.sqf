@@ -84,7 +84,7 @@ private _allCached = _ts get "openFire";
 if (isNil "_allCached") then { _allCached = createHashMap; _ts set ["openFire", _allCached]; };
 private _cacheKey = [_targetClass, _hitRadius];
 private _cached = _allCached getOrDefault [_cacheKey, []];
-if (_cached isNotEqualTo [] && {time - (_cached select 2) < AEGISM_OPEN_FIRE_REFRESH} && {(_cached select 3) == _chance}) exitWith {
+if (_cached isNotEqualTo [] && {CBA_missionTime - (_cached select 2) < AEGISM_OPEN_FIRE_REFRESH} && {(_cached select 3) == _chance}) exitWith {
     [_cached select 0, _cached select 1]
 };
 PERF_INC(PERF_OPEN_FIRE_BUILDS);
@@ -153,7 +153,7 @@ if (_chance > 0 && {_hitRadius > 0}) then {
 };
 if (_hitRadius <= 0 && {_chance > 0}) then { _range = 0; };
 
-_allCached set [_cacheKey, [_range, _minRange, time, _chance]];
+_allCached set [_cacheKey, [_range, _minRange, CBA_missionTime, _chance]];
 
 // Logged when it moves noticeably.
 private _logged = _ts get "openFireLogged";
@@ -162,7 +162,7 @@ private _lastLogged = _logged getOrDefault [_targetClass, -1];
 if (_lastLogged < 0 || {abs (_range - _lastLogged) > AEGISM_OPEN_FIRE_LOG_CHANGE * (_lastLogged max 1)}) then {
     _logged set [_targetClass, _range];
     if (AEGISM_RPT_VERBOSE) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " OPEN-FIRE-RANGE: %1 %2 vs %3 -- fires inside %4 (round reach %5m in its %6s life%7). There one %8s burst, ~%9 rounds at %10/s (%11), puts a round within %12m of the target %13 percent of the time: rounds scatter %14 mrad RMS (%15), the target strays %16 m/s of flight from its predicted track.",
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " OPEN-FIRE-RANGE: %1 %2 vs %3 -- fires inside %4 (round reach %5m in its %6s life%7). There one %8s burst, ~%9 rounds at %10/s (%11), puts a round within %12m of the target %13 percent of the time: rounds scatter %14 mrad RMS (%15), the target strays %16 m/s of flight from its predicted track.",
             _system, _weaponClass, _targetClass,
             [format ["%1m", round _range], "its full reach"] select (_range >= _reach),
             round (_reach min 1e5), _lifetime, [format [", arms at %1m", _minRange], ""] select (_minRange <= 0),

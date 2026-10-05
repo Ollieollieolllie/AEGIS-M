@@ -65,13 +65,13 @@ if (_class == "") exitWith {};
 // One line per shooter per AEGISM_MUNITION_LOG_INTERVAL (a barrage would
 // otherwise log every round), stating the IFF outcome. Not for AEGIS-M's own
 // interceptors -- their FIRE lines already cover them.
-if (!_fromSystem && {time > (_unit getVariable ["AEGISM_munitionLogAt", -1e9]) + AEGISM_MUNITION_LOG_INTERVAL}) then {
-    _unit setVariable ["AEGISM_munitionLogAt", time];
+if (!_fromSystem && {CBA_missionTime > (_unit getVariable ["AEGISM_munitionLogAt", -1e9]) + AEGISM_MUNITION_LOG_INTERVAL}) then {
+    _unit setVariable ["AEGISM_munitionLogAt", CBA_missionTime];
     private _hostileWatchers = {
         !isNil { _x getVariable "AEGISM_system" } && {[side _x, _shooterSide] call aegism_detect_fnc_isHostile}
     } count (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
     if (AEGISM_RPT_VERBOSE) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " MUNITION: %1 (%2) fired %3 (%4) -- %5", _unit, _shooterSide, _ammo, _class,
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MUNITION: %1 (%2) fired %3 (%4) -- %5", _unit, _shooterSide, _ammo, _class,
             [format ["%1 AEGIS-M sensor vehicle(s) hostile to %2 will track it once their sensors see it.", _hostileWatchers, _shooterSide],
              format ["no AEGIS-M sensor vehicle is hostile to %1 (IFF: friendly) -- tracked and engaged only if predicted to hit a Site whose doctrine engages friendly threats (see FRIENDLY-THREAT).", _shooterSide]] select (_hostileWatchers == 0)];
     };

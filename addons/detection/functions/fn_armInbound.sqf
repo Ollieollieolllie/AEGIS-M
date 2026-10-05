@@ -88,7 +88,7 @@ private _speed = (vectorMagnitude _velocity) max AEGISM_ARM_MIN_SPEED;
         _radar setVariable ["AEGISM_armInbound", _marks, false];
     };
     private _isNew = !(_key in _marks);
-    private _until = time + (_position distance _radar) / _speed + AEGISM_ARM_MARGIN;
+    private _until = CBA_missionTime + (_position distance _radar) / _speed + AEGISM_ARM_MARGIN;
     _marks set [_key, [_projectile, typeOf _projectile, _until max ((_marks getOrDefault [_key, []]) param [2, 0]), _why, _sources, _poolOwner]];
     if (_isNew) then { [_radar] call aegism_system_fnc_emconUpdate; };
 } forEach _targets;

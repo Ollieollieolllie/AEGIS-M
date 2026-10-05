@@ -66,11 +66,11 @@ private _aligned = _feasible && {_inRange} && {_angle <= _tolerance};
 
 // Settled: the angle hasn't set a new best for AEGISM_AIM_SETTLE_TICKS
 // engagement ticks -- the turret is as close as it's going to get.
-(_ts getOrDefault ["settle", [objNull, 1e9, time]]) params ["_settleTarget", "_bestAngle", "_improvedAt"];
-if (_settleTarget != _target || {_angle < _bestAngle}) then { _settleTarget = _target; _bestAngle = _angle; _improvedAt = time; };
+(_ts getOrDefault ["settle", [objNull, 1e9, CBA_missionTime]]) params ["_settleTarget", "_bestAngle", "_improvedAt"];
+if (_settleTarget != _target || {_angle < _bestAngle}) then { _settleTarget = _target; _bestAngle = _angle; _improvedAt = CBA_missionTime; };
 _ts set ["settle", [_settleTarget, _bestAngle, _improvedAt]];
 
-if (_feasible && {_inRange} && {!_aligned} && {time - _improvedAt >= AEGISM_AIM_SETTLE_TICKS * AEGISM_ENGAGEMENT_TICK}) then {
+if (_feasible && {_inRange} && {!_aligned} && {CBA_missionTime - _improvedAt >= AEGISM_AIM_SETTLE_TICKS * AEGISM_ENGAGEMENT_TICK}) then {
     private _settings = _system getVariable "AEGISM_resolvedEngagementSettings";
     if (isNil "_settings") then { _settings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
     private _timeToImpact = [_target, _targetClass, [getPosASL _system]] call aegism_intercept_fnc_timeToImpact;
@@ -80,7 +80,7 @@ if (_feasible && {_inRange} && {!_aligned} && {time - _improvedAt >= AEGISM_AIM_
             if ((_ts getOrDefault ["lastDitchLogged", objNull]) != _target) then {
                 _ts set ["lastDitchLogged", _target];
                 if (AEGISM_RPT_VERBOSE) then {
-                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LAST-DITCH: %1 (ciws) on %2 -- impact in %3s, turret settled %4 deg off the aim point (gate %5): firing anyway.",
+                    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LAST-DITCH: %1 (ciws) on %2 -- impact in %3s, turret settled %4 deg off the aim point (gate %5): firing anyway.",
                         _system, _target, round (_timeToImpact * 10) / 10, round (_angle * 100) / 100, round (_tolerance * 100) / 100];
                 };
             };
@@ -88,7 +88,7 @@ if (_feasible && {_inRange} && {!_aligned} && {time - _improvedAt >= AEGISM_AIM_
             if ((_ts getOrDefault ["lastDitchHeld", objNull]) != _target) then {
                 _ts set ["lastDitchHeld", _target];
                 if (AEGISM_RPT_VERBOSE) then {
-                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " LAST-DITCH-HOLD: %1 (ciws) on %2 -- impact in %3s, turret settled %4 deg off the aim point, over %5x the %6 deg gate: no chance of a hit, holding fire.",
+                    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LAST-DITCH-HOLD: %1 (ciws) on %2 -- impact in %3s, turret settled %4 deg off the aim point, over %5x the %6 deg gate: no chance of a hit, holding fire.",
                         _system, _target, round (_timeToImpact * 10) / 10, round (_angle * 100) / 100, AEGISM_LAST_DITCH_MAX_GATES, round (_tolerance * 100) / 100];
                 };
             };
@@ -96,5 +96,5 @@ if (_feasible && {_inRange} && {!_aligned} && {time - _improvedAt >= AEGISM_AIM_
     };
 };
 
-_ts set ["aim_ciws", [_angle, _tolerance, time, _target, _feasible, _aligned, _aimPoint, _inRange]];
+_ts set ["aim_ciws", [_angle, _tolerance, CBA_missionTime, _target, _feasible, _aligned, _aimPoint, _inRange]];
 _aligned

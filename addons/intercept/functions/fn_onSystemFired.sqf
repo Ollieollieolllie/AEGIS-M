@@ -81,21 +81,21 @@ if (_context isEqualTo []) exitWith {
     private _logKey = "AEGISM_uncommandedLogged_" + _weapon;
     if !(_vehicle getVariable [_logKey, false]) then {
         _vehicle setVariable [_logKey, true];
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " UNCOMMANDED-FIRE: %1 fired %2 (%3) with no AEGIS-M fire command -- its crew's own AI fired.", _vehicle, _weapon, typeOf _projectile];
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " UNCOMMANDED-FIRE: %1 fired %2 (%3) with no AEGIS-M fire command -- its crew's own AI fired.", _vehicle, _weapon, typeOf _projectile];
     };
 };
 _context params ["_target", "_role", "_interceptors", "_expiresAt", "_targetIsMunition", "_turretPath", "", ["_launch", []]];
 
-if (time > _expiresAt) exitWith { _ts deleteAt "capture"; };
+if (CBA_missionTime > _expiresAt) exitWith { _ts deleteAt "capture"; };
 
 // The Site's going-live alarm lasts a while after its last shot (aegism_
 // network_fnc_siteAlarm), and its crews are in combat meanwhile (aegism_
 // intercept_fnc_engagementLoop) -- a vehicle with no Site by its own. Every
 // Site of a linked group (aegism_network_fnc_linkSites) goes live together.
-_vehicle setVariable ["AEGISM_lastShotAt", time];
+_vehicle setVariable ["AEGISM_lastShotAt", CBA_missionTime];
 private _site = _vehicle getVariable ["AEGISM_network", objNull];
 if (!isNull _site) then {
-    { _x setVariable ["AEGISM_lastShotAt", time]; } forEach (_site getVariable ["AEGISM_linkSites", [_site]]);
+    { _x setVariable ["AEGISM_lastShotAt", CBA_missionTime]; } forEach (_site getVariable ["AEGISM_linkSites", [_site]]);
 };
 
 if (_role == "launcher") exitWith {

@@ -36,7 +36,7 @@ if (isNil "_pool") exitWith {};
 {
     private _entry = _pool get _x;
     private _object = _entry get "object";
-    if (isNull _object || {!alive _object} || {time - (_entry getOrDefault ["lastSeen", 0]) > AEGISM_CONTACT_STALE_TIME}) then {
+    if (isNull _object || {!alive _object} || {CBA_missionTime - (_entry getOrDefault ["lastSeen", 0]) > AEGISM_CONTACT_STALE_TIME}) then {
         _pool deleteAt _x;
     };
 } forEach (keys _pool);

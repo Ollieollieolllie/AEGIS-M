@@ -125,7 +125,7 @@ private _drawnHere = [];
 } forEach _drawingSites;
 if (_drawnHere isEqualTo []) exitWith {
     if (_hadRings) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " THREAT-RINGS: %1 -- rings deleted (Threat Rings on Map now off).", _groupSites];
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " THREAT-RINGS: %1 -- rings deleted (Threat Rings on Map now off).", _groupSites];
     };
 };
 
@@ -136,7 +136,7 @@ private _creator = objNull;
     if (_crew isNotEqualTo []) exitWith { _creator = _crew select 0; };
 } forEach _drawnHere;
 if (isNull _creator) exitWith {
-    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " THREAT-RINGS: %1 has no crewed member System, so no side channel to draw its rings in -- none drawn.", _drawingSites];
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " THREAT-RINGS: %1 has no crewed member System, so no side channel to draw its rings in -- none drawn.", _drawingSites];
 };
 
 private _sensorNames = createHashMapFromArray [["radar", "radar"], ["passive", "passive radar"], ["ir", "IR"], ["visual", "visual"]];
@@ -348,4 +348,4 @@ private _areas = 0;
 } forEach _drawingSites;
 
 _lead setVariable ["AEGISM_threatRings", _markers, false];
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " THREAT-RINGS: %1 drew %2 ring(s) for %3 vehicle(s) and %4 protected area(s) in %5's side channel (placed by %6): %7", _drawingSites, count _drawn, count _drawnHere, _areas, side group _creator, _creator, _logged joinString "; "];
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " THREAT-RINGS: %1 drew %2 ring(s) for %3 vehicle(s) and %4 protected area(s) in %5's side channel (placed by %6): %7", _drawingSites, count _drawn, count _drawnHere, _areas, side group _creator, _creator, _logged joinString "; "];

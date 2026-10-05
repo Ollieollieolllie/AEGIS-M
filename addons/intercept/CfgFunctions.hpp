@@ -13,6 +13,7 @@ class CfgFunctions
             class turretConfig {};
             class turretState {};
             class computeLeadPoint {};
+            class missileFlightTime {};
             class lockTurret {};
             class gunnerLock {};
             class barrelDirection {};

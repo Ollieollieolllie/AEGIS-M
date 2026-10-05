@@ -52,7 +52,10 @@ Description:
 
     FEASIBLE only if the solution converges inside the weapon's own reach
     (weaponInfo maxRange, from config) and within the round's own lifetime
-    (CfgAmmo timeToLive, e.g. 6s for vanilla bullets). A target receding
+    (CfgAmmo timeToLive, e.g. 6s for vanilla bullets). For a gun, every step
+    of the solve has to be inside them, starting with the target where it is
+    now; for a missile only the meeting point it ends on: a missile can be
+    launched at a target still beyond its reach and meet it inside. A target receding
     faster than the round can close -- a jet flying away from a gun -- has
     no solution: the projected point runs off to infinity. The previous
     version didn't check this and iterated to NaN (RPT "Error Type Not a
@@ -216,17 +219,17 @@ if (_useAcceleration) then {
     private _sample = _target getVariable [_sampleKey, []];
     if (_sample isNotEqualTo []) then {
         _sample params ["_prevVelocity", "_prevTime", "_prevAccel"];
-        private _dt = time - _prevTime;
+        private _dt = CBA_missionTime - _prevTime;
         switch (true) do {
             case (_dt < AEGISM_LEAD_MIN_SAMPLE_DT): { _targetAcceleration = _prevAccel; };
             case (_dt > AEGISM_LEAD_MAX_SAMPLE_DT): { _targetAcceleration = [0, 0, 0]; };
             default { _targetAcceleration = (_targetVelocity vectorDiff _prevVelocity) vectorMultiply (1 / _dt); };
         };
         if (_dt >= AEGISM_LEAD_MIN_SAMPLE_DT) then {
-            _target setVariable [_sampleKey, [_targetVelocity, time, _targetAcceleration], false];
+            _target setVariable [_sampleKey, [_targetVelocity, CBA_missionTime, _targetAcceleration], false];
         };
     } else {
-        _target setVariable [_sampleKey, [_targetVelocity, time, [0, 0, 0]], false];
+        _target setVariable [_sampleKey, [_targetVelocity, CBA_missionTime, [0, 0, 0]], false];
     };
 };
 if (_ballistic) then { _targetAcceleration = [0, 0, -AEGISM_GRAVITY]; };
@@ -257,7 +260,13 @@ private _timeToGo = [_targetPos] call _fnPathTime;
 private _interceptPoint = _targetPos;
 private _interceptDistance = _currentDistance;
 private _aimPoint = _targetPos;
-private _feasible = !([_currentDistance, _timeToGo] call _fnOutOfReach);
+// A gun's solve stops at the first step out of its reach, starting with the
+// target where it is now. A missile is judged only where it meets the
+// target, once solved: launched at a target still beyond its reach, it meets
+// it inside (aegism_intercept_fnc_canEngage). Midway the solve swings either
+// side of the answer, and a step just past the edge would throw out a
+// meeting just inside it.
+private _feasible = if (_isGun) then { !([_currentDistance, _timeToGo] call _fnOutOfReach) } else { _timeToGo >= 0 };
 
 // For a flight time _t: where the target is met, and the point to aim at
 // for it (raised by a gun round's fall).
@@ -278,14 +287,17 @@ if (_feasible) then {
         // line (for a gun that's the raised point, see header); an off-bore
         // missile turns onto it first.
         _timeToGo = [_aimPoint] call _fnPathTime;
-        if ([_interceptDistance, _timeToGo] call _fnOutOfReach) exitWith { _feasible = false; };
+        private _outOfReach = if (_isGun) then { [_interceptDistance, _timeToGo] call _fnOutOfReach } else { _timeToGo < 0 };
+        if (_outOfReach) exitWith { _feasible = false; };
     };
 };
 
 private _track = [_targetPos, _targetVelocity, _targetAcceleration];
 
+if (_feasible) then {
+    [_timeToGo] call _fnSolveAt;
+    if (!_isGun && {[_interceptDistance, _timeToGo] call _fnOutOfReach}) then { _feasible = false; };
+};
 if (!_feasible) exitWith { [_targetPos, false, -1, _interceptDistance, _track, _targetPos, [0, 0, _origin]] };
-
-[_timeToGo] call _fnSolveAt;
 
 [_aimPoint, true, _timeToGo, _interceptDistance, _track, _interceptPoint, _turn]

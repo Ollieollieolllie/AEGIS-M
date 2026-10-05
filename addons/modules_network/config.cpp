@@ -567,15 +567,25 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "0";
             };
-            class MaxOffBore
+            class MaxOffBoreSwing
             {
-                displayName = "Max Off-Bore Launch (deg)";
-                tooltip = "The most a launcher may fire away from the intercept and leave the missile to turn onto it: firing before its turret has swung round (when the missile's turn gets there sooner), or from a turret stopped at its limit. Also never beyond what the missile itself can be guided through after launch. Default 15. A fixed mount -- a vertical launch cell, a hull-fixed launcher -- is exempt: launching off the target is the only way it can fire.";
-                property = "maxOffBore";
+                displayName = "Max Off-Bore Launch While Swinging (deg)";
+                tooltip = "The most a launcher may fire away from the intercept while its turret is still swinging round, leaving the missile to turn onto it: only when the missile's turn gets there sooner than waiting for the swing. Also never beyond what the missile itself can be guided through after launch. Default 20. A fixed mount -- a vertical launch cell, a hull-fixed launcher -- is exempt: launching off the target is the only way it can fire.";
+                property = "maxOffBoreSwing";
                 control = "Edit";
-                expression = "_this setVariable ['maxOffBore', _value];";
+                expression = "_this setVariable ['maxOffBoreSwing', _value];";
                 typeName = "NUMBER";
-                defaultValue = "15";
+                defaultValue = "20";
+            };
+            class MaxOffBoreLimit
+            {
+                displayName = "Max Off-Bore Launch At Turret Limit (deg)";
+                tooltip = "The most a launcher may fire away from the intercept once its turret is as close as it can get -- stopped at its elevation or traverse limit (a Spartan's turret tops out at 40 degrees), or a mount that can't move on one axis -- leaving the missile to turn onto it. Also never beyond what the missile itself can be guided through after launch. Default 30. A fixed mount is exempt.";
+                property = "maxOffBoreLimit";
+                control = "Edit";
+                expression = "_this setVariable ['maxOffBoreLimit', _value];";
+                typeName = "NUMBER";
+                defaultValue = "30";
             };
 
             // ========================================================== CIWS
@@ -718,7 +728,7 @@ class CfgVehicles
             class EmconBurstOn
             {
                 displayName = "Search Burst: Seconds On";
-                tooltip = "Intermittent and Automatic: how long each search burst lasts. The radars of a Site (and the Sites linked with it) searching in bursts take turns, their bursts spread evenly over the cycle: three radars at 5s on, 15s off -- one comes on every 6.7s, with 1.7s gaps.";
+                tooltip = "Intermittent, and Automatic while the Site is quiet. Turning radars (like the radar truck's 120 degrees) scan as a relay: one radar lit at a time, each on the next arc round the circle, lit this long per arc -- every bearing scanned once a lap, the emitter moving from vehicle to vehicle, each radar swinging onto its arc while silent. Any other radar bursts this long, the Site's (and linked Sites') taking turns, their bursts spread evenly over the cycle.";
                 property = "emconBurstOn";
                 control = "Edit";
                 expression = "_this setVariable ['emconBurstOn', _value];";
@@ -728,7 +738,7 @@ class CfgVehicles
             class EmconBurstOff
             {
                 displayName = "Search Burst: Seconds Off";
-                tooltip = "Intermittent and Automatic: how long a radar stays silent between search bursts.";
+                tooltip = "Intermittent, and Automatic while the Site is quiet: for turning radars, how long they all stay silent after each lap of the relay scan (four arcs of 5s and a 15s pause revisit every bearing every 35s); for any other radar, how long it stays silent between its bursts.";
                 property = "emconBurstOff";
                 control = "Edit";
                 expression = "_this setVariable ['emconBurstOff', _value];";
@@ -744,6 +754,16 @@ class CfgVehicles
                 expression = "_this setVariable ['armShutdown', _value];";
                 typeName = "BOOL";
                 defaultValue = "true";
+            };
+            class RadarHoldSector
+            {
+                displayName = "Turning Radars Hold Their Sector";
+                tooltip = "The Site's turning radars (like the radar truck's 120 degrees, together with those of the Sites linked to it) divide the sky into equal sectors, one each, which decide which radar tracks which contacts. Off (default): while searching they rotate round together, evenly spaced and in step, so every radar looks all the way round -- radars far apart see past different hills -- and their beams stay spread round the sky (three 120-degree radars keep all round covered as they turn). On: a radar whose arc covers its sector holds it still instead, the Site seeing all round at once without moving. A radar whose arc doesn't cover its sector always rotates.";
+                property = "radarHoldSector";
+                control = "Checkbox";
+                expression = "_this setVariable ['radarHoldSector', _value];";
+                typeName = "BOOL";
+                defaultValue = "false";
             };
 
             // ======================================================== ALARMS

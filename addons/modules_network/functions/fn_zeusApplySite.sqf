@@ -54,7 +54,7 @@ if (_logic getVariable ["sharedCoordinator", false]) then {
     private _unticked = _connected select { _x getVariable ["sharedCoordinator", false] };
     { _x setVariable ["sharedCoordinator", false, true]; } forEach _unticked;
     if (_unticked isNotEqualTo []) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SITE-SETTINGS: %1 is now the Shared Site Coordinator of its linked Sites -- unticked on %2.", _logic, _unticked];
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " SITE-SETTINGS: %1 is now the Shared Site Coordinator of its linked Sites -- unticked on %2.", _logic, _unticked];
     };
 };
 
@@ -80,4 +80,4 @@ if (_ringsKey isNotEqualTo (_logic getVariable ["AEGISM_ringsApplied", [false, f
 };
 _logic setVariable ["AEGISM_ringsApplied", _ringsKey, false];
 
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " SITE-SETTINGS: %1 edited in Zeus, applied to %2 member(s) -- engagement %3 | crew %4", _logic, count _members, _engagementData, _crewData];
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " SITE-SETTINGS: %1 edited in Zeus, applied to %2 member(s) -- engagement %3 | crew %4", _logic, count _members, _engagementData, _crewData];

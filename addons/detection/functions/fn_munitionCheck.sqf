@@ -128,7 +128,7 @@ if (!_fromSystem) then {
                 _path set [7, asin (((((getPosASL _projectile) select 2) - ((eyePos _x) select 2)) / (_distance max 1) max -1) min 1)];
             };
             (_x getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_seen"];
-            if (time - _readAt <= AEGISM_SEEN_FRESH && {_key in _seen}) then { { (_path select 6) pushBackUnique _x; } forEach (_seen get _key); };
+            if (CBA_missionTime - _readAt <= AEGISM_SEEN_FRESH && {_key in _seen}) then { { (_path select 6) pushBackUnique _x; } forEach (_seen get _key); };
         };
     } forEach _owners;
     _path set [2, (_path select 2) min ((ASLToAGL getPosASL _projectile) select 2)];
@@ -157,7 +157,7 @@ if (_isArm) then {
 
     if (_isArm && {!isNil "_system"} && {!(([_network, _poolOwner] select (isNull _network)) in _armDone)}) then {
         (_poolOwner getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_seenMunitions"];
-        if (time - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions}) then {
+        if (CBA_missionTime - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions}) then {
             (_flags get "arm") set [3, true];
             _armDone pushBack ([_network, _poolOwner] select (isNull _network));
             [_projectile, _key, _poolOwner, _seenMunitions get _key, [side _poolOwner, _shooterSide] call aegism_detect_fnc_isHostile] call aegism_detect_fnc_armInbound;
@@ -171,7 +171,7 @@ if (_isArm) then {
     // only one, and a Spartan's IR never showed on a munition.
     if (!isNil "_system" && {!isNull _network} && {_network in _sitesAdded}) then {
         (_poolOwner getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_seenMunitions"];
-        if (time - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions}) then {
+        if (CBA_missionTime - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions}) then {
             [_network, _projectile, _class, 1, _seenMunitions get _key] call aegism_detect_fnc_addContact;
         };
     };
@@ -192,7 +192,7 @@ if (_isArm) then {
             // Its sensors' last read: the sensor kinds that saw this
             // munition's proxy, if they did.
             (_poolOwner getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_seenMunitions"];
-            private _detected = time - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions};
+            private _detected = CBA_missionTime - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions};
             private _seenBy = if (_detected) then { _seenMunitions get _key } else { [] };
             private _threat = [];
 
@@ -202,7 +202,7 @@ if (_isArm) then {
                 if (_detected) then {
                     if (!_hostile && {!(_flags getOrDefault ["friendlyLogged", false])}) then {
                         _flags set ["friendlyLogged", true];
-                        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " FRIENDLY-THREAT: %1 (%2) fired by %3 side -- %4 -- engaging it as a threat.", typeOf _projectile, _class, _shooterSide, _threat call _fnThreatText];
+                        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FRIENDLY-THREAT: %1 (%2) fired by %3 side -- %4 -- engaging it as a threat.", typeOf _projectile, _class, _shooterSide, _threat call _fnThreatText];
                     };
                 } else {
                     if (_hostile && {!(_flags getOrDefault ["ignoredLogged", false])}) then {
@@ -210,7 +210,7 @@ if (_isArm) then {
                         PERF_INC(PERF_IGNORED);
                         // What a missile is homing on, if it can be read.
                         private _homing = if (_class == "missile") then { missileTarget _projectile } else { objNull };
-                        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " IGNORED: %1 (%2) seen by %3 at %4m is no threat to any Site vehicle (%5) -- not engaged while that holds (Site setting: Only Engage Munitions Threatening the Site).",
+                        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " IGNORED: %1 (%2) seen by %3 at %4m is no threat to any Site vehicle (%5) -- not engaged while that holds (Site setting: Only Engage Munitions Threatening the Site).",
                             typeOf _projectile, _class, _poolOwner, round (_poolOwner distance _projectile),
                             switch (true) do {
                                 case (!isNull _homing): { format ["homing on %1 (%2), %3m from the nearest Site vehicle", _homing, typeOf _homing, round ([_homing, _poolOwner] call _fnNearestMember)] };
@@ -242,7 +242,7 @@ if (_isArm) then {
                     };
                     // Every Site of a linked group (aegism_network_fnc_linkSites).
                     if (_threat isNotEqualTo []) then {
-                        { _x setVariable ["AEGISM_incomingAt", time]; } forEach (_network getVariable ["AEGISM_linkSites", [_network]]);
+                        { _x setVariable ["AEGISM_incomingAt", CBA_missionTime]; } forEach (_network getVariable ["AEGISM_linkSites", [_network]]);
                     };
                     if (_class in (_settings getOrDefault ["targetClassAllowlist", []])
                         && {[_network, _projectile, _class, 1, _seenBy] call aegism_detect_fnc_addContact}) then {
@@ -257,8 +257,8 @@ if (_isArm) then {
                 };
                 if (_firstDetection && {_addedTo isNotEqualTo []}) then {
                     _firstDetection = false;
-                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " TRACKING: %1 (%2, %3) detected by %4 at %5m (%6), %7s after it was fired%8.", typeOf _projectile, _class, _key, _poolOwner, round (_poolOwner distance _projectile), _seenBy joinString ", ",
-                        (time - (_flags getOrDefault ["firedAt", time])) toFixed 1, if (_threat isEqualTo []) then { "" } else { " -- " + (_threat call _fnThreatText) }];
+                    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " TRACKING: %1 (%2, %3) detected by %4 at %5m (%6), %7s after it was fired%8.", typeOf _projectile, _class, _key, _poolOwner, round (_poolOwner distance _projectile), _seenBy joinString ", ",
+                        (CBA_missionTime - (_flags getOrDefault ["firedAt", CBA_missionTime])) toFixed 1, if (_threat isEqualTo []) then { "" } else { " -- " + (_threat call _fnThreatText) }];
                 };
             };
         };

@@ -61,7 +61,7 @@ if (!_active) exitWith {};
 
 private _ms = { (round (_this * 10)) / 10 };
 
-diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms) | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms) | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
     _c select PERF_COORD_RUNS, (_c select PERF_COORD_MS) call _ms, (_c select PERF_COORD_MAX_MS) call _ms,
     _c select PERF_ENGAGE_TICKS,
     _c select PERF_AIM_SOLVES, _c select PERF_STEER_FRAMES,

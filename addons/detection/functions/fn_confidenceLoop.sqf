@@ -18,7 +18,8 @@ Description:
     e.g. "activeradar", "ir"). What the game's datalink passes on from
     other vehicles ("datalink") only counts with the CBA setting Use
     Datalink Contacts on: off (the default), a target only datalink reports
-    is skipped, aircraft and munitions alike. A contact new to this
+    is skipped, aircraft and munitions alike. A target the game lists with
+    no sensor on it at all (lost, or only known of) is skipped too. A contact new to this
     vehicle's pool is logged once (DETECT) with them. A contact only
     passive radar hears is pooled, but only cues the Site's radars (aegism_
     fnc_hasTrack). Contacts no longer refreshed by any
@@ -88,15 +89,51 @@ private _seenMunitions = createHashMap;
 // target, and a target only datalink reports is skipped.
 private _useDatalink = "aegism_main_useDatalink" call CBA_settings_fnc_get;
 
+// When its radar last came on (SIGHTED, below).
+private _radarOn = isVehicleRadarOn _poolOwner;
+if (_radarOn && {!(_poolOwner getVariable ["AEGISM_radarWasOn", false])}) then { _poolOwner setVariable ["AEGISM_radarOnAt", CBA_missionTime]; };
+_poolOwner setVariable ["AEGISM_radarWasOn", _radarOn];
+// SIGHTED (RPT Detail Verbose): the first time this vehicle's sensors see
+// each munition -- how long after it was fired, how long its radar had been
+// on, and where its beam was pointing -- to tell a radar that was silent or
+// looking elsewhere from the game's own target acquisition.
+private _sighted = _poolOwner getVariable "AEGISM_munitionsSighted";
+if (isNil "_sighted") then { _sighted = createHashMap; _poolOwner setVariable ["AEGISM_munitionsSighted", _sighted, false]; };
+private _fnSighted = {
+    params ["_munitionKey", "_entry", "_sources"];
+    _sighted set [_munitionKey, CBA_missionTime];
+    if (count _sighted > 200) then { { if (CBA_missionTime - _y > 120) then { _sighted deleteAt _x; }; } forEach +_sighted; };
+    private _munition = _entry select 0;
+    if (isNull _munition) exitWith {};
+    private _eye = eyePos _poolOwner;
+    private _pos = getPosASL _munition;
+    private _bearing = _eye getDir _pos;
+    private _distance = _eye distance _pos;
+    private _beamText = "";
+    if (([_poolOwner] call aegism_system_fnc_turningRadar) isNotEqualTo []) then {
+        private _beam = _poolOwner getVariable ["AEGISM_radarBeam", createHashMap];
+        private _beamBearing = _beam getOrDefault ["bearing", getDir _poolOwner];
+        _beamText = format ["; its beam on %1 deg (%2), %3 deg off the munition's bearing%4", round _beamBearing, _beam getOrDefault ["task", "?"],
+            round (abs ((((_bearing - _beamBearing) + 540) mod 360) - 180)), ["", ", still swinging there"] select (CBA_missionTime < (_beam getOrDefault ["dwellFrom", -1]))];
+    };
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " SIGHTED: %1 first sees %2 (%3) by %4 at %5m, %6 deg up, bearing %7 deg -- %8s after it was fired; its radar %9%10.",
+        _poolOwner, _munitionKey, typeOf _munition, _sources joinString ", ", round _distance,
+        round (asin (((((_pos select 2) - (_eye select 2)) / (_distance max 1)) max -1) min 1)), round _bearing,
+        (CBA_missionTime - ((_entry select 7) getOrDefault ["firedAt", CBA_missionTime])) toFixed 1,
+        if (_radarOn) then { format ["on for %1s", (CBA_missionTime - (_poolOwner getVariable ["AEGISM_radarOnAt", CBA_missionTime])) toFixed 1] } else { "off" },
+        _beamText];
+};
+
 {
     _x params ["_target", "", "_relationship", ["_sensorSources", [], [[]]]];
     private _sources = (_sensorSources select { _x isEqualType "" }) apply { toLower _x };
-    // Seen by no sensor of this vehicle's own: skipped.
-    private _datalinkOnly = false;
-    if (!_useDatalink && {"datalink" in _sources}) then {
-        _sources = _sources - ["datalink"];
-        _datalinkOnly = _sources isEqualTo [];
-    };
+    if (!_useDatalink) then { _sources = _sources - ["datalink"]; };
+    // Seen by no sensor of this vehicle's own just now: skipped. That's one
+    // only datalink reports (unless that's allowed), and one the game still
+    // lists with no sensor on it at all -- lost, or only known of: Spartans,
+    // whose IR reaches 4 km, "saw" rockets 9 km out, and a contact listed
+    // that way never expired.
+    private _datalinkOnly = _sources isEqualTo [];
 
     if (!isNull _target && {_target isKindOf "AEGISM_MunitionProxy"}) then {
         // A munition's sensor proxy: its munition is seen by this vehicle.
@@ -108,7 +145,8 @@ private _useDatalink = "aegism_main_useDatalink" call CBA_settings_fnc_get;
             // (aegism_detect_fnc_munitionTracker, every 0.5 s) -- this read is
             // stored below, before the tracker's next frame.
             private _entry = _target getVariable "AEGISM_proxyEntry";
-            if (!isNil "_entry" && {(_entry select 4) isEqualTo []}) then { _entry set [5, time]; };
+            if (!isNil "_entry" && {(_entry select 4) isEqualTo []}) then { _entry set [5, CBA_missionTime]; };
+            if (AEGISM_RPT_VERBOSE && {!isNil "_entry"} && {!(_munitionKey in _sighted)}) then { [_munitionKey, _entry, _sources] call _fnSighted; };
         };
     } else {
         // IFF: getSensorTargets reports not-yet-identified contacts as
@@ -119,7 +157,7 @@ private _useDatalink = "aegism_main_useDatalink" call CBA_settings_fnc_get;
 
             if (_class in _allowlist) then {
                 if !(([_target] call aegism_fnc_contactKey) in _ownPool) then {
-                    diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DETECT: %1 sees %2 (%3, %4) at %5m via %6.", _poolOwner, _target, typeOf _target, _class, round (_poolOwner distance _target), _sensorSources];
+                    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DETECT: %1 sees %2 (%3, %4) at %5m via %6.", _poolOwner, _target, typeOf _target, _class, round (_poolOwner distance _target), _sensorSources];
                 };
                 [_poolOwner, _target, _class, 1, _sources] call aegism_detect_fnc_addContact;
                 if (!isNull _network) then {
@@ -134,7 +172,7 @@ private _useDatalink = "aegism_main_useDatalink" call CBA_settings_fnc_get;
                 _rejects set [_rejectKey, true];
                 if (!(_rejectKey in _lastRejects)) then {
                     if (AEGISM_RPT_VERBOSE) then {
-                        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
+                        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
                     };
                 };
             };
@@ -142,7 +180,7 @@ private _useDatalink = "aegism_main_useDatalink" call CBA_settings_fnc_get;
     };
 } forEach (getSensorTargets _poolOwner);
 _poolOwner setVariable ["AEGISM_lastDetectReject", _rejects, false];
-_poolOwner setVariable ["AEGISM_seenMunitions", [time, _seenMunitions], false];
+_poolOwner setVariable ["AEGISM_seenMunitions", [CBA_missionTime, _seenMunitions], false];
 
 // Only this System's OWN pool is pruned here, and only by expiry. The Site
 // pool is never touched: another sensor may still hold a contact this one

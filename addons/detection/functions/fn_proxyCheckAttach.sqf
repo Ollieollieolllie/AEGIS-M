@@ -58,7 +58,7 @@ if (isNil "_logged") then {
 if !(_ammo in _logged) then {
     _logged set [_ammo, true];
     if (AEGISM_RPT_VERBOSE) then {
-        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PROXY-ATTACH: %1 %2 (proxy %3m from it, munition at %4 m/s).", _ammo,
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PROXY-ATTACH: %1 %2 (proxy %3m from it, munition at %4 m/s).", _ammo,
             ["didn't carry its attached sensor proxy -- its proxies are moved every frame instead", "carries its attached sensor proxy"] select _carried,
             round _offset, round (vectorMagnitude velocity _projectile)];
     };

@@ -25,10 +25,13 @@ Returns:
         minShotInterval - seconds between two missiles from one launcher;
             0 = Auto, each launcher's own config fire rate (aegism_intercept_
             fnc_launcherInterval) <NUMBER>
-        maxOffBore - degrees; the most a launcher that can move may launch
-            off the intercept and leave the missile to turn (aegism_
-            intercept_fnc_launchSolution). A fixed mount -- a vertical
-            launch cell -- is exempt: it can't do otherwise <NUMBER>
+        maxOffBoreSwing, maxOffBoreLimit - degrees; the most a launcher that
+            can move may launch off the intercept and leave the missile to
+            turn (aegism_intercept_fnc_launchSolution): while its turret is
+            still swinging round, and once the turret is as close as it can
+            get (at its elevation or traverse limit, or a mount that can't
+            move on one axis). A fixed mount -- a vertical launch cell -- is
+            exempt: it can't do otherwise <NUMBER>
         ciwsBurstMin, ciwsBurstMax - CIWS sustained-burst length, seconds;
             each burst picks a random length in this range <NUMBER>
         ciwsBurstPause - seconds a CIWS gun pauses between bursts <NUMBER>
@@ -68,6 +71,9 @@ Returns:
         emconBurstOn, emconBurstOff - search bursts (Intermittent, and
             Automatic while quiet): seconds on, then
             seconds off <NUMBER>
+        radarHoldSector - the Site's turning radars hold their sectors still
+            when their arcs cover them (aegism_system_fnc_radarSchedule);
+            false: they swing across them regardless <BOOLEAN>
         armShutdown - a radar shuts down while an anti-radiation missile is
             inbound on it, in every Radar Emission mode <BOOLEAN>
 
@@ -87,7 +93,8 @@ createHashMapFromArray [
     ["targetPriority", "soonestImpact"],
     ["salvoSize", 1],
     ["minShotInterval", 0],
-    ["maxOffBore", 15],
+    ["maxOffBoreSwing", 20],
+    ["maxOffBoreLimit", 30],
     ["ciwsBurstMin", 3],
     ["ciwsBurstMax", 5],
     ["ciwsBurstPause", 1],
@@ -105,5 +112,6 @@ createHashMapFromArray [
     ["emconHold", 10],
     ["emconBurstOn", 5],
     ["emconBurstOff", 15],
-    ["armShutdown", true]
+    ["armShutdown", true],
+    ["radarHoldSector", false]
 ]
