@@ -84,7 +84,8 @@ Parameters:
 Returns:
     HashMap. Keys:
         sensors - every sensor, longest reach first, each [type, range, arc,
-            aim, viewDistanceCoef, maxFog, component, verticalArc, aimDown]:
+            aim, viewDistanceCoef, maxFog, component, verticalArc, aimDown,
+            clutter]:
             type - "radar" / "passive" / "ir" / "visual"
             range - reach, metres; arc - horizontal arc, degrees
             aim - turret path it turns with, or [] for the hull
@@ -96,9 +97,16 @@ Returns:
             verticalArc - angleRangeVertical, degrees (360 if undefined;
                 the vanilla radar template's is 120)
             aimDown - degrees its boresight is tilted down (0 if undefined)
+            clutter - its maxGroundNoiseDistance: how high above the ground
+                a target can be lost in ground clutter, which the engine
+                filters by the target's speed (the vanilla radar template:
+                200 m, minSpeedThreshold 21 m/s); -1 if it has no ground
+                clutter, 1e10 if it sets no ceiling
         hasRadar - an active radar <BOOLEAN>
         hasSensor - a sensor of its own that finds aircraft: an active
             radar, IR or visual <BOOLEAN>
+        clutterHeight - the highest clutter of those sensors (-1 none)
+            <NUMBER>
         radarRange / radarArc - the longest-reaching active radar's reach
             and arc (0 / 360 if none) <NUMBER>
         launcherWeapons / ciwsWeapons - arrays of weaponInfo:
@@ -195,8 +203,17 @@ private _fnReadSensors = {
             if (_aim isEqualTo [] && {_ownerPath isNotEqualTo []}) then { _arc = 360; };
             if (_arc >= 360) then { _aim = []; };
 
+            // Ground clutter: how high above the ground a target can still be
+            // lost in it -- -1 if the sensor has none (groundNoiseDistanceCoef
+            // -1 or undefined), 1e10 if it sets no ceiling.
+            private _clutter = -1;
+            if (isNumber (_componentCfg >> "groundNoiseDistanceCoef") && {getNumber (_componentCfg >> "groundNoiseDistanceCoef") >= 0}) then {
+                _clutter = getNumber (_componentCfg >> "maxGroundNoiseDistance");
+                if (!isNumber (_componentCfg >> "maxGroundNoiseDistance") || {_clutter < 0}) then { _clutter = 1e10; };
+            };
+
             if (_range > 0) then {
-                _sensors pushBack [_type, _range, _arc min 360, _aim, _viewDistanceCoef, _maxFog, configName _componentCfg, _verticalArc min 360, getNumber (_componentCfg >> "aimDown")];
+                _sensors pushBack [_type, _range, _arc min 360, _aim, _viewDistanceCoef, _maxFog, configName _componentCfg, _verticalArc min 360, getNumber (_componentCfg >> "aimDown"), _clutter];
             };
         };
     } forEach (configProperties [_root, "isClass _x", true]);
@@ -215,6 +232,11 @@ if (_hasRadar) then {
     _radarArc = (_radars select 0) select 2;
 };
 private _hasSensor = (_sensors findIf { (_x select 0) in ["radar", "ir", "visual"] }) != -1;
+// The highest any of its sensors that find aircraft loses a target in
+// ground clutter (-1 none): a munition proxy below it is moved with its
+// munition, so it shows its real speed (aegism_detect_fnc_munitionTracker).
+private _clutterHeight = -1;
+{ if ((_x select 0) in ["radar", "ir", "visual"]) then { _clutterHeight = _clutterHeight max (_x select 9); }; } forEach _sensors;
 
 private _launcherWeapons = [];
 private _ciwsWeapons = [];
@@ -313,6 +335,7 @@ createHashMapFromArray [
     ["sensors", _sensors],
     ["hasRadar", _hasRadar],
     ["hasSensor", _hasSensor],
+    ["clutterHeight", _clutterHeight],
     ["radarRange", _radarRange],
     ["radarArc", _radarArc],
     ["launcherWeapons", _launcherWeapons],

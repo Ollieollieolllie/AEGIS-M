@@ -98,7 +98,7 @@ records which kinds of sensor saw it.
   So every tracked munition carries an invisible **sensor proxy** -- a
   vehicle on the supply-drop crate's model with its texture blanked (a
   sensor target needs real geometry: with an empty model nothing saw it),
-  size 2.5 on radar and IR and 1 on visual (a target's size scales a
+  size 2.5 on radar, IR and visual (a target's size scales a
   sensor's range: raised from 1 to help sensors pick munitions up), and
   hot -- its engine running (an IR sensor only sees a vehicle
   whose engine is on; the proxy's is silent) and `setVehicleTIPars` -- that
@@ -112,7 +112,15 @@ records which kinds of sensor saw it.
   frame instead, at the munition's own velocity. A proxy moved that way is
   a free vehicle, so it isn't made until its munition is clear of whatever
   fired it (the shooter's size, plus the proxy's, plus 5 m), half a second
-  after launch at the latest. It's deleted with its munition. There's one
+  after launch at the latest. An attached proxy shows no speed of its own,
+  and sensors filter targets out of ground clutter by their speed (the
+  vanilla radar template's clutter reaches 200 m up, with a 21 m/s speed
+  threshold) -- rockets and missiles skimming the ground with attached
+  proxies were never seen at all. So once a munition comes below the
+  highest any AEGIS-M sensor's clutter reaches (each sensor's own
+  `maxGroundNoiseDistance`), its proxy is detached and moved with it at its
+  velocity from then on (`PROXY-LOW`, once per type). It's deleted with its
+  munition. There's one
   proxy class per kind of munition (`AEGISM_MunitionProxy_missile` /
   `_rocket` / `_bomb` / `_artilleryShell`), so each can carry its own
   signature. A cluster carrier's bomblets get none (they're not followed at
@@ -355,12 +363,22 @@ is free for its next target as soon as its missiles are away (they guide
 themselves), and can **queue** several incoming munitions -- so a deep,
 fast-cycling magazine like a RAM launcher takes the bulk of a rocket
 barrage instead of a long-range SAM. Each launcher works its queue
-soonest-impact first (time to impact from the round's ballistic arc), plans
-it with its own **measured** time per missile (lost reliability rolls and
-re-aiming included), and is never queued past its **last missile**. A
-queued round it can no longer reach in time, or has no missile left for, is
-**handed off** early to a launcher that can (`HANDOFF` in the RPT); an
-empty launcher gives its targets back at once.
+soonest-impact first (time to impact from the round's ballistic arc) --
+except that the round its turret is already on keeps its place unless one
+5 s more urgent comes, so rounds of a salvo don't swap places as their
+estimates move and swing the turret between them. It plans the queue with
+its own **measured** time per missile (lost reliability rolls and
+re-aiming included, and its crew's quicker reaction once in combat), and is
+never queued past its **last missile**. A launcher is only given a round it
+can fire at in time (`LATE` in the RPT when none can: it's left to the
+guns). A queued round it can no longer reach in time (by more than half a
+second), or has no missile left for, is **handed off** to a launcher that
+can (`HANDOFF`), or released if none can; an empty launcher gives its
+targets back at once. Between targets a launcher or gun stays pointed at
+the contact it's most likely to get next -- one no weapon of its kind has
+yet, soonest impact first -- rather than going back to its crew, which
+turned it away between the rockets of a salvo; it's handed back once
+there's nothing left to engage.
 
 **Layered reserve.** Against incoming munitions, long-range launchers hold
 their missiles while the cheaper, shorter-range layer can cope. Every half
@@ -507,16 +525,22 @@ thing, labels stacked rather than drawn over each other:
   Waiting ones (queued behind the launcher's current target, missiles in
   flight, held) are faint, so a launcher's queue doesn't drown out what
   it's actually doing. A CIWS held back by Last Resort Only is dashed orange.
+- **Sight**: a faint light-blue line from each sensor vehicle to each
+  contact its own sensors saw in the last 3 s (lighter violet if only its
+  passive radar hears it). A Site's contacts are all its members' together;
+  this shows which vehicle actually sees which.
 - **Vehicles**: a shield (a radar mark for a sensor-only vehicle) and three
   lines:
   1. its name;
   2. network and sensor status, in light blue: its own sensors, the
      longest of each kind -- reach, arc, `turret` if it turns with one, and
      for a radar its emission and why (it sees nothing while silent; see
-     **Radar emission**) -- then its Site's sensor vehicles and tracked
-     contacts (`RDR 16km 120deg turret EMITTING (holding: silent in 6s)  PAS
-     16km 360  |  SITE: 2 radars + 4 IR/visual, 7 tracks`), or `STANDALONE`
-     with its own tracks. `NO SENSOR
+     **Radar emission**) -- and how many contacts its own sensors see now
+     (`sees 2`, `hears 1` for passive radar alone); then its Site's sensor
+     vehicles and every contact in the Site's picture (`RDR 16km 120deg
+     turret EMITTING (holding: silent in 6s)  PAS 16km 360: sees 1  |  SITE:
+     2 radars + 4 IR/visual, 7 tracks`), or `STANDALONE` with its own
+     tracks. `NO SENSOR
      ON SITE` in orange if it's networked but no vehicle of its Site has a
      sensor of its own;
   3. each weapon with rounds left and what it's doing (`MSL 4: firing +3

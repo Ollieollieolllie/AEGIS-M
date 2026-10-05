@@ -40,8 +40,9 @@ Description:
                longest of each kind -- reach, arc, "turret" if it turns with
                one, and for a radar its emission (Radar Emission, aegism_fnc_
                emconText: EMITTING, SILENT, SHUT DOWN, AI: ..., and why; a
-               silent radar sees nothing, aircraft or munitions) -- and its
-               Site's sensor vehicles and
+               silent radar sees nothing, aircraft or munitions), how many
+               contacts its own sensors see now ("sees 2", "hears 1" for
+               passive radar alone) -- and its Site's sensor vehicles and
                tracks, or STANDALONE with its own tracks. NO SENSOR ON SITE
                in orange when networked but no member of its Site has a
                sensor of its own (aegism_system_fnc_resolveContactSource).
@@ -49,6 +50,11 @@ Description:
                4: firing +3 queued", "GUN 680: slewing"), or NO AMMO (red)
             Name and weapons in its most urgent engagement's colour; grey
             while idle.
+
+        Sight - a faint light-blue line from each sensor vehicle to each
+            contact its own sensors saw in the last 3 s (a lighter violet
+            one if only its passive radar hears it). A Site's contacts are
+            every member's together; this shows which vehicle sees which.
 
         Radar - a faint ring at each radar's own detection range: blue while
             the AI decides its emission, amber while AEGIS-M has it emitting,
@@ -70,8 +76,9 @@ Description:
             own placed without a Site.
 
     Reads only published state (AEGISM_allPoolOwners, AEGISM_allSystems,
-    AEGISM_system, AEGISM_pooledContacts, AEGISM_claims, AEGISM_
-    withheldCiws, each System's AEGISM_turrets "standalone_<role>" states)
+    AEGISM_system, AEGISM_pooledContacts, AEGISM_seenMunitions, AEGISM_
+    claims, AEGISM_withheldCiws, each System's AEGISM_turrets
+    "standalone_<role>" states)
     and calls no function of the addons that publish it: this lives in
     aegism_main, which they all depend on.
 
@@ -104,6 +111,9 @@ if !("aegism_main_debugDraw" call CBA_settings_fnc_get) exitWith {};
 #define AEGISM_SMALL_TEXT 0.027
 // A waiting engagement's line alpha.
 #define AEGISM_FAINT 0.3
+// A sensor sighting this recent counts as seen now (the pools' own contact
+// expiry, aegism_detect_fnc_pruneStaleContacts).
+#define AEGISM_SIGHT_WINDOW 3
 
 private _camera = positionCameraToWorld [0, 0, 0];
 // AGL position _lines text lines above _position (AGL).
@@ -123,6 +133,7 @@ private _contacts = createHashMap;  // key -> [object, class, [tti, at], sensor 
 private _engagements = [];          // [system, target, contact key, role, status]
 private _withheld = [];             // [system, target]
 private _radars = [];               // [position ASL, range]
+private _sightings = [];            // [sensor vehicle, contact key -> heard by passive radar only]
 {
     private _owner = _x;
     if (!isNull _owner) then {
@@ -131,6 +142,24 @@ private _radars = [];               // [position ASL, range]
         if (_isSystem && {_system get "hasRadar"}) then { _radars pushBack [getPosASL _owner, _system get "radarRange", _owner]; };
 
         private _pool = _owner getVariable ["AEGISM_pooledContacts", createHashMap];
+
+        // What its own sensors saw in the last AEGISM_SIGHT_WINDOW s: aircraft
+        // in its own pool, and the munitions its last sensor read saw
+        // (aegism_detect_fnc_confidenceLoop) -- not its Site's whole picture.
+        if (_isSystem && {_system getOrDefault ["hasSensor", false]}) then {
+            private _seen = createHashMap;
+            {
+                private _key = _x;
+                private _kinds = [];
+                { if (time - _y <= AEGISM_SIGHT_WINDOW) then { _kinds pushBack _x; }; } forEach (_y getOrDefault ["sources", createHashMap]);
+                if (_kinds isNotEqualTo []) then { _seen set [_key, _kinds isEqualTo ["passiveradar"]]; };
+            } forEach _pool;
+            (_owner getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_munitions"];
+            if (time - _readAt <= AEGISM_SIGHT_WINDOW) then {
+                { _seen set [_x, false]; } forEach _munitions;
+            };
+            _sightings pushBack [_owner, _seen];
+        };
         {
             private _object = _y getOrDefault ["object", objNull];
             if (!isNull _object) then {
@@ -197,6 +226,26 @@ private _radars = [];               // [position ASL, range]
         _previous = _point;
     };
 } forEach _radars;
+
+// --- Sight lines: a faint line from each sensor vehicle to each contact its
+// own sensors see now (lighter for one only its passive radar hears) -- a
+// Site's picture is every member's, so this is the only place it shows which
+// vehicle actually sees what ---
+private _seesCount = createHashMap;  // vehicle netId -> [seen, heard only]
+{
+    _x params ["_sensorVehicle", "_seen"];
+    private _from = (ASLToAGL getPosASLVisual _sensorVehicle) vectorAdd [0, 0, 2];
+    private _sees = 0;
+    private _hears = 0;
+    {
+        private _known = _contacts get _x;
+        if (!isNil "_known") then {
+            if (_y) then { _hears = _hears + 1; } else { _sees = _sees + 1; };
+            drawLine3D [_from, ASLToAGL getPosASLVisual (_known select 0), [[0.55, 0.8, 1, 0.35], [0.7, 0.55, 1, 0.18]] select _y];
+        };
+    } forEach _seen;
+    _seesCount set [netId _sensorVehicle, [_sees, _hears]];
+} forEach _sightings;
 
 // --- Links between Sites (aegism_network_fnc_linkSites): a vehicle of one
 // synced to a vehicle of the other, or the two modules synced to each other
@@ -334,7 +383,15 @@ private _fnSiteStats = {
                 _sensorParts pushBack _text;
             };
         } forEach (_system getOrDefault ["sensors", []]);
-        if (_sensorParts isNotEqualTo []) then { _statusParts pushBack (_sensorParts joinString "  "); };
+        if (_sensorParts isNotEqualTo []) then {
+            private _sensorText = _sensorParts joinString "  ";
+            // How many contacts its own sensors see now (the sight lines).
+            if (_system getOrDefault ["hasSensor", false]) then {
+                (_seesCount getOrDefault [netId _vehicle, [0, 0]]) params ["_sees", "_hears"];
+                _sensorText = _sensorText + format [": sees %1", _sees] + (["", format [", hears %1", _hears]] select (_hears > 0));
+            };
+            _statusParts pushBack _sensorText;
+        };
         if (isNull _network) then {
             _statusParts pushBack format ["STANDALONE, %1 tracks", count (_vehicle getVariable ["AEGISM_pooledContacts", createHashMap])];
         } else {

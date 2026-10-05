@@ -31,10 +31,10 @@ class CfgPatches
 // Darter's own: its camo selection doesn't cover all of it, so parts of it
 // showed. (hideObject would also hide it from radar.)
 //
-// Its signature is radar 2.5, IR 2.5, visual 1 -- not the Darter's 0.1. The
+// Its signature is 2.5 on radar, IR and visual -- not the Darter's 0.1. The
 // game scales a sensor's range by the target's size (the Cheetah's 9000 m
 // radar first saw a Darter at 852 m); size 1 was each sensor's own
-// configured range, and radar and IR were raised to 2.5 to help the sensors
+// configured range, and all three were raised to 2.5 to help the sensors
 // pick munitions up -- many went unseen at 1. The Darter has no heat
 // signature (irTarget 0); a munition is hot, so IR is on, and the proxy is
 // made hot at creation: its engine started (an IR sensor only sees a vehicle

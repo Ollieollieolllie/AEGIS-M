@@ -176,6 +176,10 @@ private _contactSource = _vehicle getVariable "AEGISM_resolvedContactSource";
 
 if ("ownSensor" in _contactSource) then {
     _vehicle setVariable ["AEGISM_pooledContacts", createHashMap, false];
+    // The highest any AEGIS-M sensor loses a target in ground clutter: a
+    // munition proxy below it is moved with its munition, showing its speed
+    // (aegism_detect_fnc_munitionTracker).
+    missionNamespace setVariable ["AEGISM_clutterHeight", (missionNamespace getVariable ["AEGISM_clutterHeight", -1]) max (_capabilities getOrDefault ["clutterHeight", -1])];
 
     private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
     _allOwners pushBackUnique _vehicle;

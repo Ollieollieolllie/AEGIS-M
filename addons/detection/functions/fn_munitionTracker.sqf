@@ -6,7 +6,8 @@ Description:
     ("AEGISM_trackedMunitions", aegism_detect_fnc_trackMunition), seeing its
     sensor proxy carried (checked once after it's attached, aegism_detect_
     fnc_proxyCheckAttach; moved every frame instead if it wasn't, aegism_
-    detect_fnc_proxyFollow), and checking each one that's due (aegism_detect_fnc_munitionCheck) and then
+    detect_fnc_proxyFollow, or once its munition is low enough for a
+    sensor's ground clutter, PROXY-LOW), and checking each one that's due (aegism_detect_fnc_munitionCheck) and then
     again AEGISM_TRACK_INTERVAL s later. Munitions come in at their own fire
     times, so a barrage's checks are spread over frames rather than all
     landing on one.
@@ -45,6 +46,30 @@ if (_tracked isEqualTo []) exitWith { false };
 private _started = diag_tickTime;
 private _owners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
 
+// Ground clutter: an AEGIS-M sensor loses a target this low against the
+// ground unless it moves fast enough (aegism_system_fnc_discoverCapabilities
+// "clutter"; -1 if none of them has any). An attached proxy shows no speed
+// of its own -- low-flying rockets and missiles with one were never seen by
+// any sensor -- so below it the proxy is detached and moved with its munition,
+// at its velocity (aegism_detect_fnc_proxyFollow). Logged once per ammo
+// class (PROXY-LOW).
+private _clutterHeight = missionNamespace getVariable ["AEGISM_clutterHeight", -1];
+private _fnFollowLow = {
+    params ["_entry", "_height"];
+    _entry params ["_projectile", "", "", "", "", "", "_proxy", "_flags"];
+    detach _proxy;
+    _flags set ["follow", true];
+    _flags set ["lowFollow", true];
+    [_proxy, _projectile] call aegism_detect_fnc_proxyFollow;
+    private _logged = missionNamespace getVariable "AEGISM_proxyLowLogged";
+    if (isNil "_logged") then { _logged = createHashMap; missionNamespace setVariable ["AEGISM_proxyLowLogged", _logged]; };
+    if !((typeOf _projectile) in _logged) then {
+        _logged set [typeOf _projectile, true];
+        diag_log text format ["[AEGIS-M] t=" + (time toFixed 1) + " PROXY-LOW: %1 came within %2 of the ground (%3 m up, %4 m/s), where an AEGIS-M sensor can lose it in ground clutter -- its proxy now moves with it, showing its speed.",
+            typeOf _projectile, ["the height", format ["%1 m", round _height]] select (_height < 1e9), round ((ASLToAGL getPosASL _projectile) select 2), round (vectorMagnitude velocity _projectile)];
+    };
+};
+
 for "_i" from (count _tracked - 1) to 0 step -1 do {
     private _entry = _tracked select _i;
     private _projectile = _entry select 0;
@@ -65,7 +90,12 @@ for "_i" from (count _tracked - 1) to 0 step -1 do {
                 ["no AEGIS-M sensor ever saw it", format ["seen by %1, but judged no threat", _seenKinds joinString ", "]] select (_seenKinds isNotEqualTo []),
                 round _nearest, _nearestVehicle, round _lowest, round _topSpeed,
                 if (_proxyOffset <= 0) then { "never made (gone too soon)" } else {
-                    format ["%1, at most %2m from it, showing up to %3 m/s", ["attached", "moved every frame"] select (_flags getOrDefault ["follow", false]), round _proxyOffset, round _proxySpeed]
+                    format ["%1, at most %2m from it, showing up to %3 m/s",
+                        switch (true) do {
+                            case (_flags getOrDefault ["lowFollow", false]): { "attached, then moved every frame once low (ground clutter)" };
+                            case (_flags getOrDefault ["follow", false]): { "moved every frame" };
+                            default { "attached" };
+                        }, round _proxyOffset, round _proxySpeed]
                 },
                 round _elevation];
         };
@@ -110,6 +140,13 @@ for "_i" from (count _tracked - 1) to 0 step -1 do {
                         || {time >= _checkAt + AEGISM_PROXY_ATTACH_TIMEOUT}}) then {
                     _flags set ["attachCheckAt", -1];
                     [_entry] call aegism_detect_fnc_proxyCheckAttach;
+                    _checkAt = -1;
+                };
+                // Carried, and now low enough for a sensor's ground clutter
+                // (checked with the munition): moved with it from here on.
+                if (_checkAt < 0 && {!(_flags getOrDefault ["follow", false])} && {time >= (_entry select 5)}
+                    && {((ASLToAGL getPosASL _projectile) select 2) < _clutterHeight}) then {
+                    [_entry, _clutterHeight] call _fnFollowLow;
                 };
             };
         };

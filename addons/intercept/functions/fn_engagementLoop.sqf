@@ -88,6 +88,8 @@ Author:
 #define AEGISM_SLEW_LOG_INTERVAL 5
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
 #define AEGISM_TURRET_RELEASE 1.5
+// An idle turret's cue (_fnCue) is re-picked and re-aimed this often.
+#define AEGISM_CUE_INTERVAL 0.5
 // Weight of each new sample in a launcher's measured shot spacing.
 #define AEGISM_SPACING_SMOOTHING 0.3
 // A line-of-sight check stays good this long.
@@ -108,15 +110,51 @@ private _weaponPool = _systemData getOrDefault [["launcherWeapons", "ciwsWeapons
 private _network = _system getVariable ["AEGISM_network", objNull];
 private _stateKey = "standalone_" + _role;
 
-// Hand a turret back to its crew once nothing has aimed it for
-// AEGISM_TURRET_RELEASE s.
+// Between targets: a turret nothing has aimed for AEGISM_TURRET_RELEASE s
+// is kept pointed at the contact it's most likely to be given next (_fnCue)
+// while there is one -- handed back to its crew between the rockets of a
+// salvo, launchers turned 30-80 degrees away and began every next target
+// with the swing back -- and handed back once there's none.
+private _fnCue = {
+    private _pool = ([_network, _system] select (isNull _network)) getVariable ["AEGISM_pooledContacts", createHashMap];
+    if (count _pool == 0) exitWith { objNull };
+    private _settings = _system getVariable ["AEGISM_resolvedEngagementSettings", createHashMap];
+    private _allowlist = _settings getOrDefault ["targetClassAllowlist", []];
+    private _claims = if (isNull _network) then { createHashMap } else { _network getVariable ["AEGISM_claims", createHashMap] };
+    private _eye = eyePos _system;
+    // Not yet taken by a weapon of this role first, then soonest impact
+    // (the coordinator's, aegism_intercept_fnc_assignEngagements), then nearest.
+    private _objects = [];
+    private _scored = [];
+    {
+        private _object = _y getOrDefault ["object", objNull];
+        if (!isNull _object && {alive _object} && {(_y getOrDefault ["class", ""]) in _allowlist} && {[_y] call aegism_fnc_hasTrack}) then {
+            private _taken = ((_claims getOrDefault [_x, []]) findIf { (_x get "role") == _role }) != -1;
+            (_y getOrDefault ["tti", [1e10, time]]) params ["_tti", "_ttiAt"];
+            _scored pushBack [parseNumber _taken, _tti - (time - _ttiAt), _eye distance (getPosASL _object), count _objects];
+            _objects pushBack _object;
+        };
+    } forEach _pool;
+    if (_scored isEqualTo []) exitWith { objNull };
+    _scored sort true;
+    _objects select ((_scored select 0) select 3)
+};
 {
-    private _ts = [_system, _x select 0] call aegism_intercept_fnc_turretState;
+    private _turretPath = _x select 0;
+    private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
     private _lockedAt = _ts getOrDefault ["lockAt", -1];
-    if (_lockedAt >= 0 && {time - _lockedAt > AEGISM_TURRET_RELEASE}) then {
-        _ts set ["lockAt", -1];
-        [_system, _x select 0, objNull] call aegism_intercept_fnc_lockTurret;
-        if (!_isCiws) then { [_system, _x select 0, objNull] call aegism_intercept_fnc_gunnerLock; };
+    if (_lockedAt >= 0 && {time - _lockedAt > AEGISM_TURRET_RELEASE} && {time >= (_ts getOrDefault ["cueAt", -1])}) then {
+        _ts set ["cueAt", time + AEGISM_CUE_INTERVAL];
+        // A launcher's gunner lets go of the aircraft it locked: a cue is no lock.
+        if (!_isCiws) then { [_system, _turretPath, objNull] call aegism_intercept_fnc_gunnerLock; };
+        private _cue = call _fnCue;
+        if (isNull _cue) then {
+            _ts set ["lockAt", -1];
+            _ts set ["cueAt", -1];
+            [_system, _turretPath, objNull] call aegism_intercept_fnc_lockTurret;
+        } else {
+            [_system, _turretPath, getPosASL _cue] call aegism_intercept_fnc_lockTurret;
+        };
     };
 } forEach _weaponPool;
 
@@ -409,10 +447,15 @@ private _fnExecute = {
 
 if (!isNull _network) exitWith {
     // --- NETWORKED: execute this System's Site assignments ---
-    // Soonest impact first (the coordinator's order): per launcher turret,
-    // only the first assignment whose salvo isn't away yet is worked this
-    // tick -- front to back through a salvo -- while the rest wait their
-    // turn instead of fighting over the turret's aim.
+    // In the coordinator's order (soonest impact first, the one a turret is
+    // already working kept ahead, aegism_intercept_fnc_assignEngagements):
+    // per launcher turret, only the first assignment whose salvo isn't away
+    // yet is worked this tick -- front to back through a salvo -- while the
+    // rest wait their turn instead of fighting over the turret's aim. The one
+    // worked is marked "working" (the rest not), so the coordinator keeps it
+    // ahead next time unless it's blocked or has no solution: rockets of one
+    // salvo a second apart in time to impact used to swap places as their
+    // estimates moved, and the turret swung between them.
     private _workingTurrets = [];
     {
         private _target = _x getOrDefault ["target", objNull];
@@ -422,9 +465,11 @@ if (!isNull _network) exitWith {
             if (_isCiws || _salvoAway || {!(_turretPath in _workingTurrets)}) then {
                 if (!_isCiws && {!_salvoAway}) then { _workingTurrets pushBack _turretPath; };
                 [_target, _x get "weaponInfo", _x] call _fnExecute;
+                if (!_isCiws) then { _x set ["working", !_salvoAway && {!((_x getOrDefault ["status", ""]) in ["losBlocked", "noSolution"])}]; };
             } else {
                 // Behind another on this launcher's queue.
                 _x set ["status", "queued"];
+                _x set ["working", false];
             };
         };
     } forEach _assigned;
