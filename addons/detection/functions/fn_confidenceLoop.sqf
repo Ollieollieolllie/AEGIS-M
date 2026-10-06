@@ -26,15 +26,17 @@ Description:
     sensor expire (aegism_detect_fnc_pruneStaleContacts) rather than being
     deleted the instant one sensor loses them.
 
-    Munitions come through the same sensors: a fired projectile is never a
-    getSensorTargets result itself (CfgAmmo has no radar/IR/visual target
-    properties), so each tracked munition flies an invisible proxy that is
-    (aegism_detect_fnc_trackMunition). A proxy among this vehicle's sensor
-    targets isn't a contact here: it's recorded as its munition being seen
-    by this vehicle, with the sensor kinds ("AEGISM_seenMunitions": [read
-    at, munition key -> sensor kinds]), and the munition tracker (aegism_
-    detect_fnc_munitionCheck) takes it from there -- IFF, whether it
-    threatens a Site, which pools it goes in.
+    Munitions are judged here too, on the same read, but by AEGIS-M: a
+    fired projectile is never a getSensorTargets result (CfgAmmo has no
+    radar/IR/visual target properties), so every tracked munition (aegism_
+    detect_fnc_trackMunition) is checked against this vehicle's sensors
+    from their own config (aegism_detect_fnc_sensorView, aegism_detect_fnc_
+    munitionSeen). One that's seen isn't a contact here: it's recorded as
+    seen by this vehicle, with the sensor kinds ("AEGISM_seenMunitions":
+    [read at, munition key -> sensor kinds]), and the munition tracker
+    (aegism_detect_fnc_munitionCheck) takes it from there -- IFF, whether it
+    threatens a Site, which pools it goes in. (The game's datalink carries
+    no munitions: Use Datalink Contacts is about aircraft.)
 
     A detected contact is added/removed on both the scanning System's own
     pool AND its Network's pool (if synced), so a Launcher/CIWS-only System
@@ -80,7 +82,7 @@ private _ownSide = side _poolOwner;
 // back is logged again, and the list never outgrows what the radar sees.
 private _lastRejects = _poolOwner getVariable ["AEGISM_lastDetectReject", createHashMap];
 private _rejects = createHashMap;
-// Munition key -> sensor kinds, for every munition proxy seen this tick.
+// Munition key -> sensor kinds, for every munition seen this tick.
 private _seenMunitions = createHashMap;
 // The game's datalink passes on what OTHER vehicles see -- any friendly
 // vehicle with datalink in the mission, not only AEGIS-M's (a Site shares
@@ -135,51 +137,59 @@ private _fnSighted = {
     // that way never expired.
     private _datalinkOnly = _sources isEqualTo [];
 
-    if (!isNull _target && {_target isKindOf "AEGISM_MunitionProxy"}) then {
-        // A munition's sensor proxy: its munition is seen by this vehicle.
-        private _munitionKey = _target getVariable ["AEGISM_proxyKey", ""];
-        if (_munitionKey != "" && {!_datalinkOnly}) then {
-            _seenMunitions set [_munitionKey, _sources];
-            PERF_INC(PERF_PROXY_SEEN);
-            // Not in any pool yet: checked at once, not at its next turn
-            // (aegism_detect_fnc_munitionTracker, every 0.5 s) -- this read is
-            // stored below, before the tracker's next frame.
-            private _entry = _target getVariable "AEGISM_proxyEntry";
-            if (!isNil "_entry" && {(_entry select 4) isEqualTo []}) then { _entry set [5, CBA_missionTime]; };
-            if (AEGISM_RPT_VERBOSE && {!isNil "_entry"} && {!(_munitionKey in _sighted)}) then { [_munitionKey, _entry, _sources] call _fnSighted; };
-        };
-    } else {
-        // IFF: getSensorTargets reports not-yet-identified contacts as
-        // "unknown", including friendly aircraft at range -- engaging
-        // "unknown" alone would shoot down friendlies. Require real hostility.
-        if (!_datalinkOnly && {_relationship != "friendly"} && {_relationship != "destroyed"} && {!isNull _target} && {alive _target} && {[_ownSide, side _target] call aegism_detect_fnc_isHostile}) then {
-            private _class = [_target] call aegism_detect_fnc_classifyTarget;
+    // IFF: getSensorTargets reports not-yet-identified contacts as
+    // "unknown", including friendly aircraft at range -- engaging
+    // "unknown" alone would shoot down friendlies. Require real hostility.
+    if (!_datalinkOnly && {_relationship != "friendly"} && {_relationship != "destroyed"} && {!isNull _target} && {alive _target} && {[_ownSide, side _target] call aegism_detect_fnc_isHostile}) then {
+        private _class = [_target] call aegism_detect_fnc_classifyTarget;
 
-            if (_class in _allowlist) then {
-                if !(([_target] call aegism_fnc_contactKey) in _ownPool) then {
-                    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DETECT: %1 sees %2 (%3, %4) at %5m via %6.", _poolOwner, _target, typeOf _target, _class, round (_poolOwner distance _target), _sensorSources];
-                };
-                [_poolOwner, _target, _class, 1, _sources] call aegism_detect_fnc_addContact;
-                if (!isNull _network) then {
-                    [_network, _target, _class, 1, _sources] call aegism_detect_fnc_addContact;
-                };
-            } else {
-                // A real sensor detection that never makes it into the pool
-                // is otherwise invisible: a class that SHOULD be allowlisted
-                // silently classifying as something else would look
-                // identical to "never detected at all" in the RPT.
-                private _rejectKey = netId _target;
-                _rejects set [_rejectKey, true];
-                if (!(_rejectKey in _lastRejects)) then {
-                    if (AEGISM_RPT_VERBOSE) then {
-                        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
-                    };
+        if (_class in _allowlist) then {
+            if !(([_target] call aegism_fnc_contactKey) in _ownPool) then {
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DETECT: %1 sees %2 (%3, %4) at %5m via %6.", _poolOwner, _target, typeOf _target, _class, round (_poolOwner distance _target), _sensorSources];
+            };
+            [_poolOwner, _target, _class, 1, _sources] call aegism_detect_fnc_addContact;
+            if (!isNull _network) then {
+                [_network, _target, _class, 1, _sources] call aegism_detect_fnc_addContact;
+            };
+        } else {
+            // A real sensor detection that never makes it into the pool
+            // is otherwise invisible: a class that SHOULD be allowlisted
+            // silently classifying as something else would look
+            // identical to "never detected at all" in the RPT.
+            private _rejectKey = netId _target;
+            _rejects set [_rejectKey, true];
+            if (!(_rejectKey in _lastRejects)) then {
+                if (AEGISM_RPT_VERBOSE) then {
+                    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
                 };
             };
         };
     };
 } forEach (getSensorTargets _poolOwner);
 _poolOwner setVariable ["AEGISM_lastDetectReject", _rejects, false];
+
+// Munitions: every tracked one against this vehicle's sensors as they stand
+// now (see header).
+private _tracked = missionNamespace getVariable ["AEGISM_trackedMunitions", []];
+if (_tracked isNotEqualTo []) then {
+    private _view = [_poolOwner, _system] call aegism_detect_fnc_sensorView;
+    {
+        private _entry = _x;
+        if ((_entry select 7) getOrDefault ["watched", true]) then {
+            private _sources = [_view, _entry] call aegism_detect_fnc_munitionSeen;
+            if (_sources isNotEqualTo []) then {
+                private _munitionKey = _entry select 3;
+                _seenMunitions set [_munitionKey, _sources];
+                PERF_INC(PERF_MUNITIONS_SEEN);
+                // Not in any pool yet: checked at once, not at its next turn
+                // (aegism_detect_fnc_munitionTracker, every 0.5 s) -- this read
+                // is stored below, before the tracker's next frame.
+                if ((_entry select 4) isEqualTo []) then { _entry set [5, CBA_missionTime]; };
+                if (AEGISM_RPT_VERBOSE && {!(_munitionKey in _sighted)}) then { [_munitionKey, _entry, _sources] call _fnSighted; };
+            };
+        };
+    } forEach _tracked;
+};
 _poolOwner setVariable ["AEGISM_seenMunitions", [CBA_missionTime, _seenMunitions], false];
 
 // Only this System's OWN pool is pruned here, and only by expiry. The Site

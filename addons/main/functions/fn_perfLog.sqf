@@ -20,11 +20,10 @@ Description:
         select - standalone full target re-evaluations
         fired - Fired events seen / threats among them / ignored as landing
             clear of every Site
-        tracker - munition tracker checks, total ms (creating each
-            munition's sensor proxy, and moving those that aren't attached
-            every frame, included)
+        tracker - munition tracker checks, total ms
         sensors - vehicles' sensor reads (aegism_detect_fnc_confidenceLoop):
-            munition proxies seen across them, total ms
+            munitions seen across them (aegism_detect_fnc_munitionSeen), the
+            line-of-sight rays traced for that, total ms
         plan - reserve plan cache hits / rebuilds / intercept solves it ran
             (aegism_intercept_fnc_assignEngagements' _fnPlanShot)
         openFire - CIWS open-fire range recalculations (aegism_intercept_
@@ -61,7 +60,7 @@ if (!_active) exitWith {};
 
 private _ms = { (round (_this * 10)) / 10 };
 
-diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms) | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms) | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %27 rays, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
     _c select PERF_COORD_RUNS, (_c select PERF_COORD_MS) call _ms, (_c select PERF_COORD_MAX_MS) call _ms,
     _c select PERF_ENGAGE_TICKS,
     _c select PERF_AIM_SOLVES, _c select PERF_STEER_FRAMES,
@@ -69,8 +68,8 @@ diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coo
     _c select PERF_CAN_ENGAGE,
     _c select PERF_SELECT_FULL,
     _c select PERF_FIRED_EH, _c select PERF_FIRED_THREATS, _c select PERF_IGNORED,
-    _c select PERF_TRACKER_CHECKS, _c select PERF_PROXY_SEEN, (_c select PERF_TRACKER_MS) call _ms,
+    _c select PERF_TRACKER_CHECKS, _c select PERF_MUNITIONS_SEEN, (_c select PERF_TRACKER_MS) call _ms,
     _c select PERF_PLAN_HITS, _c select PERF_PLAN_BUILDS,
     round ((_c select PERF_FRAMES) / (_span max 0.001)), round (_c select PERF_FRAME_MAX_MS),
     _c select PERF_OPEN_FIRE_BUILDS, (_c select PERF_SENSOR_MS) call _ms,
-    _c select PERF_SLOW_FRAMES, _c select PERF_PLAN_SOLVES];
+    _c select PERF_SLOW_FRAMES, _c select PERF_PLAN_SOLVES, _c select PERF_LOS_RAYS];

@@ -8,8 +8,12 @@ Description:
     ("emcon": the Site's, or the vehicle's own override). An active radar
     only sees while it emits, aircraft and munitions alike; while it emits,
     enemy radar-warning receivers and anti-radiation missiles can find it.
-    Set with setVehicleRadar (0 the AI decides, 1 on, 2 off), only when what
-    it wants changes.
+    Set with setVehicleRadar (0 the AI decides, 1 on, 2 off) when what it
+    wants changes -- and again whenever the radar isn't doing what it was
+    set to, two seconds running: something else changed it (POOK's SA-8,
+    SA-11 and Patriot launch scripts turn their radar on at every launch and
+    hand it back to the AI when the missile's gone), logged once per
+    vehicle (RADAR-OVERRIDE).
 
         auto - Automatic (the default): while the Site is quiet, short
             search bursts as intermittent's below -- the Site's radars in
@@ -346,6 +350,27 @@ private _applied = _state get "applied";
 if (_desired != _applied && {_desired != 0 || {_applied > 0}}) then {
     _vehicle setVehicleRadar _desired;
     _state set ["applied", _desired];
+    _state set ["overridden", 0];
+} else {
+    // Set on or off, but not doing it: something else changed it (see
+    // header). Two seconds running -- not the moment after it was set --
+    // and it's set again.
+    // (Not a radar with no live crew to run it: that can't come on at all.)
+    if (_applied in [1, 2] && {(isVehicleRadarOn _vehicle) isNotEqualTo (_applied == 1)} && {((crew _vehicle) findIf { alive _x }) != -1}) then {
+        private _overridden = (_state getOrDefault ["overridden", 0]) + 1;
+        _state set ["overridden", _overridden];
+        if (_overridden >= 2) then {
+            _vehicle setVehicleRadar _applied;
+            _state set ["overridden", 0];
+            if !(_vehicle getVariable ["AEGISM_radarOverrideLogged", false]) then {
+                _vehicle setVariable ["AEGISM_radarOverrideLogged", true];
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " RADAR-OVERRIDE: %1 (%2) radar was %3 for 2 s though AEGIS-M had set it %4 -- something else changed it (another mod's script?), or it was slow to follow; set again (logged once per vehicle).",
+                    _vehicle, typeOf _vehicle, ["emitting", "off"] select (_applied == 1), ["on", "off"] select (_applied == 2)];
+            };
+        };
+    } else {
+        _state set ["overridden", 0];
+    };
 };
 _state set ["desired", _desired];
 _state set ["detail", _detail];

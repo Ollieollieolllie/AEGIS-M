@@ -16,14 +16,21 @@ Description:
 
     Fuse (munition targets): the engine has no projectile-vs-projectile
     collision, so a round passing through an incoming shell does nothing
-    unless scripted. Hit radius: the round's own blast radius (CfgAmmo
-    indirectHitRange) widened to the target's own half-size (aegism_
-    intercept_fnc_targetHitRadius). Closest approach is computed on RELATIVE
-    motion between frames (both move; at a 1500 m/s closing speed that's
-    ~25m per frame). No detonation before the round's own CfgAmmo
-    fuseDistance. On a hit: aegism_intercept_fnc_interceptHit. A round stops
-    being fuzed once it has closed on the target and started opening (it
-    can't come back), or the target is gone.
+    unless scripted. A hit is the round's path, frame to frame, coming
+    within the round's own radius -- its blast (CfgAmmo indirectHitRange) or
+    its proximity fuse (proximityExplosionDistance), whichever is larger; 0
+    for a ball round -- of the target's body, its box (aegism_intercept_fnc_
+    bodyPass). It used to be within the box's sphere: 6.19 m round vanilla's
+    230 mm rocket, so a .50 with no blast at all scored kills 4-5 m off it.
+    The path is RELATIVE motion between frames (both move; at a 1500 m/s
+    closing speed that's ~25m per frame). No detonation before the round's
+    own CfgAmmo fuseDistance. On a hit: aegism_intercept_fnc_interceptHit. A
+    round stops being fuzed once it has closed on the target and started
+    opening (it can't come back), or the target is gone.
+
+    An airburst round (aegism_intercept_fnc_ammoBurst: POOK's 20-30 mm)
+    also kills where it bursts, if the target's body is within the burst's
+    blast then (SubmunitionCreated).
 
     Spotting (every AEGISM_SPOT_EVERY-th round, aegism_intercept_fnc_
     onSystemFired): the round's closest pass to the track the target was
@@ -36,8 +43,8 @@ Description:
     own collision decides hits on aircraft).
 
     A round that hasn't resolved by twice its predicted flight time plus a
-    second (or its CfgAmmo timeToLive if the flight time isn't known) is
-    dropped.
+    second (or its lifetime, aegism_intercept_fnc_ammoBurst, if the flight
+    time isn't known) is dropped.
 
 Parameters:
     _system - the CIWS vehicle <OBJECT>
@@ -78,16 +85,35 @@ private _targetInfo = _ts getOrDefault ["roundTarget", []];
 if ((_targetInfo param [0, objNull]) != _target || {(_targetInfo param [1, ""]) != typeOf _projectile}) then {
     private _roundCfg = configOf _projectile;
     private _targetRadius = [_target] call aegism_intercept_fnc_targetHitRadius;
-    private _blastRadius = [typeOf _projectile] call aegism_intercept_fnc_munitionSize;
-    private _lifetime = getNumber (_roundCfg >> "timeToLive");
-    _targetInfo = [_target, typeOf _projectile, _targetRadius, [_blastRadius, _blastRadius max _targetRadius] select _targetIsMunition,
-        getNumber (_roundCfg >> "fuseDistance"), [1e10, _lifetime] select (_lifetime > 0), [_target] call aegism_detect_fnc_classifyTarget];
+    // The round's own radius: its blast or its proximity fuse.
+    private _roundRadius = ([typeOf _projectile] call aegism_intercept_fnc_munitionSize) max getNumber (_roundCfg >> "proximityExplosionDistance");
+    ([typeOf _projectile] call aegism_intercept_fnc_ammoBurst) params ["_lifetime", "", "_burstRadius"];
+    _targetInfo = [_target, typeOf _projectile, _targetRadius, _roundRadius,
+        getNumber (_roundCfg >> "fuseDistance"), [1e10, _lifetime] select (_lifetime > 0), [_target] call aegism_detect_fnc_classifyTarget, _burstRadius];
     _ts set ["roundTarget", _targetInfo];
 };
-_targetInfo params ["", "_roundClass", "_targetRadius", "_hitRadius", "_armDistance", "_lifetime", "_targetClass"];
+_targetInfo params ["", "_roundClass", "_targetRadius", "_hitRadius", "_armDistance", "_lifetime", "_targetClass", "_burstRadius"];
 
-private _fuzed = _targetIsMunition && {_hitRadius > 0};
+// Every round is fuzed against a munition (a ball round only by passing
+// through its body).
+private _fuzed = _targetIsMunition;
 if (!_fuzed && {!_spotting}) exitWith {};
+
+// An airburst round: where it bursts, the target's body within the blast is
+// a kill too.
+if (_fuzed && {_burstRadius > 0}) then {
+    _projectile setVariable ["AEGISM_burstAt", [_target, _burstRadius]];
+    _projectile addEventHandler ["SubmunitionCreated", {
+        params ["_round", "_burst"];
+        (_round getVariable ["AEGISM_burstAt", []]) params [["_target", objNull], ["_radius", 0]];
+        if (isNull _target || {!alive _target} || {isNull _burst}) exitWith {};
+        private _rel = (getPosWorldVisual _burst) vectorDiff (getPosWorldVisual _target);
+        private _miss = [_target, _rel, _rel, _radius] call aegism_intercept_fnc_bodyPass;
+        if (_miss <= _radius) then {
+            [_burst, _target, true, _miss, _radius] call aegism_intercept_fnc_interceptHit;
+        };
+    }];
+};
 
 PERF_INC(PERF_ROUNDS_ADDED);
 
@@ -102,13 +128,14 @@ private _spotData = if (_spotting) then {
 private _rounds = _ts get "rounds";
 if (isNil "_rounds") then { _rounds = []; _ts set ["rounds", _rounds]; };
 // 0 projectile, 1 target, 2 launch time, 3 launch pos, 4 window opens, 5
-// expires, 6 spot data, 7 hit radius (0 = not fuzed), 8 target radius, 9
-// arm distance, 10 primed, 11 last round pos, 12 last target pos, 13 last
-// separation, 14 closed on target, 15 fuse done, 16 spotted, 17 last
-// round-ghost offset, 18 last ghost separation, 19 closed on ghost, 20
-// round-ghost relative velocity
-_rounds pushBack [_projectile, _target, CBA_missionTime, getPosASLVisual _projectile, _windowAt, _expiresAt, _spotData, [0, _hitRadius] select _fuzed, _targetRadius, _armDistance,
-    false, [0, 0, 0], [0, 0, 0], 1e10, false, !_fuzed, !_spotting, [0, 0, 0], 1e10, false, [0, 0, 0]];
+// expires, 6 spot data, 7 the round's own radius, 8 target radius, 9 arm
+// distance, 10 primed, 11 last round pos, 12 last target pos (its model
+// origin), 13 last separation, 14 closed on target, 15 fuse done, 16
+// spotted, 17 last round-ghost offset, 18 last ghost separation, 19 closed
+// on ghost, 20 round-ghost relative velocity, 21 the round's last velocity,
+// 22 its ammo class
+_rounds pushBack [_projectile, _target, CBA_missionTime, getPosASLVisual _projectile, _windowAt, _expiresAt, _spotData, _hitRadius, _targetRadius, _armDistance,
+    false, [0, 0, 0], [0, 0, 0], 1e10, false, !_fuzed, !_spotting, [0, 0, 0], 1e10, false, [0, 0, 0], [0, 0, 0], _roundClass];
 
 if (_ts getOrDefault ["roundsRunning", false]) exitWith {};
 _ts set ["roundsRunning", true];
@@ -156,6 +183,20 @@ _ts set ["roundsRunning", true];
 
         private _remove = false;
         if (isNull _projectile || {!alive _projectile} || {CBA_missionTime > (_round select 5)}) then {
+            // Gone since the last frame, still fuzed: if the stretch it was
+            // on -- from where it was, at the velocity it had, for this
+            // frame -- comes within its own radius of the target's body, it
+            // went off within reach of it (its own fuse, the game's): a hit.
+            if ((isNull _projectile || {!alive _projectile}) && {_round select 10} && {!(_round select 15)}) then {
+                _round params ["", "_target", "", "_launchPos", "", "", "", "_hitRadius", "", "_armDistance", "", "_lastProjPos", "_lastTargetPos"];
+                if (!isNull _target && {alive _target} && {(_launchPos distance _lastProjPos) >= _armDistance}) then {
+                    private _end = _lastProjPos vectorAdd ((_round select 21) vectorMultiply diag_deltaTime);
+                    private _miss = [_target, _lastProjPos vectorDiff _lastTargetPos, _end vectorDiff (getPosWorldVisual _target), _hitRadius] call aegism_intercept_fnc_bodyPass;
+                    if (_miss <= _hitRadius) then {
+                        [_projectile, _target, true, _miss, _hitRadius, _end, _round select 22] call aegism_intercept_fnc_interceptHit;
+                    };
+                };
+            };
             if ((_round select 10) && {!(_round select 16)}) then { [_round] call _fnSpotExtrapolated; };
             _remove = true;
         } else {
@@ -180,10 +221,11 @@ _ts set ["roundsRunning", true];
                         if (isNull _target || {!alive _target}) then {
                             _round set [15, true];
                         } else {
-                            private _targetPos = getPosASLVisual _target;
+                            private _targetPos = getPosWorldVisual _target;
                             _round set [11, _projPos];
                             _round set [12, _targetPos];
                             _round set [13, _projPos distance _targetPos];
+                            _round set [21, velocity _projectile];
                         };
                     };
                 } else {
@@ -217,16 +259,12 @@ _ts set ["roundsRunning", true];
                         if (isNull _target || {!alive _target}) then {
                             _realDone = true;
                         } else {
-                            private _targetPos = getPosASLVisual _target;
+                            // The round's path this frame against the
+                            // target's body (aegism_intercept_fnc_bodyPass).
+                            private _targetPos = getPosWorldVisual _target;
                             private _rel0 = _lastProjPos vectorDiff _lastTargetPos;
                             private _rel1 = _projPos vectorDiff _targetPos;
-                            private _seg = _rel1 vectorDiff _rel0;
-                            private _segLenSqr = _seg vectorDotProduct _seg;
-                            private _minDistance = vectorMagnitude (if (_segLenSqr <= 0.0001) then {
-                                _rel1
-                            } else {
-                                _rel0 vectorAdd (_seg vectorMultiply (0 max (1 min (-(_rel0 vectorDotProduct _seg) / _segLenSqr))))
-                            });
+                            private _minDistance = [_target, _rel0, _rel1, _hitRadius] call aegism_intercept_fnc_bodyPass;
                             private _separation = vectorMagnitude _rel1;
                             if (_minDistance <= _hitRadius && {(_launchPos distance _projPos) >= _armDistance}) then {
                                 [_projectile, _target, true, _minDistance, _hitRadius] call aegism_intercept_fnc_interceptHit;
@@ -240,6 +278,7 @@ _ts set ["roundsRunning", true];
                                 _round set [12, _targetPos];
                                 _round set [13, _separation];
                                 _round set [14, _hasClosed];
+                                _round set [21, velocity _projectile];
                             };
                         };
                         _round set [15, _realDone];

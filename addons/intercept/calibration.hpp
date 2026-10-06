@@ -59,3 +59,8 @@
 // left out of its measured shot spacing (aegism_intercept_fnc_engagementLoop).
 #define AEGISM_RATE_MAX_RATIO 1.25
 #define AEGISM_SPACING_MIN_RATIO 0.9
+// How much of one reload has to be watched -- its weaponState phase falling
+// this far -- before the time it really takes is worked out from it
+// (aegism_intercept_fnc_weaponReload). The phase is read a frame coarse at
+// each end: over a tenth of a 6.5 s reload at 30 fps that's within a tenth.
+#define AEGISM_RELOAD_MEASURE_PHASE 0.1

@@ -2,78 +2,53 @@
 Function: aegism_intercept_fnc_targetHitRadius
 
 Description:
-    A target's physical half-size from its own model: half the diagonal of
-    its bounding box, i.e. a sphere that contains the whole body.
+    A target's physical half-size: half the diagonal of its model's bounding
+    box (aegism_intercept_fnc_targetBody), a sphere that holds the whole body.
 
-    The box is taken from the model's collision (Geometry) layer where it
-    has one -- the body itself. The visual layer's box can be much bigger
-    than the body: an MLRS rocket (R_230mm_HE, about 4m long) measured a
-    6.2m radius from it, so a CIWS was credited with kills 5-6m wide of the
-    rocket, and against that "size" even the gun's physics-based open-fire
-    range stretched to its full 6km reach. A projectile with no collision
-    layer uses the visual box.
+    Optionally, as seen along a line of fire: the radius of a disc with the
+    box's area as seen from that direction (its projected area: each pair of
+    faces' area times how squarely the line meets them). A munition's body
+    is its box (aegism_intercept_fnc_bodyPass), and a round has to come
+    within its own radius of that, not of the sphere -- so this is what a
+    gun's fire gate (aegism_intercept_fnc_aimWeapon) and open-fire range
+    (aegism_intercept_fnc_openFireRange) work with against a munition. Side
+    on, vanilla's 230 mm rocket (2.29 x 11.96 x 2.29 m) is a 2.95 m disc; nose
+    on, 1.29 m; its sphere is 6.19 m.
 
-    For a MUNITION target it widens an interceptor's effective hit radius
-    (aegism_intercept_fnc_ciwsRounds, aegism_intercept_fnc_interceptorPFH) --
-    a round that clips the missile's body is a hit even if its blast radius
-    measured from the target's centre wouldn't reach. Never used to widen
-    the hit radius for an aircraft (the engine's own collision decides
-    those). For every target it sizes the CIWS fire gate (aegism_intercept_
-    fnc_aimWeapon) and tells CIWS spotting (aegism_intercept_fnc_ciwsSpot) a
-    round that passed through the target from one that missed.
-
-    Cached per type ("AEGISM_cacheHitRadius"): it's read every frame. Each
-    type's boxes (collision and visual) and the radius used are logged once
-    (TARGET-SIZE).
+    The sphere still sizes an aircraft (the engine's own collision decides
+    hits on those) and CIWS spotting's sense of "through the target"
+    (aegism_intercept_fnc_ciwsSpot).
 
 Parameters:
-    _target - the target object to measure <OBJECT>
+    _target - the target object <OBJECT>
+    _lineOfFire - optional: the direction the rounds come from (any length;
+        [] = the sphere) <ARRAY>
 
 Returns:
-    Half-diagonal of the target's own real bounding box, metres <NUMBER>
+    Radius, metres <NUMBER>
 
 Examples:
     [_incomingMissile] call aegism_intercept_fnc_targetHitRadius;
+    [_rocket, (getPosASL _rocket) vectorDiff (getPosASL _gun)] call aegism_intercept_fnc_targetHitRadius;
 
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-#include "..\..\main\rpt.hpp"
-
-params ["_target"];
+params ["_target", ["_lineOfFire", []]];
 
 if (isNull _target) exitWith { 0 };
 
-private _type = typeOf _target;
-private _cache = missionNamespace getVariable "AEGISM_cacheHitRadius";
-if (isNil "_cache") then {
-    _cache = createHashMap;
-    missionNamespace setVariable ["AEGISM_cacheHitRadius", _cache];
-};
-private _cached = _cache get _type;
-if (!isNil "_cached") exitWith { _cached };
+([_target] call aegism_intercept_fnc_targetBody) params ["_min", "_max", "_halfDiagonal"];
+if (_lineOfFire isEqualTo [] || {(vectorMagnitude _lineOfFire) <= 0}) exitWith { _halfDiagonal };
 
-// Collision layer (clipping type 2, ClipGeometry) first, visual (default) if
-// the model has none.
-(2 boundingBoxReal _target) params ["_geometryMin", "_geometryMax"];
-(boundingBoxReal _target) params ["_visualMin", "_visualMax"];
-private _geometryRadius = (_geometryMin distance _geometryMax) / 2;
-private _visualRadius = (_visualMin distance _visualMax) / 2;
-private _useGeometry = _geometryRadius > 0;
-_cached = [_visualRadius, _geometryRadius] select _useGeometry;
-_cache set [_type, _cached];
-
-private _fnBox = {
-    params ["_min", "_max"];
-    private _size = _max vectorDiff _min;
-    format ["%1 x %2 x %3 m", (_size select 0) toFixed 2, (_size select 1) toFixed 2, (_size select 2) toFixed 2]
-};
-if (AEGISM_RPT_VERBOSE) then {
-    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " TARGET-SIZE: %1 -- collision box %2, visual box %3: hit radius %4m (half the %5 box's diagonal).",
-        _type,
-        [[_geometryMin, _geometryMax] call _fnBox, "none"] select !_useGeometry,
-        [_visualMin, _visualMax] call _fnBox,
-        _cached toFixed 2, ["visual", "collision"] select _useGeometry];
-};
-_cached
+// The line of fire in the target's own axes: x right, y forward, z up.
+private _line = vectorNormalized _lineOfFire;
+private _dir = vectorDirVisual _target;
+private _up = vectorUpVisual _target;
+private _right = _dir vectorCrossProduct _up;
+(_max vectorDiff _min) params ["_sx", "_sy", "_sz"];
+private _area = (abs (_line vectorDotProduct _right)) * _sy * _sz
+    + (abs (_line vectorDotProduct _dir)) * _sx * _sz
+    + (abs (_line vectorDotProduct _up)) * _sx * _sy;
+sqrt (_area / pi)

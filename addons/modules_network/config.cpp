@@ -61,10 +61,13 @@ class Cfg3DEN
     AEGISM_ALARM_SOURCE(TONE,3000) \
     AEGISM_ALARM_SOURCE(TONE,5000)
 
-// Site alarms (aegism_network_fnc_siteAlarm): one looping sound per tone,
-// built exactly like vanilla's own "Alarm" sound source (CfgSFX AlarmSfx,
+// Site alarms (aegism_network_fnc_siteAlarm): one sound per tone, built
+// exactly like vanilla's own "Alarm" sound source (CfgSFX AlarmSfx,
 // CfgVehicles Sound_Alarm): volume 1, heard to 400m (the Site's Alarm Range
-// picks one of the others, below), played back to back.
+// picks one of the others, below), played back to back. Each player's
+// machine plays it from these definitions for itself (aegism_network_fnc_
+// alarmPlayer) -- as it does a custom class's -- rather than the server
+// creating the sound source.
 // Every tone is a distinct vanilla recording (the vanilla alarm_BLUFOR,
 // alarm_OPFOR and alarm_Independent files are byte-for-byte the same
 // recording, so they're one tone here: "base"). Lengths measured from the
@@ -830,10 +833,32 @@ class CfgVehicles
                     class Off { name = "Off"; value = "off"; };
                 };
             };
+            class AlarmClear
+            {
+                displayName = "All Clear Sound";
+                tooltip = "Played once, from every speaker, when the Site goes quiet -- the Incoming Alarm and the Going-Live Warning both over. Heard to the Alarm Range, by players within it at that moment. Off (default): the Site just falls silent.";
+                property = "alarmClear";
+                control = "Combo";
+                expression = "_this setVariable ['alarmClear', _value];";
+                typeName = "STRING";
+                defaultValue = "'off'";
+                class Values
+                {
+                    class Off { name = "Off"; value = "off"; };
+                    class Base { name = "Base alarm (6.6s)"; value = "base"; };
+                    class Klaxon { name = "Klaxon (1.6s)"; value = "klaxon"; };
+                    class Klaxon2 { name = "Klaxon 2 (2.1s)"; value = "klaxon2"; };
+                    class Siren { name = "Siren (1.4s)"; value = "siren"; };
+                    class Zone { name = "Restricted-zone warning (4.6s)"; value = "zone"; };
+                    class HeliNato { name = "Helicopter warning, NATO (2.0s)"; value = "heliNato"; };
+                    class HeliCsat { name = "Helicopter warning, CSAT (1.5s)"; value = "heliCsat"; };
+                    class Lock { name = "Missile-lock tone (0.2s beep)"; value = "lock"; };
+                };
+            };
             class AlarmRange
             {
                 displayName = "Alarm Range";
-                tooltip = "How far the Going-Live Warning and the Incoming Alarm are heard from each speaker. Default 400m, like vanilla's own alarm. A Custom sound keeps its own range.";
+                tooltip = "How far the Going-Live Warning, the Incoming Alarm and the All Clear are heard from each speaker. Default 400m, like vanilla's own alarm. A Custom sound keeps its own range.";
                 property = "alarmRange";
                 control = "Combo";
                 expression = "_this setVariable ['alarmRange', _value];";
@@ -876,6 +901,16 @@ class CfgVehicles
                 property = "alarmIncomingCustom";
                 control = "Edit";
                 expression = "_this setVariable ['alarmIncomingCustom', _value];";
+                typeName = "STRING";
+                defaultValue = "''";
+            };
+            class AlarmClearCustom
+            {
+                displayName = "Custom All Clear Sound";
+                tooltip = "Optional: the class name of any sound source (CfgVehicles, like vanilla's Sound_Alarm -- e.g. one from a sound mod with a spoken 'all clear'), played once when the Site goes quiet. Replaces the All Clear tone above, and plays even with that set to Off. Blank = use the tone above.";
+                property = "alarmClearCustom";
+                control = "Edit";
+                expression = "_this setVariable ['alarmClearCustom', _value];";
                 typeName = "STRING";
                 defaultValue = "''";
             };

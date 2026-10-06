@@ -19,8 +19,9 @@ Description:
 
     Before firing it writes a capture context on the turret ("capture" in
     aegism_intercept_fnc_turretState, naming the weapon) and makes sure the
-    vehicle has AEGIS-M's persistent Fired handler; aegism_intercept_fnc_
-    onSystemFired then hands a launched missile its target
+    vehicle has AEGIS-M's persistent Fired handler (aegism_intercept_fnc_
+    firedHandler); aegism_intercept_fnc_onSystemFired then hands a launched
+    missile its target
     (setMissileTarget), records it as an in-flight interceptor, and starts
     its proximity fuse.
 
@@ -117,13 +118,9 @@ if (!isNil "ace_missileguidance_fnc_onFired") then {
     };
 };
 
-if !(_system getVariable ["AEGISM_firedEhAdded", false]) then {
-    _system setVariable ["AEGISM_firedEhAdded", true, false];
-    _system addEventHandler ["Fired", {
-        params ["_vehicle", "_weapon", "", "", "", "", "_projectile", "_gunner"];
-        [_vehicle, _weapon, _projectile, _gunner] call aegism_intercept_fnc_onSystemFired;
-    }];
-};
+// The vehicle's Fired handler (aegism_intercept_fnc_onSystemFired), in case
+// something has removed it since it was last looked for.
+[_system] call aegism_intercept_fnc_firedHandler;
 
 // Context lifetime: a launcher's round leaves within a moment of the fire
 // command; a CIWS burst lasts its own duration.

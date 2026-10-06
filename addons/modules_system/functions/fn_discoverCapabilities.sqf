@@ -21,12 +21,13 @@ Description:
                   fnc_hasTrack).
         ir      - IRSensorComponent
         visual  - VisualSensorComponent
-    This is exactly the config the engine's own getSensorTargets reads, and
-    the engine does all the detecting -- aircraft directly, munitions
-    through the sensor proxy each one carries (aegism_detect_fnc_
-    trackMunition). What's read here says what a vehicle has: whether it
-    has a radar, or any sensor of its own (for adoption, aegism_system_fnc_
-    moduleInit), and each sensor's reach and arc for the debug overlays.
+    This is exactly the config the engine's own getSensorTargets reads. The
+    engine detects aircraft with it; munitions, which its sensors can't
+    target at all, AEGIS-M judges from the same config itself (aegism_
+    detect_fnc_sensorView, aegism_detect_fnc_munitionSeen). What's read here
+    also says what a vehicle has: whether it has a radar, or any sensor of
+    its own (for adoption, aegism_system_fnc_moduleInit), and each sensor's
+    reach and arc for the debug overlays.
 
     Each sensor's reach is its AirTarget maxRange (the largest maxRange of
     any target-type sub-class if it has no AirTarget), and its arc its
@@ -93,7 +94,7 @@ Returns:
     HashMap. Keys:
         sensors - every sensor, longest reach first, each [type, range, arc,
             aim, viewDistanceCoef, maxFog, component, verticalArc, aimDown,
-            clutter]:
+            clutter, detail]:
             type - "radar" / "passive" / "ir" / "visual"
             range - reach, metres; arc - horizontal arc, degrees
             aim - turret path it turns with, or [] for the hull
@@ -110,11 +111,18 @@ Returns:
                 filters by the target's speed (the vanilla radar template:
                 200 m, minSpeedThreshold 21 m/s); -1 if it has no ground
                 clutter, 1e10 if it sets no ceiling
+            detail - HashMap, what else decides whether it sees a munition
+                (aegism_detect_fnc_sensorView): "air" and "ground" (its
+                AirTarget and GroundTarget [minRange, maxRange,
+                objectDistanceLimitCoef, viewDistanceLimitCoef]), "night"
+                (nightRangeCoef), "noiseCoef" / "noiseMax" (groundNoise
+                DistanceCoef, maxGroundNoiseDistance), "speedMin" /
+                "speedMax" (min/maxSpeedThreshold), "trackSpeed" and
+                "trackHeight" ([min, max] trackable speed and height above
+                terrain)
         hasRadar - an active radar <BOOLEAN>
         hasSensor - a sensor of its own that finds aircraft: an active
             radar, IR or visual <BOOLEAN>
-        clutterHeight - the highest clutter of those sensors (-1 none)
-            <NUMBER>
         radarRange / radarArc - the longest-reaching active radar's reach
             and arc (0 / 360 if none) <NUMBER>
         launcherWeapons / ciwsWeapons - arrays of weaponInfo:
@@ -222,8 +230,38 @@ private _fnReadSensors = {
                 if (!isNumber (_componentCfg >> "maxGroundNoiseDistance") || {_clutter < 0}) then { _clutter = 1e10; };
             };
 
+            // The rest of what decides whether it sees a munition (aegism_
+            // detect_fnc_sensorView): its ranges against a sky and a ground
+            // background ([minRange, maxRange, objectDistanceLimitCoef,
+            // viewDistanceLimitCoef] each; one stands in for a missing other),
+            // and its night, ground-clutter, speed and height limits, with
+            // the engine's own defaults where it sets none (BI's Sensors
+            // config reference).
+            private _fnNumber = { params ["_entry", "_default"]; [_default, getNumber _entry] select (isNumber _entry) };
+            private _fnRanges = {
+                params ["_cfg"];
+                if (!isClass _cfg) exitWith { [] };
+                [[_cfg >> "minRange", -1] call _fnNumber, [_cfg >> "maxRange", -1] call _fnNumber,
+                    [_cfg >> "objectDistanceLimitCoef", -1] call _fnNumber, [_cfg >> "viewDistanceLimitCoef", -1] call _fnNumber]
+            };
+            private _airRanges = [_airCfg] call _fnRanges;
+            private _groundRanges = [_componentCfg >> "GroundTarget"] call _fnRanges;
+            if (_airRanges isEqualTo []) then { _airRanges = [[-1, _range, -1, -1], _groundRanges] select (_groundRanges isNotEqualTo []); };
+            if (_groundRanges isEqualTo []) then { _groundRanges = _airRanges; };
+            private _detail = createHashMapFromArray [
+                ["air", _airRanges],
+                ["ground", _groundRanges],
+                ["night", [_componentCfg >> "nightRangeCoef", 1] call _fnNumber],
+                ["noiseCoef", [_componentCfg >> "groundNoiseDistanceCoef", -1] call _fnNumber],
+                ["noiseMax", [_componentCfg >> "maxGroundNoiseDistance", -1] call _fnNumber],
+                ["speedMin", [_componentCfg >> "minSpeedThreshold", 0] call _fnNumber],
+                ["speedMax", [_componentCfg >> "maxSpeedThreshold", 1000] call _fnNumber],
+                ["trackSpeed", [[_componentCfg >> "minTrackableSpeed", -1e10] call _fnNumber, [_componentCfg >> "maxTrackableSpeed", 1e10] call _fnNumber]],
+                ["trackHeight", [[_componentCfg >> "minTrackableATL", -1e10] call _fnNumber, [_componentCfg >> "maxTrackableATL", 1e10] call _fnNumber]]
+            ];
+
             if (_range > 0) then {
-                _sensors pushBack [_type, _range, _arc min 360, _aim, _viewDistanceCoef, _maxFog, configName _componentCfg, _verticalArc min 360, getNumber (_componentCfg >> "aimDown"), _clutter];
+                _sensors pushBack [_type, _range, _arc min 360, _aim, _viewDistanceCoef, _maxFog, configName _componentCfg, _verticalArc min 360, getNumber (_componentCfg >> "aimDown"), _clutter, _detail];
             };
         };
     } forEach (configProperties [_root, "isClass _x", true]);
@@ -242,11 +280,6 @@ if (_hasRadar) then {
     _radarArc = (_radars select 0) select 2;
 };
 private _hasSensor = (_sensors findIf { (_x select 0) in ["radar", "ir", "visual"] }) != -1;
-// The highest any of its sensors that find aircraft loses a target in
-// ground clutter (-1 none): a munition proxy below it is moved with its
-// munition, so it shows its real speed (aegism_detect_fnc_munitionTracker).
-private _clutterHeight = -1;
-{ if ((_x select 0) in ["radar", "ir", "visual"]) then { _clutterHeight = _clutterHeight max (_x select 9); }; } forEach _sensors;
 
 private _launcherWeapons = [];
 private _ciwsWeapons = [];
@@ -375,7 +408,6 @@ createHashMapFromArray [
     ["sensors", _sensors],
     ["hasRadar", _hasRadar],
     ["hasSensor", _hasSensor],
-    ["clutterHeight", _clutterHeight],
     ["radarRange", _radarRange],
     ["radarArc", _radarArc],
     ["launcherWeapons", _launcherWeapons],

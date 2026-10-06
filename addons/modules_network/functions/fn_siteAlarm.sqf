@@ -13,23 +13,29 @@ Description:
             onSystemFired)
         off - neither
     Incoming replaces warning; a state whose tone is "off" falls through to
-    the next.
+    the next. Going quiet (to off from either) plays the All Clear tone once,
+    if the Site has one.
 
-    Each state's tone is a looping sound source (this addon's CfgVehicles
+    Each state's tone is a sound source class (this addon's CfgVehicles
     AEGISM_Alarm_*, heard to the Site's Alarm Range -- or the Site's custom
-    class, at its own range) created at every speaker --
-    each non-vehicle object synced to the Site, or the Site logic itself if
-    there is none. The engine loops it, and deleting it stops it at once, so
-    the network only carries a change of state, never the repeats. (A laptop
-    synced to the Site is its status terminal, aegism_network_fnc_
-    isTerminal, not a speaker.) Nothing
-    happens between changes but a few variable reads.
+    class, at its own range), played at every speaker -- each non-vehicle
+    object synced to the Site, or the Site logic itself if there is none.
+    (A laptop synced to the Site is its status terminal, aegism_network_fnc_
+    isTerminal, not a speaker.)
+
+    The server only decides the state: a change is published on the Site
+    ("AEGISM_alarmNow", JIP-safe), and every player's machine plays it for
+    itself (aegism_network_fnc_alarmPlayer). A looping sound source created
+    here and left to the engine wasn't heard after the camera had been away
+    (Zeus, spectator, a teleport), and sometimes not from its start. The
+    network still only carries a change of state, never the repeats.
+    Nothing happens between changes but a few variable reads.
 
     Logged as ALARM on each change.
 
 Parameters:
     _logic - the Site logic <OBJECT>
-    _alarm - this Site's alarm state, [state, sound class, sound sources],
+    _alarm - this Site's alarm state, [state, sound class, publish count],
         updated in place <ARRAY>
 
 Returns:
@@ -91,18 +97,34 @@ if (_state == "" && {count (_logic getVariable ["AEGISM_claims", createHashMap])
 // Same sound (off -> off, or two states set to the same tone): nothing to do.
 if (_class == (_alarm select 1)) exitWith { _alarm set [0, _state]; };
 
-{ deleteVehicle _x; } forEach (_alarm select 2);
-private _sources = [];
+// Gone quiet: the All Clear tone, once.
+private _once = false;
+if (_class == "") then {
+    _class = [_logic, _settings getVariable ["alarmClear", "off"], _settings getVariable ["alarmClearCustom", ""]] call _fnClass;
+    _once = _class != "";
+};
+
 private _speakers = [];
 if (_class != "") then {
     // Not another Site synced to this one (that links them, aegism_network_
     // fnc_linkSites), nor a laptop (a status terminal).
     _speakers = (synchronizedObjects _logic) select { !(_x isKindOf "AllVehicles") && {!(_x isKindOf "AEGISM_Module_Site")} && {!([_x] call aegism_network_fnc_isTerminal)} };
     if (_speakers isEqualTo []) then { _speakers = [_logic]; };
-    { _sources pushBack (createSoundSource [_class, getPosATL _x, [], 0]); } forEach _speakers;
 };
-diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ALARM: Site %1 %2 -> %3%4", _logic, ["off", _alarm select 0] select ((_alarm select 0) != ""), ["off", _state] select (_state != ""),
-    ["", format [" (%1 from %2 speaker(s): %3)", _class, count _speakers, _speakers apply { typeOf _x }]] select (_class != "")];
+// Every player's machine plays it (aegism_network_fnc_alarmPlayer): the
+// count tells them it's a new state even when the sound is the same as
+// before (the All Clear twice).
+private _count = (_alarm select 2) + 1;
+_logic setVariable ["AEGISM_alarmNow", [_state, _class, _speakers, _count, _once], true];
+private _sites = missionNamespace getVariable ["AEGISM_alarmSites", []];
+if !(_logic in _sites) then {
+    _sites pushBack _logic;
+    missionNamespace setVariable ["AEGISM_alarmSites", _sites, true];
+};
+
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ALARM: Site %1 %2 -> %3%4", _logic, ["off", _alarm select 0] select ((_alarm select 0) != ""),
+    if (_once) then { "off, all clear" } else { ["off", _state] select (_state != "") },
+    ["", format [" (%1 from %2 speaker(s): %3%4)", _class, count _speakers, _speakers apply { typeOf _x }, ["", ", once"] select _once]] select (_class != "")];
 _alarm set [0, _state];
-_alarm set [1, _class];
-_alarm set [2, _sources];
+_alarm set [1, ["", _class] select !_once];
+_alarm set [2, _count];

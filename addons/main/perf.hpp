@@ -17,7 +17,7 @@
 #define PERF_FIRED_EH 10
 #define PERF_FIRED_THREATS 11
 #define PERF_TRACKER_CHECKS 12
-#define PERF_PROXY_SEEN 13
+#define PERF_MUNITIONS_SEEN 13
 #define PERF_PLAN_HITS 14
 #define PERF_PLAN_BUILDS 15
 #define PERF_SELECT_FULL 16
@@ -27,13 +27,14 @@
 #define PERF_OPEN_FIRE_BUILDS 20
 #define PERF_SENSOR_MS 21
 #define PERF_PLAN_SOLVES 22
+#define PERF_LOS_RAYS 23
 // Indices below PERF_WORK_COUNT are AEGIS-M's own work: a summary is only
 // written when one of them moved. The frame counters after it run always.
-#define PERF_WORK_COUNT 23
-#define PERF_FRAMES 23
-#define PERF_FRAME_MAX_MS 24
-#define PERF_SLOW_FRAMES 25
-#define PERF_COUNT 26
+#define PERF_WORK_COUNT 24
+#define PERF_FRAMES 24
+#define PERF_FRAME_MAX_MS 25
+#define PERF_SLOW_FRAMES 26
+#define PERF_COUNT 27
 
 // A frame slower than this counts as slow (20 fps).
 #define PERF_SLOW_FRAME_MS 50

@@ -14,6 +14,7 @@ class CfgFunctions
             class confidenceLoop {};
             class firedEventHandler {};
             class watchProjectile {};
+            class projectileCreated {};
             class munitionThreat {};
             class seekerCone {};
             class trackMunition {};
@@ -21,10 +22,11 @@ class CfgFunctions
             class munitionCheck {};
             class antiRadiation {};
             class armInbound {};
-            class proxyCreate {};
-            class proxyCheckAttach {};
-            class proxyFollow {};
+            class sensorAxis {};
+            class sensorView {};
+            class munitionSeen {};
             class destroyMunition {};
+            class blastMunitions {};
         };
     };
 };

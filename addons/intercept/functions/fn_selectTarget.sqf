@@ -88,11 +88,12 @@ private _engageable = [];
             _full = (_engage param [6, ""]) == "";
             if ((_engage select 0) && {!_cued}) then {
                 _inRange = _role != "ciws" || {
-                    // As the gun's own aim judges it (aegism_intercept_fnc_aimWeapon).
-                    private _hitRadius = [_object] call aegism_intercept_fnc_targetHitRadius;
-                    if (_class in ["missile", "rocket", "bomb", "artilleryShell"]) then {
-                        _hitRadius = _hitRadius max (([_weaponInfo select 1, _weaponInfo select 2] call aegism_intercept_fnc_weaponKinematics) select 11);
-                    };
+                    // As the gun's own aim judges it (aegism_intercept_fnc_aimWeapon):
+                    // a munition's body seen from the gun, plus the round's own radius.
+                    private _hitRadius = if (_class in ["missile", "rocket", "bomb", "artilleryShell"]) then {
+                        private _kinematics = [_weaponInfo select 1, _weaponInfo select 2] call aegism_intercept_fnc_weaponKinematics;
+                        round ((([_object, (getPosASL _object) vectorDiff (getPosASL _system)] call aegism_intercept_fnc_targetHitRadius) + ((_kinematics select 11) max (_kinematics select 13))) * 10) / 10
+                    } else { [_object] call aegism_intercept_fnc_targetHitRadius };
                     ([_system, _weaponInfo select 0, _weaponInfo, _class, _hitRadius, _engagementSettings] call aegism_intercept_fnc_openFireRange) params ["_openFireRange", "_minRange"];
                     private _interceptDistance = _engage param [3, 0];
                     _interceptDistance <= _openFireRange && {_interceptDistance >= _minRange}

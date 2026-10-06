@@ -35,8 +35,12 @@ class CfgFunctions
             class canEngage {};
             class timeToImpact {};
             class launcherInterval {};
+            class firedHandler {};
             class onSystemFired {};
             class targetHitRadius {};
+            class targetBody {};
+            class bodyPass {};
+            class ammoBurst {};
             class selectTarget {};
             class assignEngagements {};
             class engagementLoop {};
@@ -52,6 +56,7 @@ class CfgFunctions
             class interceptorLost {};
             class debugSetFireHold {};
             class debugBenchmark {};
+            class debugProbeMunitions {};
         };
     };
 };

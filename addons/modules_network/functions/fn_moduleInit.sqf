@@ -289,7 +289,7 @@ if (isServer) then {
 // independently compute and stomp on the same assignments. Every 0.5s;
 // member engagement loops tick at 0.1s and work the published assignments
 // in between. The Site's alarm (aegism_network_fnc_siteAlarm) follows the
-// assignments it has just made; its sound sources go with the Site.
+// assignments it has just made; its sound stops with the Site.
 if (isServer) then {
     // Every frame, but only working every AEGISM_COORDINATOR_INTERVAL s --
     // or at once when a munition has just come into the picture ("AEGISM_
@@ -298,8 +298,9 @@ if (isServer) then {
     [{
         params ["_args", "_pfhHandle"];
         _args params ["_logic", "_alarm", "_lastTime"];
+        // Gone: each player's machine stops its alarm by itself (aegism_
+        // network_fnc_alarmPlayer).
         if (isNull _logic) exitWith {
-            { deleteVehicle _x; } forEach (_alarm select 2);
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
         // Paused (game time not moving): nothing has changed. A paused
@@ -320,7 +321,7 @@ if (isServer) then {
             [_logic] call aegism_intercept_fnc_assignEngagements;
         };
         [_logic, _alarm] call aegism_network_fnc_siteAlarm;
-    }, 0, [_logic, ["", "", []], -1]] call CBA_fnc_addPerFrameHandler;
+    }, 0, [_logic, ["", "", 0], -1]] call CBA_fnc_addPerFrameHandler;
 };
 
 diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];

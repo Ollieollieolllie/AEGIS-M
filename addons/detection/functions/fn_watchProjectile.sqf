@@ -16,8 +16,8 @@ Description:
     multi-stage carriers work too. Only a carrier that releases ONE round
     (aegism_detect_fnc_ammoThreatInfo, from its config) is followed: a
     cluster carrier's dozens of bomblets (R_230mm_Cluster 50,
-    Cluster_155mm_AMOS 35) can't be intercepted one by one, and each tracked
-    round flies a sensor proxy. Released projectiles that don't classify are
+    Cluster_155mm_AMOS 35) can't be intercepted one by one, and every tracked
+    round is checked against every sensor. Released projectiles that don't classify are
     ignored the normal way anyway (Mo_cluster_AP has no artilleryLock).
 
 Parameters:
@@ -39,11 +39,23 @@ Author:
 params ["_projectile", "_shooterSide", ["_class", ""], ["_isCarrier", false]];
 
 if (isNull _projectile) exitWith { "" };
+// Handled: the catch for munitions nothing reported fired (aegism_detect_
+// fnc_projectileCreated) leaves it alone.
+_projectile setVariable ["AEGISM_seen", true];
 
 ([typeOf _projectile] call aegism_detect_fnc_ammoThreatInfo) params ["_knownClass", "_knownCarrier", "_submunitions"];
 if (_class == "" && {!_isCarrier}) then {
     _class = _knownClass;
     _isCarrier = _knownCarrier;
+};
+
+// A cluster's bomblets aren't followed (see header) -- and aren't munitions
+// nothing fired either.
+if (_isCarrier && {_submunitions != 1}) then {
+    _projectile addEventHandler ["SubmunitionCreated", {
+        params ["", "_submunitionProjectile"];
+        _submunitionProjectile setVariable ["AEGISM_seen", true];
+    }];
 };
 
 if (_isCarrier && {_submunitions == 1}) then {

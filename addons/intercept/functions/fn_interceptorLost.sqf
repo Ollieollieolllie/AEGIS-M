@@ -8,7 +8,8 @@ Description:
     next -- a missile fired at a rocket killed by another weapon went on to
     shoot down the aircraft that fired the rocket, a target the Site wasn't
     allowed to engage. As a real SAM that loses its target does, it
-    detonates where it is (triggerAmmo).
+    detonates where it is (triggerAmmo) -- and any tracked munition within
+    its blast goes with it (aegism_detect_fnc_blastMunitions).
 
     Logged as INTERCEPTOR-LOST.
 
@@ -34,4 +35,7 @@ if (isNull _projectile || {!alive _projectile}) exitWith {};
 private _launcher = (getShotParents _projectile) param [0, objNull];
 diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " INTERCEPTOR-LOST: %1 from %2 -- %3; self-destructed so its seeker can't take anything else.",
     typeOf _projectile, _launcher, _why];
+private _at = getPosASL _projectile;
+private _ammo = typeOf _projectile;
 triggerAmmo _projectile;
+[_at, getNumber (configFile >> "CfgAmmo" >> _ammo >> "indirectHitRange"), format ["%1 (self-destructing)", _ammo]] call aegism_detect_fnc_blastMunitions;

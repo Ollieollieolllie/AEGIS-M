@@ -6,6 +6,9 @@
 // Never removed -- this runs for the life of the mission on every machine,
 // matching aegism_system_fnc_scanForRoles' own doc comment on why it isn't
 // isServer-gated.
+// The same tick keeps what AEGIS-M set on its vehicles set against other
+// mods' scripts (aegism_system_fnc_guardSystems).
 [{
     [] call aegism_system_fnc_scanForRoles;
+    [] call aegism_system_fnc_guardSystems;
 }, 2, []] call CBA_fnc_addPerFrameHandler;

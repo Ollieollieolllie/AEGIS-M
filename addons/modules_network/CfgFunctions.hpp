@@ -8,6 +8,7 @@ class CfgFunctions
             class scanForUninitSites {};
             class readSiteSettings {};
             class siteAlarm {};
+            class alarmPlayer {};
             class linkSites {};
             class edenCoordinator {};
             class drawThreatRings {};

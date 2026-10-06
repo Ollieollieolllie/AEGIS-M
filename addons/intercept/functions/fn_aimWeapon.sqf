@@ -32,8 +32,10 @@ Description:
             burst still hits with doctrine ciwsOpenFireChance, from the gun's
             measured accuracy, the round's flight and reach, and the hit
             radius), and the barrel's error at the intercept
-            within the target's own half-size (aegism_intercept_fnc_
-            targetHitRadius) plus the gun's own spread there (the current
+            within the target's size to the gun (aegism_intercept_fnc_
+            targetHitRadius: an aircraft's half-size; a munition's body as
+            seen along the line of fire, plus the round's own blast or
+            proximity radius) plus the gun's own spread there (the current
             fire mode's CfgWeapons dispersion), with the last-ditch rule.
             An unguided munition's path is projected on gravity alone --
             exact for artillery (no drag), and the same projection aegism_
@@ -230,7 +232,15 @@ private _barrel = [_system, _turretPath, _weaponClass] call aegism_intercept_fnc
 // that is undefined.
 private _angle = acos (((_barrel vectorCos (_origin vectorFromTo _aimPoint)) min 1) max -1);
 
-private _targetRadius = [_target] call aegism_intercept_fnc_targetHitRadius;
+// The target's size to the gun: an aircraft's half-size; a munition's body
+// as the rounds see it along the line of fire, plus the round's own radius
+// (its blast or proximity fuse) -- what its fuse counts as a hit (aegism_
+// intercept_fnc_ciwsRounds). To a tenth of a metre: it's part of the
+// open-fire range's cache key.
+private _targetRadius = if (_targetClass in ["missile", "rocket", "bomb", "artilleryShell"]) then {
+    private _kinematics = [_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics;
+    round ((([_target, _aimPoint vectorDiff _origin] call aegism_intercept_fnc_targetHitRadius) + ((_kinematics select 11) max (_kinematics select 13))) * 10) / 10
+} else { [_target] call aegism_intercept_fnc_targetHitRadius };
 private _tolerance = AEGISM_AIM_ON_TARGET;
 if (_interceptDistance > 0) then {
     private _dispersion = ([_system, _turretPath, _weaponClass] call aegism_intercept_fnc_fireModeStats) select 1;
@@ -250,14 +260,10 @@ if (_previous isNotEqualTo [] && {(_previous select 8) == _target}) then {
 };
 // Where this gun opens fire on this target (aegism_intercept_fnc_
 // openFireRange): one burst's chance of a hit from its measured
-// accuracy, the round's flight and the hit radius -- a munition's is the
-// round's blast radius or its own size, as the fuse uses.
+// accuracy, the round's flight and the target's size to it (above).
 private _settings = _system getVariable "AEGISM_resolvedEngagementSettings";
 if (isNil "_settings") then { _settings = [_system] call aegism_system_fnc_resolveEngagementSettings; };
-private _hitRadius = if (_targetClass in ["missile", "rocket", "bomb", "artilleryShell"]) then {
-    _targetRadius max (([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics) select 11)
-} else { _targetRadius };
-([_system, _turretPath, _weaponInfo, _targetClass, _hitRadius, _settings] call aegism_intercept_fnc_openFireRange) params ["_openFireRange", "_minRange"];
+([_system, _turretPath, _weaponInfo, _targetClass, _targetRadius, _settings] call aegism_intercept_fnc_openFireRange) params ["_openFireRange", "_minRange"];
 
 _ts set ["solve", [CBA_missionTime, _aimPoint, _aimVelocity, _cameraOffset, _origin, _tolerance, _feasible, _interceptDistance, _target, _targetClass, _openFireRange, _minRange]];
 

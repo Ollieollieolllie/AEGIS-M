@@ -3,7 +3,7 @@ Function: aegism_intercept_fnc_onSystemFired
 
 Description:
     Body of the single persistent "Fired" event handler every AEGIS-M System
-    vehicle gets (added lazily by aegism_intercept_fnc_fireWeapon). It must
+    vehicle gets (aegism_intercept_fnc_firedHandler). It must
     live on the VEHICLE: a unit's own "Fired" event never triggers for a
     vehicle-mounted weapon.
 
@@ -58,8 +58,9 @@ Author:
 params ["_vehicle", "_weapon", "_projectile", ["_gunner", objNull]];
 
 if (isNull _projectile) exitWith {};
-private _turrets = _vehicle getVariable "AEGISM_turrets";
-if (isNil "_turrets") exitWith {};
+// None yet on a vehicle AEGIS-M hasn't worked a turret of: no fire command
+// of its, then.
+private _turrets = _vehicle getVariable ["AEGISM_turrets", createHashMap];
 
 private _ts = createHashMap;
 private _context = [];
@@ -76,12 +77,22 @@ if (_context isEqualTo []) then {
 };
 // No fire command from AEGIS-M for this weapon: the crew fired by itself
 // (its gunner ordered to lock an aircraft, aegism_intercept_fnc_gunnerLock,
-// mustn't make it shoot). Logged once per vehicle and weapon.
+// mustn't make it shoot), or another mod's script fired it. A gun's is
+// logged once per vehicle and weapon; a missile's every time -- each is a
+// missile gone and a reload AEGIS-M didn't plan -- with what its gunner was
+// on and which of its own targeting AEGIS-M finds switched on. A player's
+// own shot is nothing to log.
 if (_context isEqualTo []) exitWith {
+    if (isPlayer _gunner) exitWith {};
     private _logKey = "AEGISM_uncommandedLogged_" + _weapon;
-    if !(_vehicle getVariable [_logKey, false]) then {
+    private _isMissile = _projectile isKindOf "MissileCore";
+    if (_isMissile || {!(_vehicle getVariable [_logKey, false])}) then {
         _vehicle setVariable [_logKey, true];
-        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " UNCOMMANDED-FIRE: %1 fired %2 (%3) with no AEGIS-M fire command -- its crew's own AI fired.", _vehicle, _weapon, typeOf _projectile];
+        private _on = if (isNull _gunner) then { [] } else { ["TARGET", "AUTOTARGET", "FIREWEAPON"] select { _gunner checkAIFeature _x } };
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " UNCOMMANDED-FIRE: %1 fired %2 (%3) with no AEGIS-M fire command -- its crew's own AI or another mod's script fired. Gunner %4, its assigned target %5, its own %6.%7",
+            _vehicle, _weapon, typeOf _projectile, _gunner, assignedTarget _gunner,
+            ["targeting and firing all off", (_on joinString ", ") + " on"] select (_on isNotEqualTo []),
+            ["", " AEGIS-M doesn't guide or fuse this missile."] select _isMissile];
     };
 };
 _context params ["_target", "_role", "_interceptors", "_expiresAt", "_targetIsMunition", "_turretPath", "", ["_launch", []]];

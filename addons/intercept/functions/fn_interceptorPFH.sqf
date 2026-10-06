@@ -9,9 +9,11 @@ Description:
     something scripted detonates both. (CIWS rounds are tracked together per
     gun by aegism_intercept_fnc_ciwsRounds.)
 
-    Hit radius: the missile's own blast radius (CfgAmmo indirectHitRange),
-    widened for a MUNITION target to that target's own physical half-size
-    (aegism_intercept_fnc_targetHitRadius).
+    Hit: against a MUNITION target, the missile's path coming within its
+    own radius -- its blast (CfgAmmo indirectHitRange) or its proximity fuse
+    (proximityExplosionDistance), whichever is larger -- of the target's
+    body, its box (aegism_intercept_fnc_bodyPass); against an aircraft,
+    within its blast of the aircraft's centre.
 
     Arming: no detonation until the missile has flown its own CfgAmmo
     fuseDistance from where it was fired (e.g. 100m for the MIM-145 SAM).
@@ -27,7 +29,9 @@ Description:
 
     On a hit: aegism_intercept_fnc_interceptHit. The engine's own proximity
     fuse (CfgAmmo proximityExplosionDistance, set on most vanilla SAMs) may
-    detonate the missile first; this handler then simply sees it gone.
+    detonate the missile first; this handler then sees it gone, and credits
+    the kill if the stretch it was on that frame came within its radius of
+    the munition's body.
 
     Lost target: a guided missile whose target is gone before it gets there
     (another weapon killed it first), or whose seeker has turned to
@@ -82,8 +86,8 @@ if (isNull _projectile || {isNull _target}) exitWith {};
 private _ammoCfg = configOf _projectile;
 private _blastRadius = [typeOf _projectile] call aegism_intercept_fnc_munitionSize;
 private _isMunitionTarget = ([_target] call aegism_detect_fnc_classifyTarget) in ["missile", "rocket", "bomb", "artilleryShell"];
-private _hitRadius = if (_isMunitionTarget) then { _blastRadius max ([_target] call aegism_intercept_fnc_targetHitRadius) } else { _blastRadius };
-if (_hitRadius <= 0) exitWith {};
+private _hitRadius = if (_isMunitionTarget) then { _blastRadius max getNumber (_ammoCfg >> "proximityExplosionDistance") } else { _blastRadius };
+if (_hitRadius <= 0 && {!_isMunitionTarget}) exitWith {};
 
 private _armDistance = getNumber (_ammoCfg >> "fuseDistance");
 private _isGuided = (toLower getText (_ammoCfg >> "simulation")) == "shotmissile";
@@ -99,22 +103,51 @@ private _launchPos = getPosASLVisual _projectile;
 
     if (isNull _projectile || {!alive _projectile}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
+        // Gone since the last frame. If the stretch it was on -- from where
+        // it was, at the velocity it had, for this frame -- comes within its
+        // own radius of a munition's body, it went off within reach of it:
+        // the game's own proximity fuse, ahead of this one. That's a kill
+        // (the blast used to reach the munition's sensor proxy; half the
+        // RIM-162's kills came that way).
+        private _miss = -1;
+        private _at = _lastProjPos;
+        if (_isMunitionTarget && {!isNull _target} && {alive _target} && {(_launchPos distance _lastProjPos) >= _armDistance}) then {
+            private _targetPos = getPosWorldVisual _target;
+            private _stretch = (_args select 18) vectorMultiply diag_deltaTime;
+            private _passed = [_target, _lastProjPos vectorDiff _lastTargetPos, (_lastProjPos vectorAdd _stretch) vectorDiff _targetPos, _hitRadius] call aegism_intercept_fnc_bodyPass;
+            if (_passed <= _hitRadius) then {
+                _miss = _passed;
+                // Where on that stretch: nearest the target.
+                private _lengthSq = _stretch vectorDotProduct _stretch;
+                if (_lengthSq > 0) then {
+                    _at = _lastProjPos vectorAdd (_stretch vectorMultiply (0 max (1 min (((_targetPos vectorDiff _lastProjPos) vectorDotProduct _stretch) / _lengthSq))));
+                };
+            };
+        };
         if (_isGuided && {_launch isNotEqualTo []}) then {
-            [_ammoClass, _launch, _peakRate, -1, _retargeted] call aegism_intercept_fnc_recordMissileTurn;
-            [_launch param [3, ""], _launch param [4, ""], CBA_missionTime - (_launch param [2, CBA_missionTime]), -1, _speeds,
-                "ended without AEGIS-M's fuse seeing its intercept (it missed, the game's own proximity fuse went off, or its life ran out)"] call aegism_intercept_fnc_recordMissileSpeed;
+            private _flown = CBA_missionTime - (_launch param [2, CBA_missionTime]);
+            if (_miss >= 0) then {
+                [_ammoClass, _launch, _peakRate, _flown, _retargeted] call aegism_intercept_fnc_recordMissileTurn;
+                [_launch param [3, ""], _launch param [4, ""], _flown, _pathFlown, _speeds, "", _launchPos distance _at] call aegism_intercept_fnc_recordMissileSpeed;
+            } else {
+                [_ammoClass, _launch, _peakRate, -1, _retargeted] call aegism_intercept_fnc_recordMissileTurn;
+                [_launch param [3, ""], _launch param [4, ""], _flown, -1, _speeds,
+                    "ended out of reach of its target (it missed, or its life ran out)"] call aegism_intercept_fnc_recordMissileSpeed;
+            };
+        };
+        if (_miss >= 0) then {
+            [_projectile, _target, true, _miss, _hitRadius, _at, _ammoClass] call aegism_intercept_fnc_interceptHit;
         };
     };
 
     // Lost: its target gone before it got there, or its seeker on something
-    // else (a sensor proxy counts as its munition). Another incoming munition
-    // in its launcher's Site picture is followed instead; anything else, it
-    // self-destructs (aegism_intercept_fnc_interceptorLost).
+    // else. Another incoming munition in its launcher's Site picture is
+    // followed instead; anything else, it self-destructs (aegism_intercept_
+    // fnc_interceptorLost).
     private _why = "";
     if (isNull _target || {!alive _target}) then { _why = format ["its target %1 is gone before it got there", _args select 14]; };
     if (_isGuided) then {
         private _homing = missileTarget _projectile;
-        if (!isNull _homing && {_homing isKindOf "AEGISM_MunitionProxy"}) then { _homing = (_homing getVariable ["AEGISM_proxyEntry", [objNull]]) select 0; };
         if (!isNull _homing && {_homing != _target}) then {
             private _launcher = (getShotParents _projectile) param [0, objNull];
             private _site = _launcher getVariable ["AEGISM_network", objNull];
@@ -122,7 +155,7 @@ private _launchPos = getPosASLVisual _projectile;
             if (alive _homing && {(_homing getVariable ["AEGISM_contactKey", ""]) in _pool}) then {
                 _target = _homing;
                 _args set [1, _homing];
-                _args set [8, getPosASLVisual _homing];
+                _args set [8, getPosWorldVisual _homing];
                 _args set [9, _projectile distance _homing];
                 _args set [14, str _homing];
                 // Its turns are no longer all toward the one intercept: not
@@ -163,16 +196,22 @@ private _launchPos = getPosASLVisual _projectile;
     private _projPos = getPosASLVisual _projectile;
     _pathFlown = _pathFlown + (_projPos vectorDistance _lastProjPos);
     _args set [17, _pathFlown];
-    private _targetPos = getPosASLVisual _target;
+    // Relative to the target's model origin: a munition's body is its box
+    // there (aegism_intercept_fnc_bodyPass), an aircraft its centre.
+    private _targetPos = getPosWorldVisual _target;
     private _rel0 = _lastProjPos vectorDiff _lastTargetPos;
     private _rel1 = _projPos vectorDiff _targetPos;
-    private _seg = _rel1 vectorDiff _rel0;
-    private _segLenSqr = _seg vectorDotProduct _seg;
-    private _minDistance = vectorMagnitude (if (_segLenSqr <= 0.0001) then {
-        _rel1
+    private _minDistance = if (_isMunitionTarget) then {
+        [_target, _rel0, _rel1, _hitRadius] call aegism_intercept_fnc_bodyPass
     } else {
-        _rel0 vectorAdd (_seg vectorMultiply (0 max (1 min (-(_rel0 vectorDotProduct _seg) / _segLenSqr))))
-    });
+        private _seg = _rel1 vectorDiff _rel0;
+        private _segLenSqr = _seg vectorDotProduct _seg;
+        vectorMagnitude (if (_segLenSqr <= 0.0001) then {
+            _rel1
+        } else {
+            _rel0 vectorAdd (_seg vectorMultiply (0 max (1 min (-(_rel0 vectorDotProduct _seg) / _segLenSqr))))
+        })
+    };
     private _separation = vectorMagnitude _rel1;
 
     if (_minDistance <= _hitRadius && {(_launchPos distance _projPos) >= _armDistance}) exitWith {
@@ -193,5 +232,7 @@ private _launchPos = getPosASLVisual _projectile;
     _args set [8, _targetPos];
     _args set [9, _separation];
     _args set [10, _hasClosed];
-}, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosASLVisual _target, _launchPos distance (getPosASLVisual _target), false,
-    typeOf _projectile, _launch, [vectorDirVisual _projectile, CBA_missionTime, 0, 0, 0], str _target, false, [], 0]] call CBA_fnc_addPerFrameHandler;
+    // Its velocity, for the stretch it was on if it's gone next frame.
+    _args set [18, velocity _projectile];
+}, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosWorldVisual _target, _launchPos distance (getPosWorldVisual _target), false,
+    typeOf _projectile, _launch, [vectorDirVisual _projectile, CBA_missionTime, 0, 0, 0], str _target, false, [], 0, velocity _projectile]] call CBA_fnc_addPerFrameHandler;

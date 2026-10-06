@@ -66,7 +66,9 @@ if (_fuze isEqualTo [] || {(_fuze select 0) != _ammo} || {CBA_missionTime - (_fu
     };
     private _ammoInfo = _cache get _ammo;
     if (isNil "_ammoInfo") then {
-        _ammoInfo = [getNumber (configOf _projectile >> "timeToLive"), abs ((getNumber (configOf _projectile >> "airFriction")) min 0)];
+        // How long it really flies: an airburst round's flight ends at its
+        // burst (aegism_intercept_fnc_ammoBurst).
+        _ammoInfo = [([_ammo] call aegism_intercept_fnc_ammoBurst) select 0, abs ((getNumber (configOf _projectile >> "airFriction")) min 0)];
         _cache set [_ammo, _ammoInfo];
     };
     _ammoInfo params ["_lifetime", "_k"];

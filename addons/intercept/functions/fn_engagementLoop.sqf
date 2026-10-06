@@ -271,12 +271,7 @@ private _fnExecute = {
         // well below the launcher: launchers behind H-barriers 5-14m away
         // were blocked on targets the launcher itself sat above.
         _state set ["losFrom", ([_system, _turretPath, _role] call aegism_intercept_fnc_turretPoints) select 0];
-        // A munition's own sensor proxy (aegism_detect_fnc_proxyCreate), a
-        // crate-sized vehicle 5 m from it, isn't in the way: it's skipped like
-        // the target itself (only two objects can be ignored by the command).
-        private _hits = (lineIntersectsSurfaces [_state get "losFrom", getPosASL _target, _system, _target, true, 3]) select {
-            !((_x select 2) isKindOf "AEGISM_MunitionProxy") && {!((_x select 3) isKindOf "AEGISM_MunitionProxy")}
-        };
+        private _hits = lineIntersectsSurfaces [_state get "losFrom", getPosASL _target, _system, _target, true, 1];
         _state set ["losClear", _hits isEqualTo []];
         _state set ["losHit", _hits param [0, []]];
     };
@@ -453,7 +448,10 @@ private _fnExecute = {
                 // A gap longer than twice the estimate was idle time, not
                 // firing rate, and is ignored; one shorter than the launcher's
                 // own shot interval allows was miscounted (calibration.hpp).
-                private _spacing = _ts getOrDefault ["spacing", _interval / ((_crewMods get "reliability") max 0.05)];
+                // Until then it's estimated as the coordinator does (its
+                // _fnLauncherTiming).
+                private _reliability = (_crewMods get "reliability") max 0.05;
+                private _spacing = _ts getOrDefault ["spacing", (_interval max (_reload param [4, 0])) + _interval * (1 - _reliability) / _reliability];
                 private _gap = CBA_missionTime - (_ts getOrDefault ["shotAt", -1e9]);
                 if (_gap <= 2 * _spacing && {_gap >= AEGISM_SPACING_MIN_RATIO * _interval}) then {
                     _ts set ["spacing", (1 - AEGISM_SPACING_SMOOTHING) * _spacing + AEGISM_SPACING_SMOOTHING * _gap];
@@ -508,6 +506,13 @@ if (!isNull _network) exitWith {
                     if (isNil {_x get "frontSince"}) then { _x set ["frontSince", CBA_missionTime]; };
                 };
                 [_target, _x get "weaponInfo", _x] call _fnExecute;
+                // Not while the launcher itself isn't ready -- between
+                // missiles, a lost fire cycle, its weapon loading
+                // ("reloading"): that's not a claim failing to fire. An S-300
+                // with 30 s between missiles had the claim at the front of
+                // its queue released as "never fired (cannot bear or no LOS)"
+                // 15 s into every wait.
+                if (!_isCiws && {!_salvoAway} && {(_x getOrDefault ["status", ""]) == "reloading"}) then { _x set ["frontSince", CBA_missionTime]; };
                 if (!_isCiws) then { _x set ["working", !_salvoAway && {!((_x getOrDefault ["status", ""]) in ["losBlocked", "noSolution"])}]; };
             } else {
                 // Behind another on this launcher's queue.

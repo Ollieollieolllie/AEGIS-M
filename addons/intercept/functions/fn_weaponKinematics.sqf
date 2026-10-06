@@ -15,13 +15,19 @@ Description:
         missileFriction - a missile's CfgAmmo airFriction, which is positive
             (a bullet's is negative); 0 with artilleryLock, which the engine
             says ignores it
-        timeToLive - CfgAmmo timeToLive (the round's lifetime; 0 = unset)
+        timeToLive - how long the round flies (0 = unset): CfgAmmo
+            timeToLive, or, for a round that turns into an airburst or
+            another round first, until then (aegism_intercept_fnc_ammoBurst)
         lockCone - CfgAmmo missileLockCone (180 if unset)
         fuseDistance - CfgAmmo fuseDistance (arming distance)
         guided - CfgAmmo simulation is shotMissile
         blastRadius - CfgAmmo indirectHitRange
         maxSpeed - CfgAmmo maxSpeed (logged; aegism_intercept_fnc_
             missileProfile doesn't apply it)
+        proximity - CfgAmmo proximityExplosionDistance: the round's own
+            proximity fuse, m (0 = none)
+        burstAt, burstRadius - an airburst round: when it bursts, s, and its
+            blast, m (0 = none; aegism_intercept_fnc_ammoBurst)
 
     A missile's flight is simulated from these by aegism_intercept_fnc_
     missileProfile.
@@ -35,7 +41,8 @@ Parameters:
 
 Returns:
     [ammoClass, v0, drag, thrust, thrustTime, initTime, missileFriction,
-     timeToLive, lockCone, fuseDistance, guided, blastRadius, maxSpeed] <ARRAY>
+     timeToLive, lockCone, fuseDistance, guided, blastRadius, maxSpeed,
+     proximity, burstAt, burstRadius] <ARRAY>
 
 Examples:
     ["weapon_Cannon_Phalanx", "magazine_Cannon_Phalanx_x1550"] call aegism_intercept_fnc_weaponKinematics;
@@ -71,28 +78,35 @@ private _missileFriction = if ((getNumber (_ammoCfg >> "artilleryLock")) == 1) t
 private _lockCone = getNumber (_ammoCfg >> "missileLockCone");
 if (_lockCone <= 0) then { _lockCone = 180; };
 
+([_ammoClass] call aegism_intercept_fnc_ammoBurst) params ["_lifetime", "_burstAt", "_burstRadius"];
+
 _cached = [
     _ammoClass, _v0, _drag,
     getNumber (_ammoCfg >> "thrust"),
     getNumber (_ammoCfg >> "thrustTime"),
     getNumber (_ammoCfg >> "initTime"),
     _missileFriction,
-    getNumber (_ammoCfg >> "timeToLive"),
+    _lifetime,
     _lockCone,
     getNumber (_ammoCfg >> "fuseDistance"),
     (toLower getText (_ammoCfg >> "simulation")) == "shotmissile",
     getNumber (_ammoCfg >> "indirectHitRange"),
-    getNumber (_ammoCfg >> "maxSpeed")
+    getNumber (_ammoCfg >> "maxSpeed"),
+    getNumber (_ammoCfg >> "proximityExplosionDistance"),
+    _burstAt,
+    _burstRadius
 ];
 _cache set [_key, _cached];
 
 // The motor only for a missile: every CfgAmmo inherits thrust values from the
 // defaults, which a bullet or shell never uses.
 if (AEGISM_RPT_VERBOSE) then {
-    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " KINEMATICS: %1 / %2 -> %3: v0 %4 m/s, airFriction %5%6, timeToLive %7s, lockCone %8, fuseDistance %9m, guided %10, blast %11m (cached).",
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " KINEMATICS: %1 / %2 -> %3: v0 %4 m/s, airFriction %5%6, flies %7s%12, lockCone %8, fuseDistance %9m, guided %10, blast %11m%13 (cached).",
         _weaponClass, _magazineClass, _ammoClass, _v0, _drag,
         ["", format [" (its own %1), thrust %2 m/s2 for %3s from %4s after launch, maxSpeed %5", _missileFriction, _cached select 3, _cached select 4, _cached select 5, _cached select 12]] select (_cached select 10),
-        _cached select 7, _lockCone, _cached select 9, _cached select 10, _cached select 11];
+        _lifetime, _lockCone, _cached select 9, _cached select 10, _cached select 11,
+        ["", format [" (bursts then, %1m; its timeToLive is %2s)", _burstRadius, getNumber (_ammoCfg >> "timeToLive")]] select (_burstAt > 0),
+        ["", format [", proximity fuse %1m", _cached select 13]] select ((_cached select 13) > 0)];
 };
 
 _cached

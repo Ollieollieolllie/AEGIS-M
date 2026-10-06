@@ -2,8 +2,7 @@
 Function: aegism_detect_fnc_trackMunition
 
 Description:
-    Starts tracking a freshly-fired, already-classified munition, and gives
-    it a sensor proxy so the game's own sensors can see it.
+    Starts tracking a freshly-fired, already-classified munition.
 
     Gives the munition its own contact key ("AEGISM_contactKey" = "m<n>", see
     aegism_fnc_contactKey) and adds it to the list the single munition
@@ -12,23 +11,14 @@ Description:
     fire time). What a check does (seen by a sensor, IFF, whether it
     threatens a Site): aegism_detect_fnc_munitionCheck.
 
-    The proxy: a fired projectile can't be a sensor target itself (CfgAmmo
-    has no radar/IR/visual target properties), so an invisible vehicle of
-    its threat class's proxy type ("AEGISM_MunitionProxy_<class>", detection
-    config.cpp) flies with it, attached a few metres behind it -- created
-    a tenth of a second after launch (aegism_detect_fnc_proxyCreate), or,
-    moved every frame instead for an ammo class that doesn't carry an
-    attached object, once clear of the launching vehicle -- and is deleted with it
-    (aegism_detect_fnc_munitionTracker). Every vehicle's sensors then see
-    it, or don't, by their own rules; the detection loop (aegism_detect_
-    fnc_confidenceLoop) reads which munitions each vehicle sees.
-
-    Local to the server: no network traffic for something that moves every
-    frame, but only sensors simulated on the server see it -- a vehicle
-    whose crew is simulated elsewhere (a headless client, a player gunner)
-    doesn't. No proxy for an AEGIS-M System's own interceptor unless some
-    AEGIS-M vehicle is hostile to the side that fired it: nobody else would
-    track it, and every sensor around would carry it as a contact.
+    Whether a sensor sees it is AEGIS-M's own judgement, from each sensor's
+    config (aegism_detect_fnc_munitionSeen), made on every vehicle's sensor
+    read (aegism_detect_fnc_confidenceLoop) from the moment it's tracked: a
+    fired projectile can't be a target of the game's sensors itself (CfgAmmo
+    has no radar/IR/visual target properties). All on the server, whoever
+    crews the vehicles. An AEGIS-M System's own interceptor is only watched
+    for if some AEGIS-M vehicle is hostile to the side that fired it
+    ("watched"): nobody else would track it.
 
 Parameters:
     _projectile - the fired munition object <OBJECT>
@@ -45,8 +35,6 @@ Examples:
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
-
-#include "..\proxy.hpp"
 
 params ["_projectile", "_class", ["_shooterSide", sideUnknown]];
 
@@ -67,18 +55,15 @@ private _watched = !(_projectile getVariable ["AEGISM_fromSystem", false]) || {
     }) != -1
 };
 
-// [projectile, class, shooter side, key, pools it's in, next check at,
-// sensor proxy (objNull until it's made, or if none), flags (HashMap)].
-// Flags "firedAt": when it was fired; "follow": its proxy is moved every
-// frame; "attachCheckAt": when to check its proxy came along when attached;
-// "arm": an anti-radiation missile's last known state (aegism_detect_fnc_
-// munitionCheck, logged as ARM-END when it's gone).
-private _entry = [_projectile, _class, _shooterSide, _key, [], CBA_missionTime, objNull, createHashMapFromArray [["firedAt", CBA_missionTime], ["ammo", typeOf _projectile]]];
+// [projectile, class, shooter side, key, pools it's in, next check at, clear
+// lines of sight (HashMap: sensor vehicle -> when it last had one, aegism_
+// detect_fnc_munitionSeen), flags (HashMap)].
+// Flags "firedAt": when it was fired; "ammo": its class; "watched": sensors
+// look for it (above); "arm": an anti-radiation missile's last known state
+// (aegism_detect_fnc_munitionCheck, logged as ARM-END when it's gone).
+private _entry = [_projectile, _class, _shooterSide, _key, [], CBA_missionTime, createHashMap,
+    createHashMapFromArray [["firedAt", CBA_missionTime], ["ammo", typeOf _projectile], ["watched", _watched]]];
 _tracked pushBack _entry;
-
-if (_watched) then {
-    [aegism_detect_fnc_proxyCreate, [_entry], AEGISM_PROXY_MIN_DELAY] call CBA_fnc_waitAndExecute;
-};
 
 if !(missionNamespace getVariable ["AEGISM_munitionTrackerRunning", false]) then {
     missionNamespace setVariable ["AEGISM_munitionTrackerRunning", true];

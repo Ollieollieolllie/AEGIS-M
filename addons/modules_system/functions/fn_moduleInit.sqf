@@ -146,6 +146,11 @@ _vehicle setVariable ["AEGISM_system", _capabilities, false];
 private _weaponTurretPaths = ((_capabilities get "launcherWeapons") + (_capabilities get "ciwsWeapons")) apply { _x select 0 };
 if (_weaponTurretPaths isNotEqualTo []) then {
     [_vehicle, _weaponTurretPaths, true] call aegism_fnc_setWeaponAiSuppressed;
+    // ...and kept that way, wherever its crew is simulated (aegism_system_
+    // fnc_guardSystems: another script, or a new crewman, turning it back on).
+    private _guarded = missionNamespace getVariable ["AEGISM_guardedSystems", []];
+    _guarded pushBackUnique _vehicle;
+    missionNamespace setVariable ["AEGISM_guardedSystems", _guarded];
 };
 
 // Everything below is the engagement pipeline: server only. A client has no
@@ -180,10 +185,6 @@ private _contactSource = _vehicle getVariable "AEGISM_resolvedContactSource";
 
 if ("ownSensor" in _contactSource) then {
     _vehicle setVariable ["AEGISM_pooledContacts", createHashMap, false];
-    // The highest any AEGIS-M sensor loses a target in ground clutter: a
-    // munition proxy below it is moved with its munition, showing its speed
-    // (aegism_detect_fnc_munitionTracker).
-    missionNamespace setVariable ["AEGISM_clutterHeight", (missionNamespace getVariable ["AEGISM_clutterHeight", -1]) max (_capabilities getOrDefault ["clutterHeight", -1])];
 
     private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
     _allOwners pushBackUnique _vehicle;

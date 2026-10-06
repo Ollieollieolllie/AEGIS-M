@@ -8,14 +8,14 @@ Description:
     sensor of their own; a Site only receives a munition from a member that
     genuinely sees it.
 
-    Detection is the game's: the vehicle's own sensors held the munition's
-    sensor proxy (aegism_detect_fnc_trackMunition) on their last read
-    (aegism_detect_fnc_confidenceLoop, "AEGISM_seenMunitions", once a
-    second; a read older than AEGISM_SEEN_FRESH s doesn't count). So radar,
-    IR and visual each by their own range, arc, line of sight, fog, night
-    and speed limits, an active radar only while it emits, and what
-    datalink shares from other vehicles. The contact records the sensor
-    kinds that saw it ("activeradar", "ir", "datalink" ...).
+    Detection: the vehicle's own sensors saw the munition on their last
+    read (aegism_detect_fnc_confidenceLoop, "AEGISM_seenMunitions", four
+    times a second while a munition flies; a read older than
+    AEGISM_SEEN_FRESH s doesn't count) -- AEGIS-M's own judgement, from each
+    sensor's config (aegism_detect_fnc_munitionSeen): radar, IR and visual
+    each by their own range, arc, line of sight, fog, night, ground clutter
+    and speed limits, an active radar only while it emits. The contact
+    records the sensor kinds that saw it ("activeradar", "ir", "visual").
 
     Where it goes:
         standalone vehicle - its own pool
@@ -114,30 +114,24 @@ private _armDone = [];
 // Its path, for UNSEEN if it's gone without ever coming into a Site's
 // picture (aegism_detect_fnc_munitionTracker): [nearest AEGIS-M sensor
 // vehicle m, that vehicle, lowest height above ground m, top speed m/s,
-// farthest its proxy strayed from it m, its proxy's top reported speed m/s,
 // sensor kinds that saw it, its elevation from that vehicle then, degrees
 // (below 0: seen against the ground)]. Not for an AEGIS-M interceptor.
 if (!_fromSystem) then {
-    private _path = _flags getOrDefault ["path", [1e10, objNull, 1e10, 0, 0, 0, [], 0]];
+    private _path = _flags getOrDefault ["path", [1e10, objNull, 1e10, 0, [], 0]];
     {
         if (!isNil { _x getVariable "AEGISM_system" }) then {
             private _distance = _x distance _projectile;
             if (_distance < (_path select 0)) then {
                 _path set [0, _distance];
                 _path set [1, _x];
-                _path set [7, asin (((((getPosASL _projectile) select 2) - ((eyePos _x) select 2)) / (_distance max 1) max -1) min 1)];
+                _path set [5, asin (((((getPosASL _projectile) select 2) - ((eyePos _x) select 2)) / (_distance max 1) max -1) min 1)];
             };
             (_x getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_seen"];
-            if (CBA_missionTime - _readAt <= AEGISM_SEEN_FRESH && {_key in _seen}) then { { (_path select 6) pushBackUnique _x; } forEach (_seen get _key); };
+            if (CBA_missionTime - _readAt <= AEGISM_SEEN_FRESH && {_key in _seen}) then { { (_path select 4) pushBackUnique _x; } forEach (_seen get _key); };
         };
     } forEach _owners;
     _path set [2, (_path select 2) min ((ASLToAGL getPosASL _projectile) select 2)];
     _path set [3, (_path select 3) max (vectorMagnitude velocity _projectile)];
-    private _proxy = _entry select 6;
-    if (!isNull _proxy) then {
-        _path set [4, (_path select 4) max (_proxy distance _projectile)];
-        _path set [5, (_path select 5) max (vectorMagnitude velocity _proxy)];
-    };
     _flags set ["path", _path];
 };
 
@@ -190,7 +184,7 @@ if (_isArm) then {
         };
         if (_hostile || {_needsThreat && {!_fromSystem}}) then {
             // Its sensors' last read: the sensor kinds that saw this
-            // munition's proxy, if they did.
+            // munition, if they did.
             (_poolOwner getVariable ["AEGISM_seenMunitions", [-1e9, createHashMap]]) params ["_readAt", "_seenMunitions"];
             private _detected = CBA_missionTime - _readAt <= AEGISM_SEEN_FRESH && {_key in _seenMunitions};
             private _seenBy = if (_detected) then { _seenMunitions get _key } else { [] };

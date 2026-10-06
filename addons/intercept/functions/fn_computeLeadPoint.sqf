@@ -53,7 +53,8 @@ Description:
 
     FEASIBLE only if the solution converges inside the weapon's own reach
     (weaponInfo maxRange, from config) and within the round's own lifetime
-    (CfgAmmo timeToLive, e.g. 6s for vanilla bullets) -- judged at the
+    (CfgAmmo timeToLive, e.g. 6s for vanilla bullets, or until an airburst
+    round bursts: aegism_intercept_fnc_ammoBurst) -- judged at the
     meeting point it ends on, not where the target is now: a round or
     missile can be fired at a target still beyond its reach and meet it
     inside. A target receding

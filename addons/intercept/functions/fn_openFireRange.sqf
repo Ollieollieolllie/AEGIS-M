@@ -27,14 +27,18 @@ Description:
             third of it per axis)
         t(d) - the round's flight time to d: (exp(k d) - 1) / (k v0)
             (CfgMagazines initSpeed, CfgAmmo airFriction)
-        one round hits if its miss is within r, the hit radius (the round's
-            own blast radius or the target's half-size, as its fuse uses):
+        one round hits if its miss is within r, the hit radius: the
+            target's size to the gun (aegism_intercept_fnc_aimWeapon -- a
+            munition's body as seen along the line of fire plus the round's
+            own blast or proximity radius, as its fuse counts a hit; an
+            aircraft's half-size):
             p = 1 - exp(-r^2 / (2 sigma^2))
         a burst is N rounds: the gun's measured rate of fire (else its fire
             mode's reloadTime) x the doctrine's mean burst length, and hits
             with 1 - (1 - p)^N
 
-    Capped by the round's reach in its own lifetime (CfgAmmo timeToLive:
+    Capped by the round's reach in its own lifetime (CfgAmmo timeToLive, or
+    until an airburst round bursts, aegism_intercept_fnc_ammoBurst:
     ln(1 + k v0 T) / k). A munition target isn't engaged inside the round's
     arming distance (CfgAmmo fuseDistance) -- the scripted fuse can't
     detonate before it.

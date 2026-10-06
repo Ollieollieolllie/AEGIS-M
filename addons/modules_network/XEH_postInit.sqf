@@ -27,3 +27,13 @@ if (isServer) then {
 // Editing Site settings and vehicle overrides from Zeus (needs Zeus Enhanced
 // for the dialogs) -- see aegism_network_fnc_zeusInit.
 [] call aegism_network_fnc_zeusInit;
+
+// Site alarms: the server publishes each Site's alarm (aegism_network_fnc_
+// siteAlarm), every machine with a player plays it for itself, every frame
+// (aegism_network_fnc_alarmPlayer). Only the Sites' alarm states and the
+// camera are read between changes.
+if (hasInterface) then {
+    [{
+        [] call aegism_network_fnc_alarmPlayer;
+    }, 0, []] call CBA_fnc_addPerFrameHandler;
+};

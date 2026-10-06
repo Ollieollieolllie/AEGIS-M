@@ -18,6 +18,11 @@ Early development.
 - [CBA_A3](https://github.com/CBATeam/CBA_A3) (hard dependency)
 - [Zeus Enhanced](https://github.com/zen-mod/ZEN) (optional: needed to edit
   Site settings and vehicle overrides from Zeus)
+- Arma 3 2.18 or later (the `ProjectileCreated` mission event; the POOK
+  compatibility addon needs 2.14's `skipWhenMissingDependencies`)
+
+Compatibility addons ship inside the mod and load only with the mod they're
+for: `aegism_compat_pook` for POOK's SAM pack (see **Other mods** below).
 
 ## How it works
 
@@ -87,60 +92,64 @@ artillery/mortar rounds (`artilleryLock`) count as artillery threats; tank
 main-gun rounds don't, and multi-stage rounds (e.g. MLRS rockets) stay
 tracked through their submunition handoff.
 
-**Detection is the game's own sensors.** Every vehicle with a radar, IR or
-visual sensor of its own reads what its sensors hold (getSensorTargets) --
-the same radar/IR/visual/passive/datalink simulation already running
-against its real CfgVehicles config, with each sensor's own range, arc,
-line of sight, fog, night and speed limits, ground clutter, and an active
-radar only while it's emitting (see **Radar emission** below). Each contact
-records which kinds of sensor saw it.
-- **Aircraft, helicopters, drones** are read directly (`DETECT` in the
-  RPT, once per new contact). A target's own size scales a sensor's range
-  (`radarTargetSize` 0.1 on a Darter: a 9 km radar sees it at 900 m).
+**Detection follows each vehicle's own sensors.** Every vehicle with a
+radar, IR or visual sensor of its own is read from its real CfgVehicles
+sensor config: each sensor's own range, arc, line of sight, fog, night and
+speed limits, ground clutter, and an active radar only while it's emitting
+(see **Radar emission** below). Each contact records which kinds of sensor
+saw it.
+- **Aircraft, helicopters, drones** are the game's own sensor simulation,
+  read directly (getSensorTargets; `DETECT` in the RPT, once per new
+  contact). A target's own size scales a sensor's range (`radarTargetSize`
+  0.1 on a Darter: a 9 km radar sees it at 900 m).
 - **Missiles, rockets, shells, bombs** can't be: a fired projectile has
-  none of the target-size properties that make an object sensor-visible.
-  So every tracked munition carries an invisible **sensor proxy** -- a
-  vehicle on the supply-drop crate's model with its texture blanked (a
-  sensor target needs real geometry: with an empty model nothing saw it),
-  size 2.5 on radar, IR and visual (a target's size scales a
-  sensor's range: raised from 1 to help sensors pick munitions up), and
-  hot -- its engine running (an IR sensor only sees a vehicle
-  whose engine is on; the proxy's is silent) and `setVehicleTIPars` -- that
-  the sensors see instead. Every sensor vehicle of a Site that sees a
-  munition adds its kind to the contact, so a radar and a Spartan's IR both
-  show.
-  It's created a tenth of a second after launch and attached 6 m above its
-  munition at once, so the engine carries it. It sits off the flight path:
-  trailing behind, it was where the next rocket of a ripple flew, and the
-  rockets flew into it. An ammo type that doesn't
-  carry an attached object (`PROXY-ATTACH` in the RPT, once per type -- the
-  MLRS carrier stage `R_230mm_HE` doesn't) has its proxies moved every
-  frame instead, at the munition's own velocity. A proxy moved that way is
-  a free vehicle, so it isn't made until its munition is clear of whatever
-  fired it (the shooter's size, plus the proxy's, plus 6 m), half a second
-  after launch at the latest. An attached proxy shows no speed of its own,
-  and sensors filter targets out of ground clutter by their speed (the
-  vanilla radar template's clutter reaches 200 m up, with a 21 m/s speed
-  threshold) -- rockets and missiles skimming the ground with attached
-  proxies were never seen at all. So once a munition comes below the
-  highest any AEGIS-M sensor's clutter reaches (each sensor's own
-  `maxGroundNoiseDistance`), its proxy is detached and moved with it at its
-  velocity from then on (`PROXY-LOW`, once per type). It's deleted with its
-  munition. It's also what a gunner's radar shows and locks, so a weapon
-  that shoots the proxy down -- any weapon, a player's included --
-  destroys its munition in the air (`PROXY-HIT`). An intercept's blast can
-  take out the rockets flying beside it this way; collisions don't count,
-  and nor do the incoming side's own blasts unless AEGIS-M has just
-  destroyed a munition there -- a salvo's warheads going off as they land
-  aren't kills (`PROXY-DAMAGE-IGNORED`, Verbose). (Proxies
-  exist only on the server, so in multiplayer only the host's own sensors
-  and weapons see them.) There's one
-  proxy class per kind of munition (`AEGISM_MunitionProxy_missile` /
-  `_rocket` / `_bomb` / `_artilleryShell`), so each can carry its own
-  signature. A cluster carrier's bomblets get none (they're not followed at
-  all), nor does an AEGIS-M interceptor unless an AEGIS-M vehicle is
-  hostile to its side. `TRACKING` in the RPT names the sensors that found
-  a munition, and how long after launch.
+  none of the target-size properties that make an object a sensor target,
+  and the game's sensors never report one. So AEGIS-M judges munitions
+  itself, by the rules the game's sensors work to (BI's Sensors config
+  reference) and from the same config. A sensor sees a munition when:
+  - it's on: a radar only while the vehicle's radar emits; none through fog
+    thicker than its `maxFogSeeThrough`;
+  - the munition is inside its horizontal and vertical arcs, measured from
+    where it looks: along the hull, or wherever its turret points right now
+    (so a turning radar sees where it has actually got to), tilted by its
+    `aimDown`;
+  - it's in range: against the sky (the munition above the sensor) its
+    `AirTarget` range, against the ground behind it its `GroundTarget`
+    range -- each the smallest of `maxRange` and the view distances times
+    their limit coefficients, never under `minRange`, scaled by
+    `nightRangeCoef` toward night and by the munition's signature, 2.5 (a
+    target's size scales a sensor's range; 2.5 is what was settled on to
+    have munitions picked up reliably);
+  - its speed and height are within `min/maxTrackableSpeed` and
+    `min/maxTrackableATL`;
+  - seen from above, it's clear of ground clutter: farther from the ground
+    behind it than `groundNoiseDistanceCoef` x the distance to that ground
+    (at most `maxGroundNoiseDistance`), unless it's fast -- at or above
+    `maxSpeedThreshold` it always shows (the vanilla radar: 28 m/s; munitions
+    fly at hundreds);
+  - the vehicle has a line of sight to it: no terrain between, and nothing
+    else in the way within 5 km. A clear line isn't traced again for 2 s.
+
+  A munition is hot for its whole flight, so IR sees it as radar does. Every
+  sensor vehicle of a Site that sees a munition adds its kind to the contact,
+  so a radar and a Spartan's IR both show. It's all on the server, so it
+  works whoever crews the vehicles (a player gunner, a headless client). A
+  cluster carrier's bomblets aren't followed at all, nor is an AEGIS-M
+  interceptor unless an AEGIS-M vehicle is hostile to its side. `TRACKING`
+  in the RPT names the sensors that found a munition, and how long after
+  launch; `SIGHTED` (Verbose) each sensor vehicle's first sight of it.
+  (Each munition used to carry an invisible vehicle for the game's sensors
+  to find instead. They weren't built for it: a radar reported nothing for
+  about 2.5 s after coming on, the vehicle didn't stay with every munition,
+  showed no speed while attached, and could be shot. Two things went with
+  it: munitions no longer show on a crew's own radar display, and only
+  AEGIS-M's weapons shoot them down -- neither worked off the server
+  anyway.)
+- **Blast.** When an interceptor goes off, any other tracked munition whose
+  body is inside its blast radius goes with it, and so does any inside the
+  blast of the munition it destroyed: an intercept among a salvo takes the
+  rockets flying beside it (`BLAST-KILL`). A lost interceptor's
+  self-destruct does the same.
 - **Timing.** Each sensor vehicle reads its sensors once a second, and
   four times a second while any munition is in flight. A munition one of
   them sees for the first time is checked at once, and when it enters a
@@ -152,7 +161,8 @@ what other vehicles see: any friendly vehicle with datalink in the mission,
 not only AEGIS-M's. A Site already shares its own members' contacts, so a
 target that only datalink reports is ignored, and `DL` is dropped from what
 saw a contact. The CBA setting "AEGIS-M > General > Use Datalink Contacts"
-turns it on (e.g. a standalone SPAAG fed by a friendly AWACS).
+turns it on (e.g. a standalone SPAAG fed by a friendly AWACS). It's about
+aircraft: the game's datalink carries no munitions.
 
 **Passive radar cues, it doesn't aim.** A contact only passive radar hears
 (an aircraft with its radar on) gives a bearing, not a track. It's pooled
@@ -321,17 +331,20 @@ within hitting distance. That's worked out from measurable things only:
 - how far the target strays from its predicted track per second of flight
   (measured the same way)
 - the round's flight time (`initSpeed`, `airFriction`)
-- the hit radius: the round's own blast radius, or the target's size
+- the hit radius: the target's size to the gun -- a munition's body as
+  seen along the line of fire plus the round's own blast or proximity
+  radius (as its fuse counts a hit), an aircraft's half-size
 - the rounds in a burst: the gun's measured rate of fire times the burst
   length
 
-It never fires beyond the round's reach in its lifetime (`timeToLive`), or
+It never fires beyond the round's reach in its lifetime (`timeToLive`, or
+until an airburst round bursts), or
 inside its arming distance (`fuseDistance`) against a munition. The range
 moves as the gun learns its own accuracy: `OPEN-FIRE-RANGE` logs it with
 every input, `RANGE-HOLD` while a gun waits, and `TARGET-SIZE` logs each
 target type's measured size. Given a choice, the gun takes a target it can
 open fire on now over one it can only track. It fires only while the barrel's error at the
-intercept is within the target's own size plus the gun's own spread there
+intercept is within the target's size to the gun plus the gun's own spread there
 (its fire mode's `dispersion`) -- about 0.3 degrees for a Phalanx at a shell
 2 km out. In the last-ditch
 window (the target due to impact within the gun's own longest burst,
@@ -379,12 +392,25 @@ to take effect.
 
 **Intercepting a munition needs a proximity fuse, because Arma has no
 projectile-vs-projectile hit detection at all.** A fired interceptor is
-tracked frame-by-frame (closest approach on relative motion) and, once past
-its own real arming distance (`fuseDistance`), detonated for real
-(triggerAmmo, genuine splash effects) when it passes within its own blast
-radius -- or, against a munition, within that munition's own physical size,
-so a kinetic CIWS round that passes through an incoming missile counts as a
-hit. A munition target has no hitpoints/damage pipeline for that splash
+tracked frame-by-frame (its path relative to the target, both moving) and,
+once past its own real arming distance (`fuseDistance`), detonated for real
+(triggerAmmo, genuine splash effects) when its path comes within its own
+radius -- its blast (`indirectHitRange`) or its own proximity fuse
+(`proximityExplosionDistance`), whichever is larger -- of the munition's
+body: its model's bounding box, turned the way it's flying. A kinetic round
+(a .50, with no blast) has to pass through the box itself. Nothing finer
+exists: no LOD of a projectile can be hit by a line (tested in game), so the
+box is the body, and how true it is depends on the model -- FZA's Hellfire
+is 0.24 x 1.63 m, vanilla's 230 mm rocket 2.29 x 11.96 m. It used to be a
+sphere round the box (6.19 m round that rocket), and a .50 scored kills 4-5
+m off it. A gun's fire gate and open-fire range use the same size: the box
+as seen along the line of fire, plus the round's own radius. Against an
+aircraft, the interceptor's blast reaches from the aircraft's centre. An
+**airburst** gun round -- one that turns into a bursting submunition
+(`triggerTime`, then the submunition's own `explosionTime`; POOK's 20-30 mm
+AA) -- flies only until it bursts, which caps the gun's reach, and kills
+where it bursts if the target's body is within the burst's blast; any mod's
+round is read this way. A munition target has no hitpoints/damage pipeline for that splash
 to actually kill it through, so it's separately detonated too; a real
 platform target (helicopter/drone) is left to its own genuine hitpoints and
 the interceptor's real splash damage, since it can legitimately survive a
@@ -444,11 +470,21 @@ estimates move and swing the turret between them. It plans the queue with
 its own **measured** time per missile (lost reliability rolls and
 re-aiming included, and its crew's quicker reaction once in combat), and is
 never queued past its **last missile**. A launcher is only given a round it
-can fire at in time (`LATE` in the RPT when none can: it's left to the
-guns). A queued round it can no longer reach in time (by more than half a
+can kill in time (`LATE` in the RPT when none can: it's left to the
+guns). For a launcher that isn't ready yet -- between missiles, or with
+rounds ahead on its queue -- that's judged from when it will be: a shot from
+then on that meets the round inside its envelope before impact. Not where
+the round is now, and not the flight of a shot fired now (a rocket 11 km out
+is a 16 s flight; by the time a busy launcher is free it's a few seconds).
+So a slow launcher -- POOK's S-300 fires every 30 s -- isn't handed the next
+round due if that will be inside its minimum range or too steep by the time
+it can fire: its place goes to the first one due that it can kill. A queued
+round it can no longer kill in time (by more than half a
 second), or has no missile left for, is **handed off** to a launcher that
 can (`HANDOFF`), or released if none can; an empty launcher gives its
-targets back at once. A missile whose target is gone before it gets there
+targets back at once. A round at the front of a queue that the launcher
+never fires at (it can't bear, no line of sight) is released after 15 s --
+not counting the time the launcher itself wasn't ready. A missile whose target is gone before it gets there
 (another weapon killed it first), or whose seeker turns to something else,
 follows another incoming munition the Site is tracking if that's what its
 seeker took. Otherwise it self-destructs where it is (`INTERCEPTOR-LOST`).
@@ -695,7 +731,54 @@ thing, labels stacked rather than drawn over each other:
   Site.
 
 Each hit is logged as `INTERCEPT`, with where: its distance from the vehicle
-that fired and its height above the ground.
+that fired and its height above the ground, and how far it passed from the
+munition's body against the round's own radius.
+
+**Other mods.** AEGIS-M keeps what it sets on its vehicles set, whoever
+changes it, and logs each case once:
+- a radar it has forced on or off that something else switched
+  (`RADAR-OVERRIDE`; POOK's SA-8, SA-11 and Patriot launch scripts do) is
+  set back;
+- a gunner on an AEGIS-M weapon whose own targeting or firing (`AUTOTARGET`,
+  `FIREWEAPON`) was turned back on -- another mod's AI script, or a crewman
+  new to the seat -- has it turned off again (`AI-RESTORED`);
+- its Fired event handler on a vehicle, and its mission-wide projectile
+  catch, are added again if something removed them (`EH-RESTORED`);
+- a munition nothing reported fired -- spawned by a script (Zeus
+  ordnance), or from a shooter whose Fired event handlers another mod
+  removed -- is tracked anyway (`MUNITION-UNREPORTED`, once per ammo type).
+  With no shooter it has no side, so it's engaged like friendly fire: only
+  if it threatens a Site;
+- a weapon fired without an AEGIS-M command is logged (`UNCOMMANDED-FIRE`):
+  a gun once per vehicle, a missile every time, with what its gunner was
+  on and which of its own targeting was switched on. The handler that sees
+  it is on every armed vehicle from the start, not from its first AEGIS-M
+  shot.
+
+A launcher's weapon can take longer to ready its next missile than its
+config says: POOK's 9K332 (`reloadTime` 6.5) fired every 9.7-10 s, its S-400
+launcher (25) took 37 and 42 s. AEGIS-M reads how far along each reload is
+from the game (`weaponState`), times how fast that falls, and plans the
+launcher's queue on the measured time (`RELOAD-TIME`, logged when first
+measured). Planned on the config's time, such a launcher was booked for
+shots it never got to, and its targets were released one after another as
+their turn failed to come.
+
+**POOK's SAM pack** gets its own compatibility addon (`aegism_compat_pook`,
+loaded only with POOK's pack). Its 20, 23 and 30 mm AA rounds burst 1 s after
+firing, about 700-900 m out, whatever they're aimed at; they now burst at
+the end of their own life instead (30 mm about 2 km, 20 mm 1.9 km, 23 mm
+2.5 km, the drag-free 23 mm HET capped at 6 km -- POOK's drag keeps the
+rest well short of that). POOK's scripts that aim and fire a vehicle's
+weapons themselves are switched off (`COMPAT`, once per function) -- a
+SHORAD firing at any missile fired at a POOK vehicle nearby, and the
+57-100 mm guns' airburst fuse, which bursts rounds at the height of a target
+AEGIS-M never assigns (250 m without one). That's for every POOK vehicle
+while both mods are loaded, AEGIS-M's or not: AEGIS-M never runs or calls
+POOK's scripts, it only stops those. POOK's missile launch scripts are left
+alone (three of them are the vertical launch itself). Build AEGIS-M Sites
+from POOK's vehicles placed one by one, not POOK's site spawners: their
+radar scripts fire the site's launchers themselves.
 
 An assigned weapon that can't fire logs why: `NO-SOLUTION`, `LOS-BLOCKED` (the line from the weapon's own muzzle to the target, naming what's in the way: terrain, or the object, its class and how far its top is above the muzzle), `FIRE-SKIP`, `RELOADING`, or
 `ASSIGN-CLEAR` with a reason. A launcher never fires while its weapon is
@@ -719,16 +802,21 @@ Verbose adds the step-by-step detail:
 - missile launches: `MISSILE-TURN`, `MISSILE-SPEED`, `OFFBORE-LAUNCH`,
   `LOCK-ON`, `LOCK`;
 - per-weapon calibration: `KINEMATICS`, `MISSILE-PROFILE`, `AGILITY`, `TURRET-RATE`,
-  `TARGET-SIZE`, `OPEN-FIRE-RANGE`, `FIRE-RATE`, and measurements thrown
+  `TARGET-SIZE`, `OPEN-FIRE-RANGE`, `FIRE-RATE`, `RELOAD-TIME`, and measurements thrown
   away as glitches (`LEAD-SAMPLE-REJECT`; see **Learning in play**);
 - layered reserve: `RESERVE`, `SATURATION`;
-- every enemy shot fired (`MUNITION`) and munition proxy behaviour
-  (`PROXY-ATTACH`, `PROXY-LOW`);
+- every enemy shot fired (`MUNITION`);
 - rejected detections (`DETECT-REJECT`) and per-weapon `DISCOVERY` lines;
 - each turning radar's task and search dwells (`RADAR-TASK`);
 - each sensor vehicle's first sight of each munition (`SIGHTED`): how long
   after it was fired, how long its radar had been on, and where its beam
   pointed.
+
+**Munition probe** (debug console, on the server): `[] call
+aegism_intercept_fnc_debugProbeMunitions;` measures each new ammo type in
+flight against every LOD `lineIntersectsSurfaces` knows (`PROBE`): whether
+any can hit that projectile, and if so its real length, width and height.
+`[false] call ...` stops it.
 
 **Site status hint** (CBA setting "AEGIS-M > Debug > Site Status Hint", off
 by default) shows a live board in the hint box: the nearest Site's vehicles
@@ -833,7 +921,7 @@ envelope, and all threat classes are engaged.
 | Min Range (m) | 0 | Extra minimum on top of the missile's own (MIM-145: 1000 m), for where the missile meets the target. |
 | Max Range (m) | 0 | 0 = the missile's own reach (MIM-145: 16000 m). Judged where the missile meets the target, so it fires at an incoming round still beyond this. |
 | Missiles per Target | 1 | Missiles fired before waiting for the result; re-engages if all miss. |
-| Seconds Between Missiles | 0 | Minimum gap between missiles from one launcher. 0 = Auto: each launcher's own fire rate, the `reloadTime` of its weapon's fire mode, which scales with the missile (MIM-145 Defender 4 s, Mk49 Spartan 2 s, Mk21 Centurion 1 s). The RPT logs each launcher's rate as `FIRE-RATE`. |
+| Seconds Between Missiles | 0 | Minimum gap between missiles from one launcher. 0 = Auto: each launcher's own fire rate, the `reloadTime` of its weapon's fire mode, which scales with the missile (MIM-145 Defender 4 s, Mk49 Spartan 2 s, Mk21 Centurion 1 s). The RPT logs each launcher's rate as `FIRE-RATE`. The game may ready the next missile more slowly than that; AEGIS-M measures it and plans on the longer of the two (`RELOAD-TIME`). |
 | Max Off-Bore Launch While Swinging (deg) | 20 | The most a launcher that can move may fire away from the intercept before its turret is round, leaving the missile to turn. A fixed mount -- a vertical launch cell -- is exempt: it can only fire off-bore. See **Launching off-bore**. |
 | Max Off-Bore Launch At Turret Limit (deg) | 30 | The same, once its turret is as close as it can get: at its elevation or traverse limit, or a mount that can't move on one axis. |
 
@@ -867,9 +955,10 @@ envelope, and all threat classes are engaged.
 |---|---|---|
 | Going-Live Warning | Base alarm | Sounds from the moment the Site commits a weapon to a target (before its first shot) until the time below after its last shot. |
 | Incoming Alarm | Auto | Sounds while a munition threatening a Site vehicle is inbound (seen by a Site radar in the last 3 s -- the pool's own contact expiry), and replaces the warning meanwhile. Auto: BLUFOR the NATO helicopter warning, OPFOR the CSAT one, anyone else the Klaxon. |
-| Alarm Range | 400 m | How far both alarms are heard from each speaker: 200 m, 400 m (vanilla's own alarm), 800 m, 1.5 km, 3 km or 5 km. A custom sound keeps its own range. |
+| All Clear Sound | Off | Played once from every speaker when the Site goes quiet (both alarms over), heard by players within the Alarm Range at that moment. Any of the tones below. |
+| Alarm Range | 400 m | How far the alarms are heard from each speaker: 200 m, 400 m (vanilla's own alarm), 800 m, 1.5 km, 3 km or 5 km. A custom sound keeps its own range. |
 | Warning Lasts After Last Shot (s) | 10 | How long the warning keeps going after the last missile or gun round. |
-| Custom Warning / Incoming Sound | blank | Any looping sound source class (CfgVehicles, like vanilla's `Sound_Alarm`) -- e.g. from a sound mod with a real national siren or a spoken "incoming" -- replacing that state's tone. |
+| Custom Warning / Incoming / All Clear Sound | blank | Any sound source class (CfgVehicles, like vanilla's `Sound_Alarm`) -- e.g. from a sound mod with a real national siren or a spoken "incoming" -- replacing that state's tone. A custom All Clear plays even with the tone set to Off. |
 
 The tones are the distinct alarm recordings in the base game: Base alarm
 (6.6 s cycle), Klaxon (1.6 s), Klaxon 2 (2.1 s), Siren (1.4 s),
@@ -877,11 +966,17 @@ Restricted-zone warning (4.6 s), Helicopter warning NATO (2.0 s) and CSAT
 (1.5 s), Missile-lock tone (0.2 s beep), or Off. (Vanilla's BLUFOR, OPFOR
 and Independent alarms are the same recording, so they're one tone here.)
 Each plays like vanilla's own alarm sound source: volume 1, heard to the
-Alarm Range (400 m by default, as vanilla's is), looped by the engine. The speakers are the non-vehicle objects synced to
+Alarm Range (400 m by default, as vanilla's is), one cycle after another.
+The speakers are the non-vehicle objects synced to
 the Site -- a loudspeaker prop, a lamp post, a Game Logic, but not a
 laptop (that's a status terminal) -- or the Site module itself when none
-is. Only a change of alarm state crosses the
-network. Logged as `ALARM`.
+is. The server only decides the alarm; each player's machine plays it for
+itself, wherever its camera is -- the player, Zeus or a spectator -- and
+starts it the moment the camera comes within the Alarm Range of a speaker
+(a looping engine sound source, as before, went unheard after the camera
+had been away). Players joining mid-alarm hear it too. Only a change of
+alarm state crosses the network. Logged as `ALARM`; a custom sound class
+with no file this machine can play is logged once as `ALARM-SOUND`.
 
 Range settings are real-world metres, scaled by the CBA setting AEGIS-M
 Range Scale. Launcher ranges never apply to guns, and vice versa.
@@ -890,7 +985,10 @@ Range Scale. Launcher ranges never apply to guns, and vice versa.
 Overrides** category in its own Eden attributes, with the same sections
 (not Alarms). Tick **Override Site Settings**, then change only what should
 differ for that vehicle; everything left on "Site setting" (or blank) keeps
-following the Site. Examples: set a long-range SAM's "Artillery, Mortar and
+following the Site. Nothing below it applies while it's unticked: in Zeus,
+settings entered with it off are saved but ignored, and AEGIS-M says so on
+screen and in the RPT (`OVERRIDES: ... OFF ... entered but NOT applied`).
+Ranges are in metres (3500, not 3.5). Examples: set a long-range SAM's "Artillery, Mortar and
 MLRS Rounds" to Ignore so it never spends missiles on shells, or give one
 CIWS a shorter Max Range as an inner layer, or keep one long-range search
 radar Always on while the rest stay Silent until cued, or set **Guns Used as

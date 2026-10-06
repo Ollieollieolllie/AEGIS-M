@@ -15,6 +15,7 @@ class CfgFunctions
             class defaultEngagementSettings {};
             class defaultCrew {};
             class scanForRoles {};
+            class guardSystems {};
             class radarCovers {};
             class emconUpdate {};
             class radarSchedule {};
