@@ -8,6 +8,9 @@ Description:
     collision, so an incoming round has no hitpoints for the splash to act
     on. An aircraft target is left to real splash damage.
 
+    Logged as INTERCEPT, with where: the distance from the vehicle that
+    fired it, and the height above the ground.
+
 Parameters:
     _projectile - the interceptor <OBJECT>
     _target - its target <OBJECT>
@@ -27,8 +30,14 @@ Author:
 
 params ["_projectile", "_target", "_isMunitionTarget", "_minDistance", "_hitRadius"];
 
+// Where: from the vehicle that fired it, and the height above the ground.
+private _shooter = (getShotParents _projectile) param [0, objNull];
+private _where = getPosASL _projectile;
+private _whereText = format ["%1m up", round ((ASLToAGL _where) select 2)];
+if (!isNull _shooter) then { _whereText = format ["%1m from %2, %3", round ((getPosASL _shooter) distance _where), _shooter, _whereText]; };
+
 // The munition first: the interceptor's blast then finds it already gone,
 // not shooting its sensor proxy down too (PROXY-HIT).
 if (_isMunitionTarget) then { [_target] call aegism_detect_fnc_destroyMunition; };
 triggerAmmo _projectile;
-diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " INTERCEPT: %1 hit %2 (closest %3m, hit radius %4m).", typeOf _projectile, _target, _minDistance, _hitRadius];
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " INTERCEPT: %1 hit %2 at %3 (closest %4m, hit radius %5m).", typeOf _projectile, _target, _whereText, _minDistance, _hitRadius];

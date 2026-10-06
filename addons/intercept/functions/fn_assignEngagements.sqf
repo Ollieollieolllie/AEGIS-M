@@ -60,6 +60,16 @@ Description:
        (HANDOFF) or released. A launcher's queue is soonest impact first,
        except that the claim its turret is already working keeps its place
        unless one AEGISM_WORKING_LEAD s more urgent comes (_fnQueuePlace).
+       A gun is only given a munition it has its Minimum Firing Window on
+       (CIWS setting; aegism_intercept_fnc_canEngage): after its crew's
+       reaction, its barrel's swing and the rounds' flight, that long left
+       to fire before impact, with the barrel still able to follow it. One
+       it has less on is a last-ditch shot: a gun still free once every
+       contact has been served takes the one it has the longest window on
+       (the last-ditch pass), and drops it as soon as a contact it has its
+       full window on comes. Given rockets 2-5 s from impact one after
+       another, a Cheetah hit 2 of 21 and swung away from the rest of the
+       volley.
 
     Layered reserve (munitions only): every cycle the coordinator plays
     forward each launcher tier, shortest reach first -- each launcher's own
@@ -143,6 +153,9 @@ Author:
 
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
 #define AEGISM_CIWS_IDLE_GRACE 8
+// A gun crew's reaction is capped at this (automated fire control), as its
+// engagement loop applies it (aegism_intercept_fnc_engagementLoop).
+#define AEGISM_CIWS_REACTION_CAP 1
 #define AEGISM_NEVER_FIRED_TIMEOUT 15
 #define AEGISM_CIWS_OVERRIDE_RANGE_FRACTION 0.4
 #define AEGISM_SIZE_TIE_TOLERANCE 50
@@ -229,28 +242,51 @@ private _allowlist = +(_engagementSettings getOrDefault ["targetClassAllowlist",
 
 // --- 2. Review existing assignments ---------------------------------------
 // Turrets committed to contacts, indexed by turret ([system netId, turret
-// path]) -> [[contactKey, role, holding, roundsNeeded, working], ...].
-// "holding" = still needs the turret: always for a gun; for a launcher only
-// until its salvo is away (its missiles then guide themselves and the
+// path]) -> [[contactKey, role, holding, roundsNeeded, working, lastDitch],
+// ...]. "holding" = still needs the turret: always for a gun; for a launcher
+// only until its salvo is away (its missiles then guide themselves and the
 // launcher is free for its next target). roundsNeeded = missiles the claim
 // still has to fire (0 for a gun). "working" = the launcher claim its turret
 // is on now (aegism_intercept_fnc_engagementLoop), kept ahead on its queue
-// (AEGISM_WORKING_LEAD). Indexed so the conflict and queue checks look at one
-// turret's claims, not the whole Site's for every candidate: with ~30
-// contacts, 8 weapons and 40 claims that was ~10,000 checks a run.
+// (AEGISM_WORKING_LEAD). "lastDitch" = a gun's shot with less than its
+// Minimum Firing Window (see the last-ditch pass), which it drops for a
+// contact it has its full window on. Indexed so the conflict and queue
+// checks look at one turret's claims, not the whole Site's for every
+// candidate: with ~30 contacts, 8 weapons and 40 claims that was ~10,000
+// checks a run.
 private _busy = createHashMap;
 private _fnBusyAdd = {
-    params ["_system", "_turretPath", "_contactKey", "_role", "_holding", "_rounds", ["_working", false]];
+    params ["_system", "_turretPath", "_contactKey", "_role", "_holding", "_rounds", ["_working", false], ["_lastDitch", false]];
     private _key = [netId _system, _turretPath];
     private _list = _busy get _key;
     if (isNil "_list") then { _list = []; _busy set [_key, _list]; };
-    _list pushBack [_contactKey, _role, _holding, _rounds, _working];
+    _list pushBack [_contactKey, _role, _holding, _rounds, _working, _lastDitch];
 };
 private _fnBusyRemove = {
     params ["_system", "_turretPath", "_contactKey"];
     private _list = _busy getOrDefault [[netId _system, _turretPath], []];
     private _index = _list findIf { (_x select 0) == _contactKey };
     if (_index != -1) then { _list deleteAt _index; };
+};
+// A gun drops its last-ditch shot for _newTarget, a contact it has its full
+// firing window (_window s) on (see the last-ditch pass).
+private _fnDropLastDitch = {
+    params ["_system", "_turretPath", "_newTarget", "_window"];
+    private _key = [netId _system, _turretPath];
+    private _list = _busy getOrDefault [_key, []];
+    private _fnIsLastDitch = { (_this select 1) == "ciws" && {_this param [5, false]} };
+    {
+        private _bKey = _x select 0;
+        private _records = _claims getOrDefault [_bKey, []];
+        private _index = _records findIf { (_x get "role") == "ciws" && {(_x get "system") == _system} && {((_x get "weaponInfo") select 0) isEqualTo _turretPath} };
+        if (_index != -1) then {
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ASSIGN-CLEAR: %1 (ciws) released %2 -- a last-ditch shot, dropped for %3, which it has %4s to fire at.",
+                _system, (_records select _index) get "target", _newTarget, round (_window * 10) / 10];
+            _records deleteAt _index;
+            if (_records isEqualTo []) then { _claims deleteAt _bKey; };
+        };
+    } forEach (_list select { _x call _fnIsLastDitch });
+    _busy set [_key, _list select { !(_x call _fnIsLastDitch) }];
 };
 
 // Iterates a snapshot of the keys: entries are deleted/replaced below, which
@@ -325,7 +361,7 @@ private _fnBusyRemove = {
                     ((((_record get "system") call _fnSettings) getOrDefault ["salvoSize", 1]) - (_record get "roundsFired")) max 0
                 };
                 [_record get "system", (_record get "weaponInfo") select 0, _contactKey, _record get "role", _isGun || {_roundsNeeded > 0}, _roundsNeeded,
-                    !_isGun && {_record getOrDefault ["working", false]}] call _fnBusyAdd;
+                    !_isGun && {_record getOrDefault ["working", false]}, _isGun && {_record getOrDefault ["lastDitch", false]}] call _fnBusyAdd;
             } forEach _kept;
         };
     };
@@ -363,6 +399,9 @@ _logic setVariable ["AEGISM_lastAssignWarning", "", false];
 
 // --- 3. Assign free roles ----------------------------------------------------
 private _withheldCiws = [];
+// Munitions only last-ditch shots are left for: [contactKey, [[weapon (an
+// _allWeapons entry), its eligibility entry], ...]] (the last-ditch pass).
+private _lastDitch = [];
 
 // Time to impact of every contact (aegism_intercept_fnc_timeToImpact), used
 // for ordering, launcher queues, and in-time checks alike.
@@ -419,6 +458,36 @@ if (_memberPositions isNotEqualTo [] && {count _orderedKeys > 1}) then {
 // queued RAM launchers ~2x deeper than they could fire, so the back of a
 // salvo was left to them until too late.) Worked out once per launcher per
 // run: nothing it depends on changes within a run.
+// One vehicle's crew: [its crew modifiers (aegism_intercept_fnc_
+// applyCrewModulation), whether it's in combat -- it or its Site fired within
+// the Site's live window (Warning Lasts After Last Shot), when its crew's
+// Reaction Once in Combat applies, as its engagement loop judges it (aegism_
+// intercept_fnc_engagementLoop)]. Once per vehicle per run.
+private _crewCache = createHashMap;
+private _fnCrew = {
+    params ["_candSystem"];
+    private _cached = _crewCache get (netId _candSystem);
+    if (!isNil "_cached") exitWith { _cached };
+    private _mods = _candSystem getVariable "AEGISM_resolvedCrewMods";
+    if (isNil "_mods") then {
+        private _crew = _candSystem getVariable "AEGISM_resolvedCrew";
+        if (isNil "_crew") then { _crew = [_candSystem] call aegism_system_fnc_resolveCrew; };
+        _mods = [_crew, _candSystem] call aegism_intercept_fnc_applyCrewModulation;
+    };
+    private _candNetwork = _candSystem getVariable ["AEGISM_network", objNull];
+    private _lastShotAt = (_candSystem getVariable ["AEGISM_lastShotAt", -1e9]) max (_candNetwork getVariable ["AEGISM_lastShotAt", -1e9]);
+    private _liveWindow = if (isNull _candNetwork) then { AEGISM_LIVE_WINDOW_DEFAULT } else { ([_candNetwork] call aegism_fnc_siteSettingsSource) getVariable ["alarmHold", AEGISM_LIVE_WINDOW_DEFAULT] };
+    _cached = [_mods, CBA_missionTime - _lastShotAt <= _liveWindow];
+    _crewCache set [netId _candSystem, _cached];
+    _cached
+};
+// A gun crew's reaction to a new target, as its engagement loop applies it:
+// capped at AEGISM_CIWS_REACTION_CAP, then its Reaction Once in Combat.
+private _fnGunReaction = {
+    ([_this] call _fnCrew) params ["_mods", "_inCombat"];
+    ((_mods get "reactionTime") min AEGISM_CIWS_REACTION_CAP) * ([1, _mods getOrDefault ["combatReactionMult", 1]] select _inCombat)
+};
+
 private _timingCache = createHashMap;
 private _fnLauncherTiming = {
     params ["_candSystem", "_weaponInfo"];
@@ -427,12 +496,7 @@ private _fnLauncherTiming = {
     private _cached = _timingCache get _cacheKey;
     if (!isNil "_cached") exitWith { _cached };
     private _settings = _candSystem call _fnSettings;
-    private _mods = _candSystem getVariable "AEGISM_resolvedCrewMods";
-    if (isNil "_mods") then {
-        private _crew = _candSystem getVariable "AEGISM_resolvedCrew";
-        if (isNil "_crew") then { _crew = [_candSystem] call aegism_system_fnc_resolveCrew; };
-        _mods = [_crew, _candSystem] call aegism_intercept_fnc_applyCrewModulation;
-    };
+    ([_candSystem] call _fnCrew) params ["_mods", "_inCombat"];
     private _ts = [_candSystem, _turretPath] call aegism_intercept_fnc_turretState;
     private _interval = ([_candSystem, _weaponInfo, _settings] call aegism_intercept_fnc_launcherInterval) * (_mods get "shotIntervalMult");
     private _spacing = _ts getOrDefault ["spacing", _interval / ((_mods get "reliability") max 0.05)];
@@ -441,10 +505,7 @@ private _fnLauncherTiming = {
     // applies it (aegism_intercept_fnc_engagementLoop): the full reaction
     // made it look slower than it was.
     private _reaction = _mods get "reactionTime";
-    private _candNetwork = _candSystem getVariable ["AEGISM_network", objNull];
-    private _lastShotAt = (_candSystem getVariable ["AEGISM_lastShotAt", -1e9]) max (_candNetwork getVariable ["AEGISM_lastShotAt", -1e9]);
-    private _liveWindow = if (isNull _candNetwork) then { AEGISM_LIVE_WINDOW_DEFAULT } else { ([_candNetwork] call aegism_fnc_siteSettingsSource) getVariable ["alarmHold", AEGISM_LIVE_WINDOW_DEFAULT] };
-    if (CBA_missionTime - _lastShotAt <= _liveWindow) then { _reaction = _reaction * (_mods getOrDefault ["combatReactionMult", 1]); };
+    if (_inCombat) then { _reaction = _reaction * (_mods getOrDefault ["combatReactionMult", 1]); };
     _cached = [_reaction, (_readyAt - CBA_missionTime) max 0, _spacing, _candSystem magazineTurretAmmo [_magClass, _turretPath], (_settings getOrDefault ["salvoSize", 1]) max 1];
     _timingCache set [_cacheKey, _cached];
     _cached
@@ -859,10 +920,16 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                         // conflicts with a gun on the same turret, or with
                         // its own claims when this contact can't be queued
                         // (an aircraft).
-                        private _conflict = ((_busy getOrDefault [[netId _candSystem, _candInfo select 0], []]) findIf {
+                        private _conflicts = (_busy getOrDefault [[netId _candSystem, _candInfo select 0], []]) select {
                             _x params ["_bKey", "_bRole", "_bHolding"];
                             _bKey != _contactKey && {_bHolding} && {_role == "ciws" || {_bRole == "ciws"} || {!_isMunition}}
-                        }) != -1;
+                        };
+                        private _conflict = _conflicts isNotEqualTo [];
+                        // A gun on nothing but a last-ditch shot (the last-
+                        // ditch pass, below) is free for a contact it has its
+                        // full firing window on: it drops that shot for it.
+                        private _preempts = _role == "ciws" && {_conflict} && {(_conflicts findIf { !(_x param [5, false]) }) == -1};
+                        if (_preempts) then { _conflict = false; };
                         private _avoided = _role == "launcher" && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) != -1};
                         private _reserved = _role == "launcher" && {_reserveReach > 0} && {(_candInfo select 5) > _reserveReach};
                         if (_reserved) then { _held pushBackUnique _candSystem; };
@@ -896,8 +963,17 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                             if (_queueReady >= _timeToImpact) then { _tooLate pushBack [_queueReady, _candSystem]; };
                         };
                         if (!_conflict && {!_avoided} && {!_reserved} && {!_beyond} && {_queueReady < _timeToImpact} && {_class in (_candSettings getOrDefault ["targetClassAllowlist", []])}) then {
-                            private _engage = [_candSystem, _role, _candInfo, _object, _candSettings] call aegism_intercept_fnc_canEngage;
-                            if (_engage select 0) then { _eligible pushBack [_forEachIndex, _engage param [2, 0], _engage param [4, 0]]; };
+                            // A gun: judged with its crew's reaction to a new
+                            // target, for its firing window.
+                            private _engage = [_candSystem, _role, _candInfo, _object, _candSettings, [0, _candSystem call _fnGunReaction] select (_role == "ciws")] call aegism_intercept_fnc_canEngage;
+                            // [index in _allWeapons, flight time, cue time, full
+                            // firing window, firing window s, why it's short,
+                            // drops a last-ditch shot for it] -- one dropping a
+                            // shot only for its full window.
+                            private _full = (_engage param [6, ""]) == "";
+                            if ((_engage select 0) && {!_preempts || _full}) then {
+                                _eligible pushBack [_forEachIndex, _engage param [2, 0], _engage param [4, 0], _full, _engage param [5, 1e10], _engage param [6, ""], _preempts];
+                            };
                         };
                     };
                 } forEach _allWeapons;
@@ -932,6 +1008,21 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                     _eligible = _free;
                 };
 
+                // Guns with less than their Minimum Firing Window on it
+                // (aegism_intercept_fnc_canEngage): a last-ditch shot. Left
+                // for the last-ditch pass after every contact is served, so a
+                // gun only spends its time on one with nothing better to do --
+                // given rockets 2-5 s from impact one after another, a Cheetah
+                // hit 2 of 21 and swung away from the rest of the volley.
+                if (_role == "ciws" && {_eligible isNotEqualTo []}) then {
+                    private _full = _eligible select { _x select 3 };
+                    if (_full isEqualTo []) then {
+                        private _candidates = (_eligible select { !(_x select 6) }) apply { [_allWeapons select (_x select 0), _x] };
+                        if (_candidates isNotEqualTo []) then { _lastDitch pushBack [_contactKey, _candidates]; };
+                    };
+                    _eligible = _full;
+                };
+
                 if (_eligible isNotEqualTo []) then {
                     private _allowed = true;
 
@@ -957,7 +1048,7 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                     ([_eligible, _role, _contactKey, _contactSize, _targetPos, _timeToImpact] call _fnPickWeapon) params ["_weaponIndex", "_readyIn", "_inTime"];
                     if (_allowed && {_weaponIndex >= 0}) then {
                         (_allWeapons select _weaponIndex) params ["_bestSystem", "_bestRole", "_bestInfo"];
-                        (_eligible select (_eligible findIf { (_x select 0) == _weaponIndex })) params ["", "_flightTime", ["_cueIn", 0]];
+                        (_eligible select (_eligible findIf { (_x select 0) == _weaponIndex })) params ["", "_flightTime", ["_cueIn", 0], "", ["_window", 1e10], "", ["_preempting", false]];
 
                         // A launcher only takes a munition it can fire at in
                         // time: given one it can't, it swung onto it while the
@@ -986,6 +1077,7 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                                 _hasCiws = true;
                             };
 
+                            if (_preempting) then { [_bestSystem, _bestInfo select 0, _object, _window] call _fnDropLastDitch; };
                             _existing pushBack createHashMapFromArray [
                                 ["target", _object],
                                 ["class", _class],
@@ -1060,7 +1152,11 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                     case (_candRole == "launcher" && {_cover > 0} && {(_candInfo select 5) > _cover}): { format ["held in reserve for the %1m tier", round _cover] };
                     default {
                         private _engage = [_candSystem, _candRole, _candInfo, _object, _candSettings] call aegism_intercept_fnc_canEngage;
-                        if (_engage select 0) then { "could engage it, but is busy or would be too late" } else { _engage select 1 }
+                        switch (true) do {
+                            case !(_engage select 0): { _engage select 1 };
+                            case ((_engage param [6, ""]) != ""): { format ["only a last-ditch shot (%1), and busy", _engage select 6] };
+                            default { "could engage it, but is busy or would be too late" };
+                        }
                     };
                 }]
             };
@@ -1071,6 +1167,58 @@ if (count _tierReaches > 1 && {_anyFree}) then {
         if (_existing isNotEqualTo []) then { _claims set [_contactKey, _existing]; };
     };
 } forEach _orderedKeys;
+
+// --- Last-ditch: guns with nothing better -------------------------------------
+// A munition every gun that could take it has less than its Minimum Firing
+// Window on was left out above. A gun still free now that every contact has
+// been served takes the one it has the longest window on: little chance, but
+// nothing better for it to do. It drops it the moment a contact it has its
+// full window on comes (_fnDropLastDitch).
+if (_lastDitch isNotEqualTo []) then {
+    // [window, index] pairs, so sort only ever compares numbers.
+    private _options = [];
+    private _order = [];
+    {
+        _x params ["_contactKey", "_candidates"];
+        {
+            _order pushBack [(_x select 1) param [4, 0], count _options];
+            _options pushBack [_contactKey, _x select 0, _x select 1];
+        } forEach _candidates;
+    } forEach _lastDitch;
+    _order sort false;
+    {
+        (_options select (_x select 1)) params ["_contactKey", "_weapon", "_eligibleEntry"];
+        _eligibleEntry params ["", "_flightTime", ["_cueIn", 0], "", "", ["_short", ""]];
+        _weapon params ["_candSystem", "_candRole", "_candInfo"];
+        private _weaponIndex = _allWeapons find _weapon;
+        private _existing = _claims getOrDefault [_contactKey, []];
+        private _entry = _pool getOrDefault [_contactKey, createHashMap];
+        private _object = _entry getOrDefault ["object", objNull];
+        private _busyNow = ((_busy getOrDefault [[netId _candSystem, _candInfo select 0], []]) findIf { (_x select 0) != _contactKey && {_x select 2} }) != -1;
+        if (_weaponIndex != -1 && {!_busyNow} && {!isNull _object} && {alive _object} && {(_existing findIf { (_x get "role") == "ciws" }) == -1}) then {
+            _existing pushBack createHashMapFromArray [
+                ["target", _object],
+                ["class", _entry get "class"],
+                ["system", _candSystem],
+                ["role", _candRole],
+                ["weaponInfo", _candInfo],
+                ["assignedAt", CBA_missionTime],
+                ["lastShotAt", -1],
+                ["roundsFired", 0],
+                ["interceptors", []],
+                ["flightTime", _flightTime],
+                ["cued", _cueIn > 0],
+                ["lastDitch", true]
+            ];
+            _claims set [_contactKey, _existing];
+            [_candSystem, _candInfo select 0, _contactKey, _candRole, true, 0, false, true] call _fnBusyAdd;
+            _allWeapons deleteAt _weaponIndex;
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ASSIGN: %1 (%2, ciws %3) -> %4 (%5, %6m, %7m AGL), impact in %8s -- last-ditch: %9; nothing better for it now.",
+                _candSystem, typeOf _candSystem, _candInfo select 1, _object, _entry get "class", round (_candSystem distance _object), round (_object call _fnHeight),
+                round (_ttiByKey getOrDefault [_contactKey, 0]), _short];
+        };
+    } forEach _order;
+};
 
 _logic setVariable ["AEGISM_claims", _claims, false];
 _logic setVariable ["AEGISM_withheldCiws", _withheldCiws, false];

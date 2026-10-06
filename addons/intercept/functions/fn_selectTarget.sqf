@@ -70,7 +70,8 @@ if (_kept isNotEqualTo []) exitWith { _kept };
 
 PERF_INC(PERF_SELECT_FULL);
 
-// [object, class, weaponInfo, in open-fire range, cued] for every candidate
+// [object, class, weaponInfo, in open-fire range, cued, full firing window]
+// for every candidate
 // some ready weapon reaches -- or, for a gun, will reach within its cue time
 // (aegism_intercept_fnc_canEngage, "Cue Before In Range").
 private _engageable = [];
@@ -79,10 +80,12 @@ private _engageable = [];
     if (!isNull _object && {alive _object} && {_class in _allowlist}) then {
         private _inRange = false;
         private _cued = false;
+        private _full = true;
         private _idx = _weapons findIf {
             private _weaponInfo = _x;
             private _engage = [_system, _role, _weaponInfo, _object, _engagementSettings] call aegism_intercept_fnc_canEngage;
             _cued = (_engage param [4, 0]) > 0;
+            _full = (_engage param [6, ""]) == "";
             if ((_engage select 0) && {!_cued}) then {
                 _inRange = _role != "ciws" || {
                     // As the gun's own aim judges it (aegism_intercept_fnc_aimWeapon).
@@ -98,12 +101,18 @@ private _engageable = [];
             _engage select 0
         };
         if (_idx != -1) then {
-            _engageable pushBack [_object, _class, _weapons select _idx, _inRange, _cued];
+            _engageable pushBack [_object, _class, _weapons select _idx, _inRange, _cued, _full];
         };
     };
 } forEach _candidates;
 
 if (_engageable isEqualTo []) exitWith { [objNull, []] };
+
+// A gun: targets it has its full firing window on come first (aegism_
+// intercept_fnc_canEngage, Minimum Firing Window). One it has less on is a
+// last-ditch shot, taken only with nothing better.
+private _fullOnly = _engageable select { _x select 5 };
+if (_fullOnly isNotEqualTo []) then { _engageable = _fullOnly; };
 
 // Targets it could open fire on now come first.
 private _inRangeOnly = _engageable select { _x select 3 };

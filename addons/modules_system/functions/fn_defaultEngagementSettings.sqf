@@ -44,6 +44,11 @@ Returns:
         ciwsCueAhead - seconds; a CIWS gun is assigned a target this long
             before it comes into reach, so it's reacted and on it by then
             (aegism_intercept_fnc_canEngage); 0 = only once in reach <NUMBER>
+        ciwsMinWindow - seconds; a CIWS gun is only given an incoming
+            munition it has this long to fire at before impact; one with
+            less is a last-ditch shot, taken only with nothing better
+            (aegism_intercept_fnc_assignEngagements); 0 = any it can reach
+            in time <NUMBER>
         engageFriendlyThreats - also engage friendly/neutral munitions that
             are predicted to hit the Site <BOOLEAN>
         engageOnlyThreats - a hostile artillery round or rocket is only
@@ -101,6 +106,7 @@ createHashMapFromArray [
     ["ciwsMinElevation", 5],
     ["ciwsOpenFireChance", 40],
     ["ciwsCueAhead", 5],
+    ["ciwsMinWindow", 3],
     ["engageFriendlyThreats", true],
     ["engageOnlyThreats", true],
     ["friendlyThreatRadius", 0],

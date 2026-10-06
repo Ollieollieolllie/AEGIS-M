@@ -47,11 +47,23 @@ Description:
     recordMissileTurn, MISSILE-TURN) -- what an off-bore launch is planned
     with (aegism_intercept_fnc_launchSolution).
 
+    Speed: a flight that ends in its intercept is scored against its flight
+    simulated from config (aegism_intercept_fnc_recordMissileSpeed,
+    MISSILE-SPEED): its time, and the length of the path it actually flew
+    (summed frame by frame) -- not the straight line from where it was
+    launched, which left out the turn after an off-bore launch: the lead
+    solver models that turn itself, and the RIM-116's factor counted it a
+    second time (predictions ~9% long once it applied, 2026-10-06). A
+    missile whose seeker changed to another munition (above) isn't
+    measured for either. Its speed is sampled every second after launch, for
+    the log's check of the simulation -- logged however the flight ends.
+
 Parameters:
     _projectile - the missile <OBJECT>
     _target - the target it was fired at <OBJECT>
     _launch - optional, its launch plan [off-bore deg, predicted flight s,
-        fired at] (aegism_intercept_fnc_fireWeapon) <ARRAY>
+        fired at, weapon class, magazine class] (aegism_intercept_fnc_
+        fireWeapon) <ARRAY>
 
 Returns:
     Nothing
@@ -83,14 +95,18 @@ private _launchPos = getPosASLVisual _projectile;
 [{
     params ["_args", "_pfhHandle"];
     _args params ["_projectile", "_target", "_hitRadius", "_armDistance", "_isGuided", "_launchPos", "_isMunitionTarget", "_lastProjPos", "_lastTargetPos", "_lastSeparation", "_hasClosed",
-        "_ammoClass", "_launch", "_turn"];
+        "_ammoClass", "_launch", "_turn", "", "_retargeted", "_speeds", "_pathFlown"];
     // Turn measurement (see header): [last direction, last time, window
     // angle, window time, fastest window deg/s].
     _turn params ["_lastDir", "_lastTime", "_windowAngle", "_windowTime", "_peakRate"];
 
     if (isNull _projectile || {!alive _projectile}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-        if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, -1] call aegism_intercept_fnc_recordMissileTurn; };
+        if (_isGuided && {_launch isNotEqualTo []}) then {
+            [_ammoClass, _launch, _peakRate, -1, _retargeted] call aegism_intercept_fnc_recordMissileTurn;
+            [_launch param [3, ""], _launch param [4, ""], CBA_missionTime - (_launch param [2, CBA_missionTime]), -1, _retargeted, _speeds,
+                "ended without AEGIS-M's fuse seeing its intercept (it missed, the game's own proximity fuse went off, or its life ran out)"] call aegism_intercept_fnc_recordMissileSpeed;
+        };
     };
 
     // Lost: its target gone before it got there, or its seeker on something
@@ -112,6 +128,9 @@ private _launchPos = getPosASLVisual _projectile;
                 _args set [8, getPosASLVisual _homing];
                 _args set [9, _projectile distance _homing];
                 _args set [14, str _homing];
+                // Its turns and flight time are no longer all toward the one
+                // intercept: not measured (MISSILE-TURN, MISSILE-SPEED).
+                _args set [15, true];
                 _why = "";
             } else {
                 _why = format ["its seeker turned from %1 to %2 (%3)", _args select 14, _homing, typeOf _homing];
@@ -120,7 +139,11 @@ private _launchPos = getPosASLVisual _projectile;
     };
     if (_why != "") exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-        if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, -1] call aegism_intercept_fnc_recordMissileTurn; };
+        if (_isGuided && {_launch isNotEqualTo []}) then {
+            [_ammoClass, _launch, _peakRate, -1, _args select 15] call aegism_intercept_fnc_recordMissileTurn;
+            [_launch param [3, ""], _launch param [4, ""], CBA_missionTime - (_launch param [2, CBA_missionTime]), -1, _args select 15, _speeds,
+                format ["self-destructed: %1", _why]] call aegism_intercept_fnc_recordMissileSpeed;
+        };
         if (_isGuided) then { [_projectile, _target, _why] call aegism_intercept_fnc_interceptorLost; };
     };
 
@@ -134,9 +157,15 @@ private _launchPos = getPosASLVisual _projectile;
             _windowTime = 0;
         };
         _args set [13, [_dir, CBA_missionTime, _windowAngle, _windowTime, _peakRate]];
+        // Its speed each whole second after launch (see header).
+        if (_launch isNotEqualTo [] && {CBA_missionTime - (_launch param [2, CBA_missionTime]) >= (count _speeds) + 1}) then {
+            _speeds pushBack (vectorMagnitude velocity _projectile);
+        };
     };
 
     private _projPos = getPosASLVisual _projectile;
+    _pathFlown = _pathFlown + (_projPos vectorDistance _lastProjPos);
+    _args set [17, _pathFlown];
     private _targetPos = getPosASLVisual _target;
     private _rel0 = _lastProjPos vectorDiff _lastTargetPos;
     private _rel1 = _projPos vectorDiff _targetPos;
@@ -151,7 +180,11 @@ private _launchPos = getPosASLVisual _projectile;
 
     if (_minDistance <= _hitRadius && {(_launchPos distance _projPos) >= _armDistance}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
-        if (_isGuided && {_launch isNotEqualTo []}) then { [_ammoClass, _launch, _peakRate, CBA_missionTime - (_launch param [2, CBA_missionTime])] call aegism_intercept_fnc_recordMissileTurn; };
+        if (_isGuided && {_launch isNotEqualTo []}) then {
+            private _flown = CBA_missionTime - (_launch param [2, CBA_missionTime]);
+            [_ammoClass, _launch, _peakRate, _flown, _args select 15] call aegism_intercept_fnc_recordMissileTurn;
+            [_launch param [3, ""], _launch param [4, ""], _flown, _pathFlown, _args select 15, _speeds, "", _launchPos distance _projPos] call aegism_intercept_fnc_recordMissileSpeed;
+        };
         [_projectile, _target, _isMunitionTarget, _minDistance, _hitRadius] call aegism_intercept_fnc_interceptHit;
     };
 
@@ -164,4 +197,4 @@ private _launchPos = getPosASLVisual _projectile;
     _args set [9, _separation];
     _args set [10, _hasClosed];
 }, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosASLVisual _target, _launchPos distance (getPosASLVisual _target), false,
-    typeOf _projectile, _launch, [vectorDirVisual _projectile, CBA_missionTime, 0, 0, 0], str _target]] call CBA_fnc_addPerFrameHandler;
+    typeOf _projectile, _launch, [vectorDirVisual _projectile, CBA_missionTime, 0, 0, 0], str _target, false, [], 0]] call CBA_fnc_addPerFrameHandler;

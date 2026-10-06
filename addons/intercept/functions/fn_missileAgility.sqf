@@ -25,8 +25,10 @@ Description:
             engine - MEASURED: the game's maneuvrability has no unit, so
                 the rate comes from AEGIS-M's own missiles in flight
                 (aegism_intercept_fnc_interceptorPFH, MISSILE-TURN): the
-                fastest sustained turn seen on a flight that had to turn.
-                0 until one has.
+                fastest sustained turn seen on a flight that had to turn --
+                once two have, the second fastest, so one bad flight can't
+                set it (aegism_intercept_fnc_recordMissileTurn). 0 until one
+                has.
         post-launch cone - degrees off its flight a target can be and
             still be guided to:
             ace - 180 when it locks on after launch (the SAM default):

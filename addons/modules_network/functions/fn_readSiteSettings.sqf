@@ -48,6 +48,7 @@ private _allowlist = [];
         ["ciwsMinElevation", _logic getVariable ["ciwsMinElevation", 5]],
         ["ciwsOpenFireChance", _logic getVariable ["ciwsOpenFireChance", 40]],
         ["ciwsCueAhead", _logic getVariable ["ciwsCueAhead", 5]],
+        ["ciwsMinWindow", _logic getVariable ["ciwsMinWindow", 3]],
         ["engageFriendlyThreats", _logic getVariable ["engageFriendlyThreats", true]],
         ["engageOnlyThreats", _logic getVariable ["engageOnlyThreats", true]],
         ["friendlyThreatRadius", _logic getVariable ["friendlyThreatRadius", 0]],

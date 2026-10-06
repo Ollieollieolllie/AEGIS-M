@@ -51,7 +51,8 @@ Description:
            AEGISM_LOS_REUSE s.
         5. Alignment from step 1.
         6. Fire (aegism_intercept_fnc_fireWeapon). A failed crew
-           reliability roll costs one fire cycle (nextAttemptAt). A Site
+           reliability roll costs a launcher one fire cycle, and a gun its
+           crew's reaction (nextAttemptAt). A Site
            launcher's lost cycle holds the whole turret ("holdUntil") and
            flags the assignment "crewFailed": the coordinator re-tasks the
            contact to another weapon rather than leaving it with a crew that
@@ -81,6 +82,7 @@ Author:
 
 #include "..\..\main\perf.hpp"
 #include "..\..\main\rpt.hpp"
+#include "..\calibration.hpp"
 
 #define AEGISM_CIWS_REACTION_CAP 1
 // The Site's Warning Lasts After Last Shot default: how long after its last
@@ -431,10 +433,11 @@ private _fnExecute = {
                 // targets, which the configured interval alone doesn't) --
                 // the Site coordinator plans each launcher's queue with it.
                 // A gap longer than twice the estimate was idle time, not
-                // firing rate, and is ignored.
+                // firing rate, and is ignored; one shorter than the launcher's
+                // own shot interval allows was miscounted (calibration.hpp).
                 private _spacing = _ts getOrDefault ["spacing", _interval / ((_crewMods get "reliability") max 0.05)];
                 private _gap = CBA_missionTime - (_ts getOrDefault ["shotAt", -1e9]);
-                if (_gap <= 2 * _spacing) then {
+                if (_gap <= 2 * _spacing && {_gap >= AEGISM_SPACING_MIN_RATIO * _interval}) then {
                     _ts set ["spacing", (1 - AEGISM_SPACING_SMOOTHING) * _spacing + AEGISM_SPACING_SMOOTHING * _gap];
                 };
             };
@@ -442,7 +445,10 @@ private _fnExecute = {
         };
         case 0: {
             _state set ["status", "crewFailed"];
-            _state set ["nextAttemptAt", CBA_missionTime + _interval];
+            // A launcher loses its fire cycle; a gun its crew's reaction, not
+            // a whole pause between bursts -- a Cheetah lost 1 s at a time on
+            // rockets it had 3-7 s to fire at.
+            _state set ["nextAttemptAt", CBA_missionTime + ([_interval, _reactionTime] select _isCiws)];
             // Site launcher, nothing fired at this contact yet: the crew's
             // lost cycle holds the turret, and the coordinator hands the
             // contact to another weapon (aegism_intercept_fnc_assign

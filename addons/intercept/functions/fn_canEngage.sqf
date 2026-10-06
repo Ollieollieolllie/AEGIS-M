@@ -8,7 +8,7 @@ Description:
     fnc_selectTarget) share.
 
         launcher - a missile can be put onto it (aegism_intercept_fnc_
-            launchSolution): it can catch it on its real speed profile,
+            launchSolution): it can catch it on its simulated flight,
             launched along the closest direction the turret can reach --
             straight, or off-bore within the missile's post-launch cone and
             turn (a vertical launch cell, a turret at its limit) -- and the
@@ -26,8 +26,20 @@ Description:
             -- its range, the target's height THERE, and the minimum
             elevation of the barrel aimed there -- within the turret's own
             elevation limits, and reachable in time: the barrel's swing onto
-            it (aegism_intercept_fnc_turretSlewTime) plus the rounds' flight
-            before the target comes down.
+            it (aegism_intercept_fnc_turretSlewTime) or the crew's reaction,
+            whichever is longer, plus the rounds' flight before the target
+            comes down. Like a missile, it's judged where the rounds MEET
+            the target: a gun opens fire so its rounds arrive just as the
+            target comes into reach (aegism_intercept_fnc_computeLeadPoint).
+            Against an incoming munition it also reports its FIRING WINDOW
+            -- how long it can fire before the last rounds that still arrive
+            before impact -- and whether that's short of the CIWS setting
+            "Minimum Firing Window" (3 s by default), or the barrel can't
+            follow the target that long (past a turret limit, or out of
+            reach). A gun assigned rockets 2-5 s from impact hit 2 of 21;
+            6-9 s, 14 of 19. The Site coordinator only gives a gun such a
+            last-ditch shot when it has nothing better (aegism_intercept_
+            fnc_assignEngagements).
 
     Judging a gun at the intercept point is what stops it spending ammunition
     on a jet flying away from it: the jet may be 2000m away "inside" a 2500m
@@ -59,12 +71,16 @@ Parameters:
     _weaponInfo - weaponInfo, see aegism_system_fnc_discoverCapabilities <ARRAY>
     _target - the target object <OBJECT>
     _settings - that vehicle's resolved engagement settings <HASHMAP>
+    _reaction - optional, gun only: seconds before its crew can fire, from
+        now (a new assignment's crew reaction). Default 0 <NUMBER>
 
 Returns:
     [canEngage <BOOLEAN>, reason if not <STRING>, flight time to the
      intercept in seconds, if it can (0 if unknown) <NUMBER>, and for a gun
-     that can: distance to the intercept, m <NUMBER>, and if it's only cued
-     (not in reach yet): the cue time it was judged at, s <NUMBER>]
+     that can: distance to the intercept, m <NUMBER>, the cue time it was
+     judged at if it's only cued (not in reach yet), s, else 0 <NUMBER>, its
+     firing window, s (1e10 for a target that won't come down) <NUMBER>, and
+     why that window is short ("" if it isn't) <STRING>]
 
 Examples:
     [_cheetah, "ciws", _weaponInfo, _jet, _settings] call aegism_intercept_fnc_canEngage;
@@ -77,7 +93,7 @@ Author:
 
 #define AEGISM_GRAVITY 9.80665
 
-params ["_system", "_role", "_weaponInfo", "_target", "_settings"];
+params ["_system", "_role", "_weaponInfo", "_target", "_settings", ["_reaction", 0]];
 
 PERF_INC(PERF_CAN_ENGAGE);
 
@@ -198,10 +214,32 @@ if (!_isCiws) then {
         // come down unengaged.
         if (_timeToImpact < 0) then { _timeToImpact = [_target, _targetClass, [getPosASL _system]] call aegism_intercept_fnc_timeToImpact; };
         private _slewTime = [_system, _weaponInfo select 0, _weaponInfo select 1, _origin vectorFromTo _aimPoint] call aegism_intercept_fnc_turretSlewTime;
-        if (_timeToImpact < 1e9 && {(_slewTime max _delay) + (_flightTime max 0) >= _timeToImpact}) exitWith {
-            [false, format ["can't get on it in time (barrel swing %1s + round flight %2s vs impact in %3s)", round (_slewTime * 10) / 10, round (_flightTime * 10) / 10, round (_timeToImpact * 10) / 10]]
+        // It opens fire once its crew has reacted, its barrel is round and
+        // the burst's time has come, whichever is last.
+        private _openAt = (_slewTime max _delay) max _reaction;
+        if (_timeToImpact < 1e9 && {_openAt + (_flightTime max 0) >= _timeToImpact}) exitWith {
+            [false, format ["can't get on it in time (%1 %2s + round flight %3s vs impact in %4s)", ["barrel swing", "crew reaction"] select (_reaction > (_slewTime max _delay)),
+                round (_openAt * 10) / 10, round (_flightTime * 10) / 10, round (_timeToImpact * 10) / 10]]
         };
-        [true, "", _flightTime max 0, _interceptDistance]
+        // Its firing window (see header): from then until the last burst
+        // whose rounds still arrive before impact.
+        private _window = if (_timeToImpact < 1e9) then { _timeToImpact - _openAt - (_flightTime max 0) } else { 1e10 };
+        private _short = "";
+        if (_window < 1e9) then {
+            private _minWindow = _settings getOrDefault ["ciwsMinWindow", 3];
+            if (_window < _minWindow) exitWith {
+                _short = format ["only %1s to fire at it before impact, under its %2s Minimum Firing Window", round (_window * 10) / 10, _minWindow];
+            };
+            // And it can still follow it at the end of that window: a rocket
+            // coming down steeply goes past a turret's elevation limit (the
+            // Cheetah's 80 degrees) in its last seconds, and the gun was
+            // handed ones it then held fire on or dropped.
+            ([_system, _origin, _target, _weaponInfo, _role, false, _openAt + _minWindow, _ballistic, _leadCorrection] call aegism_intercept_fnc_computeLeadPoint) params ["_endAim", "_endFeasible"];
+            if (!_endFeasible || {!(([_system, _weaponInfo select 0, _origin vectorFromTo _endAim] call aegism_intercept_fnc_turretCanPoint) select 0)}) then {
+                _short = format ["it goes beyond the turret's limits or reach within its %1s Minimum Firing Window", _minWindow];
+            };
+        };
+        [true, "", _flightTime max 0, _interceptDistance, 0, _window, _short]
     };
 
     private _now = [0] call _fnSolve;
@@ -211,6 +249,6 @@ if (!_isCiws) then {
     private _cueAhead = _settings getOrDefault ["ciwsCueAhead", 5];
     if ((_now select 0) || {_cueAhead <= 0}) exitWith { _now };
     private _cued = [_cueAhead] call _fnSolve;
-    if (_cued select 0) exitWith { _cued + [_cueAhead] };
+    if (_cued select 0) exitWith { _cued set [4, _cueAhead]; _cued };
     _now
 }

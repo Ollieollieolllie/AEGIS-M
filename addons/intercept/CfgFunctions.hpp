@@ -13,6 +13,8 @@ class CfgFunctions
             class turretConfig {};
             class turretState {};
             class computeLeadPoint {};
+            class missileProfile {};
+            class missileProfileAt {};
             class missileFlightTime {};
             class lockTurret {};
             class gunnerLock {};
@@ -25,6 +27,7 @@ class CfgFunctions
             class missileAgility {};
             class launchSolution {};
             class recordMissileTurn {};
+            class recordMissileSpeed {};
             class envelopeBounds {};
             class inEnvelope {};
             class canEngage {};

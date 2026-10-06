@@ -637,6 +637,16 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "5";
             };
+            class CiwsMinWindow
+            {
+                displayName = "Minimum Firing Window (s)";
+                tooltip = "A CIWS gun is only given an incoming munition it will have at least this many seconds to fire at -- after its crew's reaction, its barrel's swing and the rounds' flight, before impact, with the barrel still able to follow it. One with less is a last-ditch shot: a gun only takes it with nothing better to do, and drops it for a munition it has its full window on, instead of swinging away from the rest of a volley. Default 3. 0 = any munition it can reach in time.";
+                property = "ciwsMinWindow";
+                control = "Edit";
+                expression = "_this setVariable ['ciwsMinWindow', _value];";
+                typeName = "NUMBER";
+                defaultValue = "3";
+            };
             class CiwsBurstMin
             {
                 displayName = "Burst Length Min (s)";

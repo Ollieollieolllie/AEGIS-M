@@ -63,6 +63,10 @@ params ["_system", "_ts", "_target", "_targetClass", "_angle", "_tolerance", "_f
 
 private _inRange = _interceptDistance <= _openFireRange && {_interceptDistance >= _minRange};
 private _aligned = _feasible && {_inRange} && {_angle <= _tolerance};
+// Firing only because of the last-ditch rule, barrel off its gate: rounds
+// that say nothing about the gun's aim, so they aren't spotted
+// (aegism_intercept_fnc_ciwsRounds, "gateOverride").
+private _override = false;
 
 // Settled: the angle hasn't set a new best for AEGISM_AIM_SETTLE_TICKS
 // engagement ticks -- the turret is as close as it's going to get.
@@ -77,6 +81,7 @@ if (_feasible && {_inRange} && {!_aligned} && {CBA_missionTime - _improvedAt >= 
     if (_timeToImpact <= (_settings getOrDefault ["ciwsBurstMax", 5])) then {
         if (_angle <= AEGISM_LAST_DITCH_MAX_GATES * _tolerance) then {
             _aligned = true;
+            _override = true;
             if ((_ts getOrDefault ["lastDitchLogged", objNull]) != _target) then {
                 _ts set ["lastDitchLogged", _target];
                 if (AEGISM_RPT_VERBOSE) then {
@@ -97,4 +102,5 @@ if (_feasible && {_inRange} && {!_aligned} && {CBA_missionTime - _improvedAt >= 
 };
 
 _ts set ["aim_ciws", [_angle, _tolerance, CBA_missionTime, _target, _feasible, _aligned, _aimPoint, _inRange]];
+_ts set ["gateOverride", _override];
 _aligned

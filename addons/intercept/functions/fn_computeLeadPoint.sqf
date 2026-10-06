@@ -8,8 +8,9 @@ Description:
 
     The target is projected forward by the weapon's time of flight to the
     projected point (velocity plus measured acceleration, zero-effort-miss
-    style), iterated to convergence. All kinematics come from real config,
-    read once per weapon + magazine (aegism_intercept_fnc_weaponKinematics):
+    style), solved for the moment the two agree (see "Solving" below). All
+    kinematics come from real config, read once per weapon + magazine
+    (aegism_intercept_fnc_weaponKinematics):
 
         gun (ciws) - muzzle velocity v0 from CfgMagazines initSpeed
             (overridden per engine rules by CfgWeapons initSpeed: > 0
@@ -30,12 +31,13 @@ Description:
             The one approximation: drag is taken at the round's speed along
             its line; gravity's own small change to that speed is second
             order.
-        missile (launcher) - CfgMagazines initSpeed at launch, then CfgAmmo
-            thrust (m/s^2) until CfgAmmo maxSpeed or thrustTime, then that
-            speed (e.g. MIM-145: 45 m/s, +450 m/s^2, 850 m/s). No drop: the
-            missile is guided. Pointing the launcher at this point instead of
-            the target's current position saves the missile a hard turn
-            right off the rail.
+        missile (launcher) - its flight simulated from config (aegism_
+            intercept_fnc_missileProfile: launch speed, the motor's thrust
+            and fade, drag) -- its flight times scaled by how fast it has
+            really flown this mission (aegism_intercept_fnc_
+            recordMissileSpeed). No drop: the missile is guided. Pointing
+            the launcher at this point instead of the target's current
+            position saves the missile a hard turn right off the rail.
         missile launched OFF-BORE (_launchDir given, with the missile's turn
             rate, aegism_intercept_fnc_missileAgility) - a vertical launch
             cell, a turret at its limit, or one fired before it's round: the
@@ -52,19 +54,36 @@ Description:
 
     FEASIBLE only if the solution converges inside the weapon's own reach
     (weaponInfo maxRange, from config) and within the round's own lifetime
-    (CfgAmmo timeToLive, e.g. 6s for vanilla bullets). For a gun, every step
-    of the solve has to be inside them, starting with the target where it is
-    now; for a missile only the meeting point it ends on: a missile can be
-    launched at a target still beyond its reach and meet it inside. A target receding
+    (CfgAmmo timeToLive, e.g. 6s for vanilla bullets) -- judged at the
+    meeting point it ends on, not where the target is now: a round or
+    missile can be fired at a target still beyond its reach and meet it
+    inside. A target receding
     faster than the round can close -- a jet flying away from a gun -- has
-    no solution: the projected point runs off to infinity. The previous
-    version didn't check this and iterated to NaN (RPT "Error Type Not a
-    Number" in this file), and CIWS kept firing at targets it could never
-    reach. An infeasible solution returns the target's current position as
-    the aim point.
+    no solution: the meeting never settles. The previous version didn't
+    check this and iterated to NaN (RPT "Error Type Not a Number" in this
+    file), and CIWS kept firing at targets it could never reach. An
+    infeasible solution returns the target's current position as the aim
+    point.
+
+    Solving: the meeting time t is where the flight time to the target's
+    position at t is t itself. Before t is passed, the flight is longer
+    than t; after, shorter. Until the search has seen a time past the
+    meeting, it steps on to the flight time (which only moves later); then
+    by secant steps inside the bracket it has, halving it when a step would
+    leave it, until the two agree within AEGISM_LEAD_SOLVE_TOLERANCE.
+    Simply setting t to the flight time over and over (five times, as this
+    used to) only settles while the target closes slower than the round or
+    missile flies. A missile coasting late in its flight doesn't: a Stinger
+    at ~300 m/s on a rocket closing at ~240 swung 17.5, 3.8, 13.2, 5.8,
+    11.1, 7.1 s about a meeting at 8.7 s, and was fired on the last swing
+    (predicted 5.5 s; its flights took 9.1 s). Not settled within AEGISM_
+    LEAD_SOLVE_ITERATIONS, or past the round's lifetime without a time past
+    the meeting seen: no meeting.
 
     Target acceleration is measured from successive velocity samples cached
-    on the target per firing System (SQF has no acceleration command); pass
+    on the target per firing System (SQF has no acceleration command) -- a
+    sample beyond what the target can do (calibration.hpp: a position or
+    velocity that jumped) is dropped, LEAD-SAMPLE-REJECT; pass
     _useAcceleration false for a side-effect-free, velocity-only estimate
     (the Site coordinator's envelope check).
 
@@ -109,7 +128,14 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-#define AEGISM_LEAD_SOLVE_ITERATIONS 5
+#include "..\..\main\rpt.hpp"
+#include "..\calibration.hpp"
+
+// The meeting-time search (see header): at most this many flight times
+// worked out, settled once the flight time to where the target will be
+// agrees with the time within this, s (0.3 m on a 300 m/s target).
+#define AEGISM_LEAD_SOLVE_ITERATIONS 15
+#define AEGISM_LEAD_SOLVE_TOLERANCE 0.001
 #define AEGISM_GRAVITY 9.80665
 #define AEGISM_LEAD_MIN_SAMPLE_DT 0.05
 #define AEGISM_LEAD_MAX_SAMPLE_DT 2
@@ -135,7 +161,17 @@ private _isGun = _role == "ciws";
 // called later from here, and SQF code only sees variables that still exist
 // in the scope it's called from.
 ([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics)
-    params ["", "_v0", "_k", "_thrust", "_burnSpeed", "_accelTime", "_accelDist", "_maxTime"];
+    params ["", "_v0", "_k", "", "", "", "", "_maxTime"];
+// A missile's simulated flight (aegism_intercept_fnc_missileProfile), and its
+// speed as measured in flight (aegism_intercept_fnc_recordMissileSpeed): its
+// real flight times are the simulation's this many times over. 1 until
+// measured.
+private _profile = [];
+private _speedFactor = 1;
+if (!_isGun) then {
+    _profile = [_weaponClass, _magazineClass] call aegism_intercept_fnc_missileProfile;
+    _speedFactor = ((missionNamespace getVariable ["AEGISM_missileSpeed", createHashMap]) getOrDefault [_weaponClass + "|" + _magazineClass, [[], 1]]) select 1;
+};
 
 // Time for the round/missile to cover a distance; -1 = it can't.
 private _fnTimeOfFlight = if (_isGun) then {
@@ -149,9 +185,9 @@ private _fnTimeOfFlight = if (_isGun) then {
 } else {
     {
         params ["_d"];
-        if (_burnSpeed <= 0) exitWith { -1 };
-        if (_thrust > 0 && {_d <= _accelDist}) exitWith { ((sqrt (_v0 * _v0 + 2 * _thrust * _d)) - _v0) / _thrust };
-        _accelTime + (_d - _accelDist) / _burnSpeed
+        private _time = [_profile, "time", _d] call aegism_intercept_fnc_missileProfileAt;
+        if (_time < 0) exitWith { -1 };
+        _speedFactor * _time
     }
 };
 
@@ -159,7 +195,7 @@ private _fnTimeOfFlight = if (_isGun) then {
 // nor thrust): nothing to predict with, so aim at the target and don't
 // block the engagement -- the old behaviour -- rather than calling every
 // target unreachable.
-if ((_isGun && {_v0 <= 0}) || {!_isGun && {_burnSpeed <= 0}}) exitWith { [_targetPos, true, -1, _currentDistance, [_targetPos, velocity _target, [0, 0, 0]], _targetPos, [0, 0, _origin]] };
+if ((_isGun && {_v0 <= 0}) || {!_isGun && {_profile isEqualTo []}}) exitWith { [_targetPos, true, -1, _currentDistance, [_targetPos, velocity _target, [0, 0, 0]], _targetPos, [0, 0, _origin]] };
 
 // Off-bore launch (see header): the turn onto a point, recorded as
 // [angle deg, time s, where it ends] by the flight time below.
@@ -169,8 +205,7 @@ private _turn = [0, 0, _origin];
 // Distance a missile covers in its first _t s: the inverse of its flight time.
 private _fnDistanceAt = {
     params ["_t"];
-    if (_thrust > 0 && {_t <= _accelTime}) exitWith { _v0 * _t + 0.5 * _thrust * _t * _t };
-    _accelDist + _burnSpeed * (_t - _accelTime)
+    [_profile, "distance", _t / _speedFactor] call aegism_intercept_fnc_missileProfileAt
 };
 
 // Flight time to a point: straight, or turning onto it first; -1 = it can't.
@@ -220,12 +255,31 @@ if (_useAcceleration) then {
     if (_sample isNotEqualTo []) then {
         _sample params ["_prevVelocity", "_prevTime", "_prevAccel"];
         private _dt = CBA_missionTime - _prevTime;
+        // More than the target could do (calibration.hpp): its position or
+        // velocity jumped -- a frame hitch, a network correction -- it didn't
+        // manoeuvre. The last good acceleration stands, and the next sample
+        // is taken against the same good one.
+        private _glitch = false;
         switch (true) do {
             case (_dt < AEGISM_LEAD_MIN_SAMPLE_DT): { _targetAcceleration = _prevAccel; };
             case (_dt > AEGISM_LEAD_MAX_SAMPLE_DT): { _targetAcceleration = [0, 0, 0]; };
-            default { _targetAcceleration = (_targetVelocity vectorDiff _prevVelocity) vectorMultiply (1 / _dt); };
+            default {
+                private _sampled = (_targetVelocity vectorDiff _prevVelocity) vectorMultiply (1 / _dt);
+                private _targetClass = [_target] call aegism_detect_fnc_classifyTarget;
+                if (vectorMagnitude _sampled > AEGISM_MAX_ACCEL(_targetClass)) then {
+                    _glitch = true;
+                    _targetAcceleration = _prevAccel;
+                    if (AEGISM_RPT_VERBOSE && {!(_target getVariable ["AEGISM_accelGlitchLogged", false])}) then {
+                        _target setVariable ["AEGISM_accelGlitchLogged", true];
+                        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LEAD-SAMPLE-REJECT: %1 (%2) measured accelerating %3 m/s2 over %4s, beyond the %5 m/s2 a %6 can -- a glitch in its position or velocity, not a manoeuvre; the last good acceleration stands (logged once per target).",
+                            _target, typeOf _target, round vectorMagnitude _sampled, round (_dt * 100) / 100, AEGISM_MAX_ACCEL(_targetClass), _targetClass];
+                    };
+                } else {
+                    _targetAcceleration = _sampled;
+                };
+            };
         };
-        if (_dt >= AEGISM_LEAD_MIN_SAMPLE_DT) then {
+        if (_dt >= AEGISM_LEAD_MIN_SAMPLE_DT && {!_glitch}) then {
             _target setVariable [_sampleKey, [_targetVelocity, CBA_missionTime, _targetAcceleration], false];
         };
     } else {
@@ -260,13 +314,15 @@ private _timeToGo = [_targetPos] call _fnPathTime;
 private _interceptPoint = _targetPos;
 private _interceptDistance = _currentDistance;
 private _aimPoint = _targetPos;
-// A gun's solve stops at the first step out of its reach, starting with the
-// target where it is now. A missile is judged only where it meets the
-// target, once solved: launched at a target still beyond its reach, it meets
-// it inside (aegism_intercept_fnc_canEngage). Midway the solve swings either
-// side of the answer, and a step just past the edge would throw out a
-// meeting just inside it.
-private _feasible = if (_isGun) then { !([_currentDistance, _timeToGo] call _fnOutOfReach) } else { _timeToGo >= 0 };
+// Judged only where the round or missile meets the target, once solved:
+// fired at a target still beyond its reach, it meets it inside (aegism_
+// intercept_fnc_canEngage) -- a gun opens fire so its rounds arrive just
+// as the target comes into reach, rather than once the target is there.
+// Midway the search tries times either side of the answer, and one just
+// past the edge would throw out a meeting just inside it; a step only stops
+// it when the round can't get there at all (a gun's drag past AEGISM_MAX_
+// DRAG_EXPONENT: a target receding faster than the rounds close).
+private _feasible = _timeToGo >= 0;
 
 // For a flight time _t: where the target is met, and the point to aim at
 // for it (raised by a gun round's fall).
@@ -280,23 +336,48 @@ private _fnSolveAt = {
     _aimPoint = _interceptPoint vectorAdd [0, 0, [_t] call _fnDrop];
 };
 
+// The meeting time (see header, "Solving"): t where the flight time to the
+// aim point for t, less t, is nought. _lo is the latest t seen with the
+// flight still longer; _hi the earliest seen with it shorter, -1 until one is.
 if (_feasible) then {
+    private _t = _timeToGo;
+    private _lo = 0;
+    private _hi = -1;
+    private _prev = 0;
+    private _prevGap = _timeToGo;
+    private _settled = false;
     for "_i" from 1 to AEGISM_LEAD_SOLVE_ITERATIONS do {
-        [_timeToGo] call _fnSolveAt;
+        [_t] call _fnSolveAt;
         // The round covers the distance to the aim point along its launch
         // line (for a gun that's the raised point, see header); an off-bore
         // missile turns onto it first.
-        _timeToGo = [_aimPoint] call _fnPathTime;
-        private _outOfReach = if (_isGun) then { [_interceptDistance, _timeToGo] call _fnOutOfReach } else { _timeToGo < 0 };
-        if (_outOfReach) exitWith { _feasible = false; };
+        private _flight = [_aimPoint] call _fnPathTime;
+        if (_flight < 0) exitWith {};
+        private _gap = _flight - _t;
+        if (abs _gap <= AEGISM_LEAD_SOLVE_TOLERANCE) exitWith { _settled = true; };
+        if (_gap > 0) then { _lo = _t; } else { _hi = _t; };
+        if (_hi >= 0 && {_hi - _lo <= 2 * AEGISM_LEAD_SOLVE_TOLERANCE}) exitWith { _t = (_lo + _hi) / 2; _settled = true; };
+        // Still before the meeting, and already past the round's lifetime:
+        // it can't meet it in time.
+        if (_hi < 0 && {_maxTime > 0} && {_t > _maxTime}) exitWith {};
+        private _next = _flight;
+        if (_hi >= 0) then {
+            if (abs (_gap - _prevGap) > 1e-9) then { _next = _t - _gap * (_t - _prev) / (_gap - _prevGap); };
+            if (_next <= _lo || {_next >= _hi}) then { _next = (_lo + _hi) / 2; };
+        };
+        _prev = _t;
+        _prevGap = _gap;
+        _t = _next;
     };
+    _feasible = _settled;
+    _timeToGo = _t;
 };
 
 private _track = [_targetPos, _targetVelocity, _targetAcceleration];
 
 if (_feasible) then {
     [_timeToGo] call _fnSolveAt;
-    if (!_isGun && {[_interceptDistance, _timeToGo] call _fnOutOfReach}) then { _feasible = false; };
+    if ([_interceptDistance, _timeToGo] call _fnOutOfReach) then { _feasible = false; };
 };
 if (!_feasible) exitWith { [_targetPos, false, -1, _interceptDistance, _track, _targetPos, [0, 0, _origin]] };
 

@@ -19,7 +19,7 @@ Description:
         ciws - where the unguided round meets the target, raised for drop
             (aegism_intercept_fnc_computeLeadPoint)
         launcher - the closest direction the turret can reach to where the
-            missile (from its real speed profile) meets the target
+            missile (on its flight simulated from config) meets the target
             (aegism_intercept_fnc_launchSolution): the intercept itself, so
             it doesn't leave the rail and turn hard, or the turret's limit
     When there is no feasible intercept (the target is receding faster than

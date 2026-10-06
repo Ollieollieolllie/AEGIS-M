@@ -47,13 +47,27 @@ Description:
     miss is many milliradians, swung it from +1.4 to -12.3 mrad between
     bursts.
 
+    Safeguards (calibration.hpp): a round that misses where the gun now aims
+    by more than AEGISM_SPOT_OUTLIER times the median of its recent rounds'
+    misses is an outlier, left out of the correction, the gun's measured
+    scatter and the burst's SPOTTING averages (counted there instead); a
+    round that says the gun needs more than AEGISM_SPOT_MAX_LEAD of lead or
+    AEGISM_SPOT_MAX_ELEVATION of elevation isn't believed for that; and how
+    far the real target strayed is only believed up to what it could
+    accelerate away in the round's flight. Rounds fired only by the last-
+    ditch rule, off the gate, are never spotted (aegism_intercept_fnc_
+    ciwsRounds).
+
     Turret state (aegism_intercept_fnc_turretState):
         estimate - target class -> [round class, lead weight, weighted lead
             s, elevation weight, weighted elevation rad]
         corrections - target class -> [lead s, elevation rad]
         spotStats - burstId -> [rounds, sum ahead m, sum high m, sum target
-            deviation m, deviation samples], for aegism_intercept_fnc_
-            ciwsBurst's SPOTTING line
+            deviation m, deviation samples, outliers], for aegism_intercept_
+            fnc_ciwsBurst's SPOTTING line
+        spotScale - target class -> [round class, its last AEGISM_SPOT_
+            SCALE_ROUNDS rounds' angular misses about where it aimed then],
+            for the outlier check
         scatter - target class -> [round class, rounds, sum of squared
             angular miss square to the line of sight -- each round's miss as
             it would have been with the correction the gun now carries, so
@@ -83,6 +97,8 @@ Examples:
 Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
+
+#include "..\calibration.hpp"
 
 #define AEGISM_SPOT_KEEP_BURSTS 4
 #define AEGISM_SPOT_DECAY 0.997
@@ -117,16 +133,62 @@ _upSquare = _upSquare vectorDiff (_along vectorMultiply (_upSquare vectorDotProd
 private _cosElevation = vectorMagnitude _upSquare;
 private _high = if (_cosElevation > 0.001) then { _miss vectorDotProduct (_upSquare vectorMultiply (1 / _cosElevation)) } else { 0 };
 
+// The round's miss square to the line of sight, as it would have been with
+// the correction [lead s, elevation rad] instead of the one it was fired with.
+private _perpendicular = _miss vectorDiff (_los vectorMultiply (_miss vectorDotProduct _los));
+private _crosses = _crossSpeed * _flightTime > _targetRadius;
+private _fnMissWith = {
+    params ["_lead", "_elevation"];
+    private _shifted = _perpendicular;
+    if (_crosses) then {
+        _shifted = _shifted vectorAdd (_along vectorMultiply ((_lead - _leadAtFire) * _crossSpeed));
+    };
+    if (_cosElevation > 0.001) then {
+        _shifted = _shifted vectorAdd ((_upSquare vectorMultiply (1 / _cosElevation)) vectorMultiply ((_elevation - _elevationAtFire) * _range));
+    };
+    _shifted
+};
+private _corrections = _ts get "corrections";
+if (isNil "_corrections") then { _corrections = createHashMap; _ts set ["corrections", _corrections]; };
+
+// --- Safeguards (calibration.hpp) ----------------------------------------------
+// An outlier: missing where the gun aims now (its correction before this
+// round) by more than AEGISM_SPOT_OUTLIER times the median of its recent
+// rounds' misses -- or, missing by no more than the target's own size, never.
+// Its miss is still added to the recent ones, so if misses that size become
+// the norm the median follows and they count again.
+private _residual = (vectorMagnitude ((_corrections getOrDefault [_targetClass, [0, 0]]) call _fnMissWith)) / _range;
+private _scales = _ts get "spotScale";
+if (isNil "_scales") then { _scales = createHashMap; _ts set ["spotScale", _scales]; };
+private _scale = _scales getOrDefault [_targetClass, []];
+if ((_scale param [0, ""]) != _roundClass) then { _scale = [_roundClass, []]; _scales set [_targetClass, _scale]; };
+private _recent = _scale select 1;
+private _outlier = false;
+if (count _recent >= AEGISM_SPOT_SCALE_MIN) then {
+    private _sorted = +_recent;
+    _sorted sort true;
+    _outlier = _residual > AEGISM_SPOT_OUTLIER * ((_sorted select floor (count _sorted / 2)) max (_targetRadius / _range));
+};
+_recent pushBack _residual;
+if (count _recent > AEGISM_SPOT_SCALE_ROUNDS) then { _recent deleteAt 0; };
+// How far the real target strayed: no further than it could accelerate away
+// from its predicted track during the round's flight -- beyond, its track or
+// position glitched.
+if (_deviation > AEGISM_MAX_ACCEL(_targetClass) * _flightTime * _flightTime + _targetRadius) then { _deviation = -1; };
+
 // --- This burst's stats (SPOTTING line) ---------------------------------------
+// [rounds used, sum ahead m, sum high m, sum target deviation m, deviation
+// samples, outliers left out]
 private _allStats = _ts get "spotStats";
 if (isNil "_allStats") then { _allStats = createHashMap; _ts set ["spotStats", _allStats]; };
 private _burstStats = _allStats get _burstId;
 if (isNil "_burstStats") then {
-    _burstStats = [0, 0, 0, 0, 0];
+    _burstStats = [0, 0, 0, 0, 0, 0];
     _allStats set [_burstId, _burstStats];
     // A new burst: drop the ones too old to be reported.
     { if (_x < _burstId - AEGISM_SPOT_KEEP_BURSTS) then { _allStats deleteAt _x; }; } forEach (keys _allStats);
 };
+if (_outlier) exitWith { _burstStats set [5, (_burstStats param [5, 0]) + 1]; };
 _burstStats set [0, (_burstStats select 0) + 1];
 _burstStats set [1, (_burstStats select 1) + _ahead];
 _burstStats set [2, (_burstStats select 2) + _high];
@@ -147,20 +209,26 @@ _weightedLead = _weightedLead * AEGISM_SPOT_DECAY;
 _elevationWeight = _elevationWeight * AEGISM_SPOT_DECAY;
 _weightedElevation = _weightedElevation * AEGISM_SPOT_DECAY;
 
-if (_crossSpeed * _flightTime > _targetRadius) then {
-    private _weight = (_crossSpeed / _range) ^ 2;
-    _leadWeight = _leadWeight + _weight;
-    _weightedLead = _weightedLead + _weight * (_leadAtFire - _ahead / _crossSpeed);
+// What this round says the gun needs -- only believed inside AEGISM_SPOT_MAX_
+// LEAD / ELEVATION, so the correction (their average) stays inside them too.
+if (_crosses) then {
+    private _neededLead = _leadAtFire - _ahead / _crossSpeed;
+    if (abs _neededLead <= AEGISM_SPOT_MAX_LEAD) then {
+        private _weight = (_crossSpeed / _range) ^ 2;
+        _leadWeight = _leadWeight + _weight;
+        _weightedLead = _weightedLead + _weight * _neededLead;
+    };
 };
 if (_cosElevation > 0.001) then {
-    private _weight = _cosElevation ^ 2;
-    _elevationWeight = _elevationWeight + _weight;
-    _weightedElevation = _weightedElevation + _weight * (_elevationAtFire - _high / _range);
+    private _neededElevation = _elevationAtFire - _high / _range;
+    if (abs _neededElevation <= AEGISM_SPOT_MAX_ELEVATION) then {
+        private _weight = _cosElevation ^ 2;
+        _elevationWeight = _elevationWeight + _weight;
+        _weightedElevation = _weightedElevation + _weight * _neededElevation;
+    };
 };
 _estimates set [_targetClass, [_roundClass, _leadWeight, _weightedLead, _elevationWeight, _weightedElevation]];
 
-private _corrections = _ts get "corrections";
-if (isNil "_corrections") then { _corrections = createHashMap; _ts set ["corrections", _corrections]; };
 _corrections set [_targetClass, [
     if (_leadWeight > 0) then { _weightedLead / _leadWeight } else { 0 },
     if (_elevationWeight > 0) then { _weightedElevation / _elevationWeight } else { 0 }
@@ -175,14 +243,7 @@ _corrections set [_targetClass, [
 // a fast missile, 71m behind it, put the Cheetah's measured scatter at 37-47
 // mrad (config 4.5) and its open-fire range at 400-500m, for every missile
 // after it.
-private _perpendicular = _miss vectorDiff (_los vectorMultiply (_miss vectorDotProduct _los));
-(_corrections get _targetClass) params ["_leadNow", "_elevationNow"];
-if (_crossSpeed * _flightTime > _targetRadius) then {
-    _perpendicular = _perpendicular vectorAdd (_along vectorMultiply ((_leadNow - _leadAtFire) * _crossSpeed));
-};
-if (_cosElevation > 0.001) then {
-    _perpendicular = _perpendicular vectorAdd ((_upSquare vectorMultiply (1 / _cosElevation)) vectorMultiply ((_elevationNow - _elevationAtFire) * _range));
-};
+_perpendicular = (_corrections get _targetClass) call _fnMissWith;
 private _scatterAll = _ts get "scatter";
 if (isNil "_scatterAll") then { _scatterAll = createHashMap; _ts set ["scatter", _scatterAll]; };
 private _scatter = _scatterAll getOrDefault [_targetClass, []];

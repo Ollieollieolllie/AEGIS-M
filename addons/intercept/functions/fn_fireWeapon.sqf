@@ -128,10 +128,11 @@ private _contextLifetime = [2, _burstDuration + 0.5] select _isCiws;
 // A missile's launch plan (aegism_intercept_fnc_aimWeapon's, for this
 // target): how far off the intercept it leaves, and the predicted flight --
 // checked against the real one in flight (aegism_intercept_fnc_
-// interceptorPFH, MISSILE-TURN).
+// interceptorPFH, MISSILE-TURN) -- and what it was fired from, for its
+// speed (MISSILE-SPEED).
 (_ts getOrDefault ["launchPlan", []]) params [["_planTarget", objNull], ["_way", ""], ["_offBore", 0], ["_turnTime", 0], ["_predictedFlight", -1], ["_calibrated", true]];
 if (_planTarget != _target) then { _way = ""; _offBore = 0; _turnTime = 0; _predictedFlight = -1; };
-_ts set ["capture", [_target, _role, _interceptors, CBA_missionTime + _contextLifetime, _targetIsMunition, _turretPath, _weaponClass, [_offBore, _predictedFlight, CBA_missionTime]]];
+_ts set ["capture", [_target, _role, _interceptors, CBA_missionTime + _contextLifetime, _targetIsMunition, _turretPath, _weaponClass, [_offBore, _predictedFlight, CBA_missionTime, _weaponClass, _magazineClass]]];
 
 if (_isCiws) then {
     diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FIRE: %1 (%2) opens a %3s burst of %4 (%5, %6 rounds left) at %7 (%8) -- ciws.", _system, typeOf _system, round (_burstDuration * 10) / 10, _weaponClass, _magazineClass, _ammoBefore, _target, typeOf _target];

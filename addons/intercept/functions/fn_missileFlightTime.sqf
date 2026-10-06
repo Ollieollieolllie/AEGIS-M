@@ -3,11 +3,11 @@ Function: aegism_intercept_fnc_missileFlightTime
 
 Description:
     Seconds a launcher's missile flies toward a point a given distance away,
-    on its real speed profile (aegism_intercept_fnc_weaponKinematics: launch
-    speed, then thrust until its top speed, then that speed) -- until it gets
-    there, or until its lifetime (CfgAmmo timeToLive) runs out if that's
-    sooner. The same profile aegism_intercept_fnc_computeLeadPoint solves
-    with.
+    on its flight simulated from config (aegism_intercept_fnc_
+    missileProfile), scaled by how fast it has really flown this mission
+    (aegism_intercept_fnc_recordMissileSpeed) -- until it gets there, or
+    until its lifetime (CfgAmmo timeToLive) runs out if that's sooner. The
+    same flight aegism_intercept_fnc_computeLeadPoint solves with.
 
     Used to rule out, without solving anything, a target too far out for a
     missile to meet inside its reach: in the time the missile takes to fly to
@@ -30,14 +30,13 @@ Author:
 ---------------------------------------------------------------------------- */
 
 params ["_weaponInfo", "_distance"];
+_weaponInfo params ["", "_weaponClass", "_magazineClass"];
 
-([_weaponInfo select 1, _weaponInfo select 2] call aegism_intercept_fnc_weaponKinematics)
-    params ["", "_v0", "", "_thrust", "_burnSpeed", "_accelTime", "_accelDist", "_lifetime"];
-if (_burnSpeed <= 0) exitWith { -1 };
-private _time = if (_thrust > 0 && {_distance <= _accelDist}) then {
-    ((sqrt (_v0 * _v0 + 2 * _thrust * _distance)) - _v0) / _thrust
-} else {
-    _accelTime + (_distance - _accelDist) / _burnSpeed
-};
+private _time = [[_weaponClass, _magazineClass] call aegism_intercept_fnc_missileProfile, "time", _distance] call aegism_intercept_fnc_missileProfileAt;
+if (_time < 0) exitWith { -1 };
+// How fast it has really flown this mission (aegism_intercept_fnc_
+// recordMissileSpeed): 1 until measured.
+_time = _time * (((missionNamespace getVariable ["AEGISM_missileSpeed", createHashMap]) getOrDefault [_weaponClass + "|" + _magazineClass, [[], 1]]) select 1);
+private _lifetime = ([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics) select 7;
 if (_lifetime > 0) then { _time = _time min _lifetime; };
 _time

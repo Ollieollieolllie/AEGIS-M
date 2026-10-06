@@ -68,7 +68,10 @@ params ["_system", "_turretPath", "_ts", "_projectile", "_target", "_targetIsMun
 if (isNull _projectile || {isNull _target}) exitWith {};
 
 private _track = _ts getOrDefault ["track", []];
-private _spotting = _spot && {_track isNotEqualTo []};
+// Not a round fired only by the last-ditch rule, its barrel off the gate
+// (aegism_intercept_fnc_ciwsGate): its miss is the barrel being off, not the
+// gun's aim, and would throw the gun's correction and measured scatter.
+private _spotting = _spot && {_track isNotEqualTo []} && {!(_ts getOrDefault ["gateOverride", false])};
 
 // Per-target constants, worked out once while the gun stays on one target.
 private _targetInfo = _ts getOrDefault ["roundTarget", []];

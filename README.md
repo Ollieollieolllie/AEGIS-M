@@ -270,10 +270,19 @@ a gunner's turret -- from the moment a target is assigned, a real angle
 check against the barrel's live direction, then firing once aligned)
 rather than handed to fireAtTarget's own AI judgement. Every weapon aims at
 its **intercept point**: where its round or missile would meet the target,
-from real config kinematics (gun: muzzle velocity, drag, drop; missile:
-launch speed, thrust, top speed) and the target's measured velocity and
-acceleration. Launchers therefore leave the rail already pointed at the
-meeting point instead of turning hard after launch: a launcher fires only
+from real config kinematics (gun: muzzle velocity, drag, drop; missile: its
+flight simulated from config) and the target's measured velocity and
+acceleration. A missile's flight follows the engine's documented rules:
+launch speed, the motor lighting after `initTime`, thrust at full for 75% of
+`thrustTime` then fading out, and drag of 0.00225 x `airFriction` x speed^2
+along its nose. `airFriction` is each missile's own; the 0.00225 is the
+engine's, in no config, fitted to AEGIS-M's own missiles' measured speeds.
+`maxSpeed` is not applied: the Patriot's real flights ran well past it. The RPT's `MISSILE-PROFILE` line
+gives each missile's simulated speeds and times, and `MISSILE-SPEED`
+compares every flight's real speed with them, second by second, however it
+ended (both Verbose). Launchers
+leave the rail already pointed at the meeting point instead of turning
+hard after launch: a launcher fires only
 with its barrel within 2 degrees of that point, or once its turret has
 stopped closing on it (at its elevation limit, or trailing a fast lead
 point) with the target inside the missile's own lock cone
@@ -290,7 +299,9 @@ intercept is solved from the round's real flight: muzzle velocity, drag
 slows the round -- checked against a step-by-step simulation of the
 engine's own bullet physics, the round passes within 5 cm of the aim point
 out to 2.4 km, and arrives within 4 ms of the predicted time out to 2 km.
-The gun
+Like a missile, a gun is judged where its rounds meet the target, not where
+the target is now: it opens fire so its rounds arrive just as an incoming
+round comes into reach. The gun
 tracks a target from as far as it can reach, but only opens fire once the
 intercept is inside its **open-fire range**: where one burst is at least the
 Site's "Open Fire at Hit Chance" (40 % by default) likely to put a round
@@ -462,13 +473,26 @@ reach only in its last seconds; planned to the RAMs there, it left the
 Patriots no second chance, so now the Patriots take it early
 (`RESERVE-RELEASED`).
 
-Guns are matched by warhead size, then distance. Automated (drone-crewed)
+Guns are matched by warhead size, then distance. A gun is only given an
+incoming munition it has its **Minimum Firing Window** on (CIWS setting, 3 s
+by default): after its crew's reaction, its barrel's swing and the rounds'
+flight, that long left to fire before impact, with the barrel still able to
+follow it (a rocket diving steeply goes past a Cheetah's 80-degree limit in
+its last seconds). A munition with less is a last-ditch shot: a gun takes
+one only when it has nothing better to do (`ASSIGN ... last-ditch`), and
+drops it the moment a munition it has its full window on comes. Handed
+rockets 2-5 s from impact one after another, a Cheetah hit 2 of 21, and
+swung away from the rest of the volley each time; with 6-9 s it hit 14 of
+19.
+
+Automated (drone-crewed)
 systems ignore the crew model by default -- no reaction delay, no skipped
 fire cycles (Site setting "Crew Skill on Automated Systems"). When a crewed
 launcher's reliability roll fails, the Site is told: the target is re-tasked
 to the rest of the Site straight away, and that launcher can't take it back
 until its lost fire cycle is over, so another weapon gets the next try
-(`ASSIGN-CLEAR ... crew failed to fire`). CIWS can
+(`ASSIGN-CLEAR ... crew failed to fire`). A crewed gun's failed roll costs it
+its crew's reaction, not a whole pause between bursts. CIWS can
 engage in parallel with a launcher already working the same contact by
 default (a fast/close threat shouldn't wait on an unproven missile shot),
 or only as a last resort if the Site's Doctrine says so. A launcher shot is
@@ -542,6 +566,24 @@ launcher limited to 40 deg elevation used to freeze its whole queue on
 high-arc rockets it could never lock. An off-bore launch's first leg must
 be clear (`LAUNCH-PATH-BLOCKED`). Each off-bore shot is logged as
 `OFFBORE-LAUNCH` with its predicted turn and flight.
+
+**Learning in play.** Some things AEGIS-M can't read from config, or that
+config gets wrong, so each weapon measures them during the mission. Every
+one starts from config and resets at the next mission. A measurement that
+can't be right is taken as a problem with the measuring (a frame hitch, a
+position or velocity that jumped, a round fired off its gate, a missile
+that changed target) and thrown away. One odd measurement can't move what's
+learned far. The limits are all in `addons/intercept/calibration.hpp`.
+
+| What's learned | From | Safeguards |
+|---|---|---|
+| A missile's real speed | Every AEGIS-M missile that reaches its target: its flight time against what its simulated flight gives for the length of the path it flew (`MISSILE-SPEED`). Predictions then use it as a speed; the lead solver lays out an off-bore turn itself. It takes in what the simulation leaves out: gravity on a climb, speed lost turning, and any error in the simulation itself. | Only flights that hit the target they were fired at, after at least 1 s. A flight outside 0.5-2x its profile's time is thrown away. What's used is the median of the last 15 flights, once there are 3. |
+| A missile's turn rate (missiles the game guides; ACE's give theirs in config) | The fastest sustained turn of each flight launched off the intercept (`MISSILE-TURN`). | A flight whose seeker changed target isn't used, nor a turn over 180 deg/s. Once two flights have turned, the rate is the second fastest, so no one flight sets it. |
+| A gun's aim correction (lead and elevation) | Every third round, measured against the track it was aimed at (`SPOTTING`). | A round missing over 4x the median of its last 30 rounds' misses is an outlier, left out (counted in `SPOTTING`). A round saying the gun needs over 0.5 s of lead or 10 mrad of elevation isn't believed. Rounds fired only by the last-ditch rule, off the gate, are never measured. |
+| A gun's scatter, and how far targets stray from their predicted track (its open-fire range) | The same rounds. | The same outlier check. A target's straying is only believed up to what it could accelerate away in the round's flight. |
+| A gun's real rate of fire | Each burst (`BURST-END`). | A burst measured over 1.25x its config rate was miscounted, and is left out. |
+| A launcher's real time per missile | Its back-to-back shots. | A gap longer than twice its estimate (idle) or shorter than its own shot interval allows (miscounted) is left out. |
+| A target's acceleration (the lead solver's) | Its velocity, sampled while a weapon aims at it. | A sample beyond 15 g for an aircraft or 100 g for a munition is a glitch (`LEAD-SAMPLE-REJECT`), and the last good one stands. |
 
 Syncing or unsyncing a vehicle to a Site, or editing the Site's own
 Attributes, takes effect live -- nothing requires re-placing modules or
@@ -643,6 +685,9 @@ thing, labels stacked rather than drawn over each other:
   sensor (most tanks and IFVs) isn't shown: it's only used synced to a
   Site.
 
+Each hit is logged as `INTERCEPT`, with where: its distance from the vehicle
+that fired and its height above the ground.
+
 An assigned weapon that can't fire logs why: `NO-SOLUTION`, `LOS-BLOCKED` (the line from the weapon's own muzzle to the target, naming what's in the way: terrain, or the object, its class and how far its top is above the muzzle), `FIRE-SKIP`, or
 `ASSIGN-CLEAR` with a reason. A threat munition 10 s from impact with no
 weapon on it at all is logged once (`UNENGAGED`), with each weapon's reason:
@@ -657,9 +702,11 @@ saw, alarms, radar emission, anything stopping a weapon, and its setup.
 Verbose adds the step-by-step detail:
 - each weapon's wait: `REACTING`, `SLEWING`, `CUED`, `RANGE-HOLD`, `LOCKING`;
 - CIWS bursts: `SPOTTING`, `BURST-END`, `SELF-DESTRUCT`, `LAST-DITCH`;
-- missile launches: `MISSILE-TURN`, `OFFBORE-LAUNCH`, `LOCK-ON`, `LOCK`;
-- per-weapon calibration: `KINEMATICS`, `AGILITY`, `TURRET-RATE`,
-  `TARGET-SIZE`, `OPEN-FIRE-RANGE`, `FIRE-RATE`;
+- missile launches: `MISSILE-TURN`, `MISSILE-SPEED`, `OFFBORE-LAUNCH`,
+  `LOCK-ON`, `LOCK`;
+- per-weapon calibration: `KINEMATICS`, `MISSILE-PROFILE`, `AGILITY`, `TURRET-RATE`,
+  `TARGET-SIZE`, `OPEN-FIRE-RANGE`, `FIRE-RATE`, and measurements thrown
+  away as glitches (`LEAD-SAMPLE-REJECT`; see **Learning in play**);
 - layered reserve: `RESERVE`, `SATURATION`;
 - every enemy shot fired (`MUNITION`) and munition proxy behaviour
   (`PROXY-ATTACH`, `PROXY-LOW`);
@@ -784,6 +831,7 @@ envelope, and all threat classes are engaged.
 | Min Elevation (deg) | 5 | Never engages below it; holds fire while the barrel is below it. |
 | Open Fire at Hit Chance (%) | 40 | Tracks from its full reach, but only fires where one burst is at least this likely to hit -- from the gun's measured scatter (its rounds' misses about where it now aims: an aiming error its spotting has since corrected doesn't count), the target's straying, the round's flight time, the hit radius and the rounds per burst; never past the round's lifetime reach or inside its arming distance. Lower = earlier, farther, more rounds per hit. 0 = its full reach. |
 | Cue Before In Range (s) | 5 | A gun is assigned a target this long before it comes into reach (judged on where the target will be by then), so its crew's reaction and its barrel's swing are done by the time it can fire; it holds meanwhile (`CUED` in the RPT). 0 = assigned only once in reach. |
+| Minimum Firing Window (s) | 3 | A gun is only given an incoming munition it will have this long to fire at before impact (after its crew's reaction, its barrel's swing and the rounds' flight, with the barrel still able to follow it). One with less is a last-ditch shot, taken only with nothing better and dropped for a munition it has its full window on. 0 = any munition it can reach in time. |
 | Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
 | Pause Between Bursts (s) | 1 | Gap after a burst before firing again at the same target. After a kill the gun goes straight on to its next target. |
 | Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |
