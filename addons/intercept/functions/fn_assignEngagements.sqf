@@ -3,7 +3,8 @@ Function: aegism_intercept_fnc_assignEngagements
 
 Description:
     Site-level engagement coordinator, run once per Site every 0.5s on the
-    server. Decides, for every pooled contact, which member System's weapon
+    server -- at once for a munition close to impact that has just come into
+    the picture (aegism_network_fnc_moduleInit). Decides, for every pooled contact, which member System's weapon
     engages it; member engagement loops only execute these assignments.
     Sites linked through a shared vehicle (aegism_network_fnc_linkSites) are
     coordinated once, by their lead, across every vehicle of the group
@@ -98,12 +99,16 @@ Description:
     ballistic path) -- to see which munitions the cheaper tiers will kill in
     time. A longer-reach launcher (e.g. a Patriot next to RAM launchers)
     holds its missiles for those, and steps in only for the munitions the
-    cheaper tiers can't take in time: when the volume saturates them. It
-    stops holding for one the cheaper tier was planned to fire at
-    AEGISM_RESERVE_GRACE s ago that none of its launchers has, or whose shot
+    cheaper tiers can't take in time: when the volume saturates them -- they
+    have no missile or no time left for it. It stops holding for one the
+    cheaper tier was planned to fire at AEGISM_RESERVE_GRACE s ago (by the
+    plan's latest estimate) that none of its launchers has, or whose shot
     missed (RESERVE-MISSED): a plan the tier can't carry out -- a rocket
     coming down too steep for the RAMs -- held every Patriot back until it
-    was too late.
+    was too late. And it doesn't hold for one that even a free launcher of
+    the cheaper tier could only kill too late for the longer-reach launchers
+    to have a second shot (RESERVE-RELEASED); a kill that's only that late
+    because of the cheaper tier's queue stays with it.
 
     Threat re-assessment: after AEGISM_RETRY_THREAT_ASSESSMENT_THRESHOLD
     launcher attempts on a still-living contact, further launcher shots only
@@ -153,7 +158,38 @@ Description:
           munition's impact (it can't be in time): the full check (its
           intercept solves) was most of the 18-27 ms runs under a rocket
           ripple, re-run for every launcher on every unassigned rocket
-    Each run's time is counted for the PERF line (aegism_fnc_perfLog).
+        - a question already answered isn't worked out again: the plan
+          remembers the stretch of each munition's path with no shot in it
+          (_fnPlanShot); a launcher's claim waiting its turn is judged by its
+          planned shot, not also by a shot fired now; a gun too far to reach
+          a contact is ruled out on one distance (_fnGunBeyond). Fitted to
+          two tests' PERF lines (2026-10-06), re-reading cached plans was
+          about half the coordinator's time under a salvo, the full
+          engageability checks about a third, and rebuilding plans the rest
+        - a munition further than AEGISM_URGENT_TTI s from impact isn't
+          looked at for launchers on every run (_asleep): its next look is
+          shortly before the reserve plan has a launcher firing at it, or
+          AEGISM_FAR_INTERVAL s on, whichever is sooner -- at once if it
+          loses its launcher -- and meanwhile it keeps the launcher slot
+          the reserve plan last gave it. A long-range salvo's rockets were
+          in the air for 65 s and given to a short-range launcher 26 s from
+          impact; planning every one against every launcher on every run
+          until then was 20 ms a run with 48 rockets and 11 launchers
+          (2026-10-06)
+        - a run that has worked out AEGISM_PLAN_STEPS new steps of launcher
+          shots puts off the looks that can wait (_mustLook has those that
+          can't): the munition keeps its slot for this run as if asleep,
+          and its shots are worked out in the frames before the next
+          (aegism_intercept_fnc_planAhead), which then finds them ready. A
+          munition is looked at whole or not at all: nothing is ever decided
+          on a shot half worked out. (The first way of spreading the work
+          cut a run's questions short and decided nothing for those
+          munitions, nor for any later to impact, until they were answered:
+          under a salvo the newest rockets waited 15-20 s for their first
+          look, and four Patriots stepped in 10 s later than they had,
+          2026-10-06.)
+    Each run's time, and its parts', is counted for the PERF line
+    (aegism_fnc_perfLog).
 
 Parameters:
     _logic - the Site logic <OBJECT>
@@ -170,6 +206,8 @@ Author:
 
 #include "..\..\main\perf.hpp"
 #include "..\..\main\rpt.hpp"
+#include "..\..\main\coordinator.hpp"
+#include "..\plan.hpp"
 
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
 // A launcher's salvo is away but no missile ever left it this long after its
@@ -206,18 +244,15 @@ Author:
 // still fire this long after the cheaper tier's planned intercept (the
 // interceptor's settle, then a reaction) and meet the munition in time.
 #define AEGISM_RESERVE_RELOOK 3
-// Layered-reserve plan: seconds between the projected positions checked
-// while waiting for a munition to enter a launcher's envelope.
-#define AEGISM_RESERVE_PLAN_STEP 1
-// A cached plan scan is reused while the munition stays within this many
-// metres of the path it was scanned on, for at most this many seconds.
-#define AEGISM_PLAN_CACHE_TOLERANCE 25
-#define AEGISM_PLAN_CACHE_MAX_AGE 10
 #define AEGISM_GRAVITY 9.80665
 
 params ["_logic"];
 
 if (isNull _logic) exitWith {};
+
+// Set again at the end if this run leaves launcher shots to be worked out
+// before the next (those of the munitions whose look it put off).
+_logic setVariable ["AEGISM_assignMore", false, false];
 
 private _startedAt = diag_tickTime;
 // Counts this run for the PERF line.
@@ -226,6 +261,12 @@ private _fnPerf = {
     PERF_INC(PERF_COORD_RUNS);
     PERF_ADD(PERF_COORD_MS,_ms);
     AEGISM_perfCounts set [PERF_COORD_MAX_MS, (AEGISM_perfCounts select PERF_COORD_MAX_MS) max _ms];
+};
+// And its parts: the time since the last part ended goes to counter _this.
+private _partFrom = _startedAt;
+private _fnPerfPart = {
+    PERF_ADD(_this,(diag_tickTime - _partFrom) * 1000);
+    _partFrom = diag_tickTime;
 };
 
 private _engagementSettings = _logic getVariable "AEGISM_engagement";
@@ -337,11 +378,18 @@ private _fnDropLastDitch = {
             // the envelope) let another launcher fire at it on top of them.
             // Its claim ends when they're gone (missed, below).
             private _salvoAway = _role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])};
+            // Nor is a launcher's claim on a munition while it waits its turn
+            // behind others on that launcher's queue ("queued", aegism_
+            // intercept_fnc_engagementLoop) and is judged by its planned shot
+            // ("planned", the hand-off check below): whether it could be
+            // fired at NOW says nothing of its turn, and asking cost an
+            // intercept solve for every queued claim on every run.
+            private _waiting = _role == "launcher" && {!_salvoAway} && {_record getOrDefault ["planned", false]} && {(_record getOrDefault ["status", ""]) == "queued"};
             private _engage = [false, ""];
             if (_alive) then {
-                _engage = if (_salvoAway) then { [true, ""] } else { [_system, _role, _weaponInfo, _object, _systemSettings] call aegism_intercept_fnc_canEngage };
+                _engage = if (_salvoAway || {_waiting}) then { [true, ""] } else { [_system, _role, _weaponInfo, _object, _systemSettings] call aegism_intercept_fnc_canEngage };
             };
-            if (!_salvoAway) then {
+            if (!_salvoAway && {!_waiting}) then {
                 _record set ["flightTime", _engage param [2, 0]];
                 // A gun cued onto it before it's in reach (aegism_intercept_
                 // fnc_canEngage): its engagement loop holds, "cued".
@@ -378,6 +426,9 @@ private _fnDropLastDitch = {
 
             if (_reason != "") then {
                 diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ASSIGN-CLEAR: %1 (%2) released %3 -- %4.", _system, _role, _object, _reason];
+                // A launcher gone from it: its launchers are looked at in
+                // this run, whenever its next look was due (_asleep, below).
+                if (_role == "launcher") then { _entry set ["launcherLookAt", 0]; _entry set ["launcherLookBy", 0]; };
             };
             _reason == ""
         };
@@ -398,6 +449,7 @@ private _fnDropLastDitch = {
         };
     };
 } forEach (keys _claims);
+PERF_COORD_REVIEW_MS call _fnPerfPart;
 
 // --- Live weapons across every member ---------------------------------------
 private _allWeapons = [];
@@ -439,11 +491,47 @@ private _lastDitch = [];
 // for ordering, launcher queues, and in-time checks alike.
 private _memberPositions = (_members select { !isNull _x && {alive _x} }) apply { getPosASL _x };
 private _ttiByKey = createHashMap;
+// Munitions whose launchers aren't looked at in this run. One that isn't
+// urgent (further than AEGISM_URGENT_TTI from impact) is given a time for
+// its next look when its launchers are (its "launcherLookAt", set where it's
+// served below): shortly before the layered reserve has a launcher firing at
+// it, or AEGISM_FAR_INTERVAL s on, whichever is sooner; AEGISM_FAR_INTERVAL s
+// on if a launcher already has it; the next run if none has it and none is
+// planned to. Until then it isn't planned again -- it keeps its place in the
+// reserve plan as last worked out -- and it's left out of the launchers'
+// sweep -- a rocket of a long-range salvo was in the air for 65 s
+// and given to a short-range launcher 26 s from impact, and until then every
+// one of them was planned against every launcher on every run (20 ms a run
+// with 48 rockets and 11 launchers, 2026-10-06). Its guns are looked at as
+// ever.
+private _asleep = createHashMap;
+// When the crew of the launcher the reserve plan has firing at a munition
+// would have to start on it, s from now (this run's plan only).
+private _planFire = createHashMap;
+// Munitions due a look that can't be put off to a later run (the reserve
+// plan puts off the rest once the run has worked out AEGISM_PLAN_STEPS new
+// steps of launcher shots, below): those past the time their look had to
+// come by (their "launcherLookBy", set with "launcherLookAt") -- one with no
+// launcher and none planned for it, one whose planned launcher's crew has to
+// start on it, one that has already waited AEGISM_FAR_INTERVAL s. A munition
+// new to the coordinator can wait that long for its first look.
+private _mustLook = createHashMap;
 {
     private _object = _y getOrDefault ["object", objNull];
     if (!isNull _object && {alive _object}) then {
         private _tti = [_object, _y get "class", _memberPositions] call aegism_intercept_fnc_timeToImpact;
         _ttiByKey set [_x, _tti];
+        if (_tti > AEGISM_URGENT_TTI && {_tti < 1e9} && {_y getOrDefault ["isMunition", false]}) then {
+            if !("launcherLookAt" in _y) then {
+                _y set ["launcherLookAt", CBA_missionTime];
+                _y set ["launcherLookBy", CBA_missionTime + AEGISM_FAR_INTERVAL];
+            };
+            if (CBA_missionTime < (_y get "launcherLookAt")) then {
+                _asleep set [_x, true];
+            } else {
+                if (CBA_missionTime >= (_y getOrDefault ["launcherLookBy", 0])) then { _mustLook set [_x, true]; };
+            };
+        };
         // Kept on the contact for the debug overlays (aegism_fnc_debugDraw).
         _y set ["tti", [_tti, CBA_missionTime]];
     };
@@ -524,6 +612,37 @@ private _fnGunReaction = {
     ((_mods get "reactionTime") min AEGISM_CIWS_REACTION_CAP) * ([1, _mods getOrDefault ["combatReactionMult", 1]] select _inCombat)
 };
 
+// Whether the contact being served (_targetPos, _speed) is too far for a gun
+// to reach at all, by the gun's own bound (aegism_intercept_fnc_canEngage):
+// the rounds' flight to its reach, plus its cue time and the largest lead
+// correction its spotting holds, in which the contact closes at most speed x
+// t + g t^2 / 2. Worked out once per gun per run, so a far contact costs a
+// distance and a sum here instead of the gun's whole check, which says the
+// same: every free gun was asked about every rocket in the sky on every run,
+// about 0.1 ms a time.
+private _gunSpans = createHashMap;
+private _fnGunBeyond = {
+    params ["_candSystem", "_candInfo", "_candSettings"];
+    private _cacheKey = [netId _candSystem, _candInfo select 0, _candInfo select 1];
+    private _cached = _gunSpans get _cacheKey;
+    if (isNil "_cached") then {
+        private _reach = _candInfo param [5, 0];
+        ([_candInfo select 1, _candInfo select 2] call aegism_intercept_fnc_weaponKinematics) params ["", "_v0", "_k", "", "", "", "", "_lifetime"];
+        private _span = -1;
+        if (_reach > 0 && {_v0 > 0}) then {
+            _span = if (_k > 0) then { ((exp ((_k * _reach) min 30)) - 1) / (_k * _v0) } else { _reach / _v0 };
+            if (_lifetime > 0) then { _span = _span min _lifetime; };
+            private _lead = 0;
+            { _lead = _lead max (abs (_y param [0, 0])); } forEach (([_candSystem, _candInfo select 0] call aegism_intercept_fnc_turretState) getOrDefault ["corrections", createHashMap]);
+            _span = _span + _lead + ((_candSettings getOrDefault ["ciwsCueAhead", 5]) max 0);
+        };
+        _cached = [eyePos _candSystem, _reach, _span];
+        _gunSpans set [_cacheKey, _cached];
+    };
+    _cached params ["_eye", "_reach", "_span"];
+    _span >= 0 && {(_eye distance _targetPos) > _reach + _speed * _span + 0.5 * AEGISM_GRAVITY * _span * _span}
+};
+
 private _timingCache = createHashMap;
 private _fnLauncherTiming = {
     params ["_candSystem", "_weaponInfo"];
@@ -602,91 +721,21 @@ private _fnLauncherEta = {
 // kill it soonest.
 
 // [fireTime, interceptTime] (seconds from now) of the earliest shot from
-// _start on that meets the munition before _tti, or [] if there's none.
+// _start on that meets the munition before _tti, or [] if there's none
+// (aegism_intercept_fnc_planShot, which keeps every answer in the Site's
+// plan cache, "AEGISM_planCache").
 //
-// Found by stepping along the munition's projected path every AEGISM_
-// RESERVE_PLAN_STEP s from _start -- a feasible intercept, its meeting point
-// inside the envelope (the munition itself may still be beyond it when the
-// missile leaves, aegism_intercept_fnc_canEngage), landing before impact --
-// and only as far as the first shot.
-// Each step's answer is kept per munition and launcher, in game time
-// ("AEGISM_planCache": [scanned at, position, velocity, step -> [fire at,
-// intercept at], or [] for no shot]), so a later question from another start
-// re-solves nothing already worked out. The whole path used to be solved up
-// front -- an intercept solve (aegism_intercept_fnc_launchSolution) for every
-// step in the envelope, for every munition and launcher -- and a salvo coming
-// into view together cost ~100 ms in one frame. A ballistic path is fixed,
-// and so is a parked launcher's envelope; the steps are thrown away if the
-// munition strays AEGISM_PLAN_CACHE_TOLERANCE m from the path they were
-// worked out on (a rocket still burning, a missile turning), or after
-// AEGISM_PLAN_CACHE_MAX_AGE s.
+// A run always gets its answer in full. What's counted is the new steps
+// worked out for it (_plan select 2): past AEGISM_PLAN_STEPS of them the
+// reserve plan puts off the munitions whose look can wait, and leaves their
+// questions (_plan select 3) to be worked out between this run and the next
+// (aegism_intercept_fnc_planAhead).
 private _planCache = _logic getVariable "AEGISM_planCache";
 if (isNil "_planCache") then { _planCache = createHashMap; _logic setVariable ["AEGISM_planCache", _planCache, false]; };
-private _fnPlanShot = {
-    params ["_candSystem", "_weaponInfo", "_bounds", "_object", "_ballistic", "_start", "_tti", "_key"];
-    private _drop = [0, 0.5 * AEGISM_GRAVITY] select _ballistic;
-    private _cacheKey = [_key, netId _candSystem, _weaponInfo select 0];
-    private _entry = _planCache getOrDefault [_cacheKey, []];
-    private _valid = _entry isNotEqualTo [] && {
-        _entry params ["_scannedAt", "_p0", "_v0"];
-        private _dt = CBA_missionTime - _scannedAt;
-        _dt <= AEGISM_PLAN_CACHE_MAX_AGE
-            && {((_p0 vectorAdd (_v0 vectorMultiply _dt) vectorDiff [0, 0, _drop * _dt * _dt]) distance (getPosASL _object)) <= AEGISM_PLAN_CACHE_TOLERANCE}
-    };
-    if (_valid) then {
-        PERF_INC(PERF_PLAN_HITS);
-    } else {
-        PERF_INC(PERF_PLAN_BUILDS);
-        _entry = [CBA_missionTime, getPosASL _object, velocity _object, createHashMap];
-        _planCache set [_cacheKey, _entry];
-    };
-    _entry params ["_scannedAt", "_p0", "_v", "_steps"];
-    _bounds params ["_minRange", "_maxRange", "_minAltitude", "_maxAltitude"];
-    private _origin = eyePos _candSystem;
-    private _muzzle = [];
-    // The missile's flight to the edge of its reach, for the "too far" bound
-    // below (worked out when first needed).
-    private _span = -2;
-    private _impactAt = CBA_missionTime + _tti;
-    private _found = [];
-    for "_k" from (ceil (((CBA_missionTime + _start) - _scannedAt) / AEGISM_RESERVE_PLAN_STEP) max 0) to (floor ((_impactAt - _scannedAt) / AEGISM_RESERVE_PLAN_STEP)) do {
-        private _shot = _steps get _k;
-        if (isNil "_shot") then {
-            _shot = [];
-            // Seconds after the path was taken, and from now.
-            private _sinceScan = _k * AEGISM_RESERVE_PLAN_STEP;
-            private _p = (_p0 vectorAdd (_v vectorMultiply _sinceScan)) vectorDiff [0, 0, _drop * _sinceScan * _sinceScan];
-            // Fired at from here, the missile meets it closer in -- and only
-            // that meeting point has to be inside the envelope (aegism_
-            // intercept_fnc_canEngage). Too far for even that, it isn't
-            // solved: in the missile's flight to the edge of its reach, the
-            // munition closes at most speed x t (+ g t^2 / 2 falling).
-            if (_span < -1) then { _span = if (_maxRange > 0) then { [_weaponInfo, _maxRange] call aegism_intercept_fnc_missileFlightTime } else { -1 }; };
-            private _speed = vectorMagnitude (_v vectorDiff [0, 0, 2 * _drop * _sinceScan]);
-            if (_maxRange > 0 && {_span < 0 || {(_origin distance _p) <= _maxRange + _speed * _span + _drop * _span * _span}}) then {
-                // Only a shot a missile can be put onto (aegism_intercept_fnc_
-                // launchSolution, the turret having had time to swing): a RAM
-                // planned onto rockets above its 40-degree limit held the
-                // Patriots in reserve for kills it couldn't make. A vertical
-                // launch cell's shots are off-bore, with the missile's turn.
-                if (_muzzle isEqualTo []) then { _muzzle = ([_candSystem, _weaponInfo select 0, "launcher"] call aegism_intercept_fnc_turretPoints) select 0; };
-                PERF_INC(PERF_PLAN_SOLVES);
-                ([_candSystem, _weaponInfo, _object, _muzzle, false, false, false, (_scannedAt + _sinceScan) - CBA_missionTime, _ballistic] call aegism_intercept_fnc_launchSolution)
-                    params ["_launchable", "", "", "", "_flightTime", "", "", "", "", "_interceptPoint", "_interceptDistance"];
-                if (_launchable) then {
-                    private _interceptHeight = (ASLToAGL _interceptPoint) select 2;
-                    if (_interceptDistance >= _minRange && {_interceptDistance <= _maxRange} && {_interceptHeight >= _minAltitude} && {_maxAltitude <= 0 || {_interceptHeight <= _maxAltitude}}) then {
-                        _shot = [_scannedAt + _sinceScan, _scannedAt + _sinceScan + (_flightTime max 0)];
-                    };
-                };
-            };
-            _steps set [_k, _shot];
-        };
-        if (_shot isNotEqualTo [] && {(_shot select 1) < _impactAt}) exitWith { _found = _shot; };
-    };
-    if (_found isEqualTo []) exitWith { [] };
-    [(_found select 0) - CBA_missionTime, (_found select 1) - CBA_missionTime]
-};
+// This run's plan work: [cache, never cut short (-1), new steps worked out,
+// questions for the frames before the next run].
+private _plan = [_planCache, -1, 0, []];
+private _fnPlanShot = { (_this + [_plan]) call aegism_intercept_fnc_planShot };
 
 // Picks one weapon from the eligible list ([index in _allWeapons, flight
 // time] pairs) for a contact. Returns [index in _allWeapons, seconds until it
@@ -703,7 +752,8 @@ private _fnPlanShot = {
 //          only they can reach. (If NO launcher is in time, the one that
 //          would intercept soonest comes first -- and isn't given a
 //          munition: LATE, below.)
-//       3. most rounds left, so deep magazines take the volume
+//       3. most missiles left once its queue is served, so deep magazines
+//          take the volume and like launchers share it
 //       4. soonest ready, then closest warhead size, then nearest
 //   Config "cost" is deliberately NOT used: it's an AI value weight, not a
 //   price, and it's inverted for this (vanilla long-range SAM base 500,
@@ -731,7 +781,17 @@ private _fnPickWeapon = {
         _candInfo params ["_turretPath", "", "_magClass", ["_size", 0], "", ["_reach", 0]];
         private _readyIn = [_candSystem, _candInfo, _contactKey, _timeToImpact] call _fnLauncherEta;
         private _inTime = (_readyIn + _flightTime) < _timeToImpact;
-        private _rounds = _candSystem magazineTurretAmmo [_magClass, _turretPath];
+        // Missiles left once the claims on its queue are served. By its
+        // magazine alone, of two RAM launchers side by side the one a single
+        // missile ahead was given four rockets in a second -- the last fired
+        // at 10 s later, 16 s from impact -- while the other had nothing to
+        // fire at for 11 s (2026-10-06).
+        private _committed = 0;
+        {
+            _x params ["_bKey", "_bRole", "_bHolding", "_bRounds"];
+            if (_bRole == "launcher" && {_bHolding} && {_bKey != _contactKey}) then { _committed = _committed + _bRounds; };
+        } forEach (_busy getOrDefault [[netId _candSystem, _turretPath], []]);
+        private _rounds = (_candSystem magazineTurretAmmo [_magClass, _turretPath]) - _committed;
         [[1, 0] select _inTime, [_readyIn + _flightTime, _reach] select _inTime, -_rounds, _readyIn, abs (_size - _contactSize), (getPosASL _candSystem) distance _targetPos, _weaponIndex, _inTime]
     };
     _scored = _scored select { (_x select 3) < AEGISM_NO_ROUND };
@@ -755,12 +815,15 @@ private _planKeys = (keys _ttiByKey) select {
     (_planEntry getOrDefault ["isMunition", false]) && {(_ttiByKey get _x) < 1e9} && {(_planEntry get "class") in _allowlist}
 };
 // The plan only decides which launchers may take a FREE munition: with none
-// free, there's nothing to plan.
-private _anyFree = (_planKeys findIf { ((_claims getOrDefault [_x, []]) findIf { (_x get "role") == "launcher" }) == -1 }) != -1;
+// free that's looked at in this run (_asleep), there's nothing to plan.
+private _anyFree = (_planKeys findIf { !(_x in _asleep) && {((_claims getOrDefault [_x, []]) findIf { (_x get "role") == "launcher" }) == -1} }) != -1;
 if (count _tierReaches > 1 && {_anyFree}) then {
     _planKeys = _planKeys apply { [_ttiByKey get _x, _x] };
     _planKeys sort true;
     _planKeys = _planKeys apply { _x select 1 };
+    // Munitions the plan has looked at in this run (one isn't put off part
+    // way through the tiers).
+    private _looked = createHashMap;
 
     {
         private _tierReach = _x;
@@ -795,6 +858,51 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                     _settled pushBack _key;
                 };
             } else {
+                // Put off: the run has worked out AEGISM_PLAN_STEPS new steps
+                // already, and this one's look can wait (it isn't in
+                // _mustLook). It isn't looked at in this run -- as one asleep,
+                // here and in the launchers' sweep -- and stays due. Its
+                // questions of this tier's launchers are kept as they'd be
+                // asked now, to be worked out before the next run (aegism_
+                // intercept_fnc_planAhead), which then has them ready.
+                if (!(_key in _asleep) && {!(_key in _mustLook)} && {!(_key in _looked)} && {_tti > AEGISM_URGENT_TTI} && {(_plan select 2) >= AEGISM_PLAN_STEPS}) then {
+                    _asleep set [_key, true];
+                    PERF_INC(PERF_COORD_PUT_OFF);
+                    private _class = _planEntry get "class";
+                    private _object = _planEntry get "object";
+                    private _ballistic = _class in ["artilleryShell", "rocket", "bomb"];
+                    {
+                        _x params ["_candSystem", "_candInfo", "_candSettings", "_nextFree", "_rounds", "", "", "_reaction", "_bounds"];
+                        if (_rounds > 0 && {_class in (_candSettings getOrDefault ["targetClassAllowlist", []])}) then {
+                            (_plan select 3) pushBack [_candSystem, _candInfo, _bounds, _object, _ballistic, CBA_missionTime + (_nextFree max _reaction), CBA_missionTime + _tti, _key];
+                        };
+                    } forEach _played;
+                };
+                // One not looked at in this run (_asleep) isn't planned again,
+                // but keeps the launcher slot its last plan gave it
+                // ("reserveSlot": [tier, launcher, turret, firing at]), so the
+                // munitions planned after it find that launcher taken. Left
+                // out of the play altogether, every munition that was planned
+                // found the tier free: the reserve never saw it saturated,
+                // four Patriots fired 3 missiles instead of 12 -- from 27 s
+                // out, not 50 -- and two RAM launchers fired 41 of their 42
+                // (2026-10-06).
+                if (_key in _asleep) exitWith {
+                    (_planEntry getOrDefault ["reserveSlot", []]) params [["_slotReach", -1], ["_slotSystem", objNull], ["_slotTurret", []], ["_slotFireAt", 0]];
+                    if (_slotReach == _tierReach) then {
+                        private _index = _played findIf { (_x select 0) == _slotSystem && {((_x select 1) select 0) isEqualTo _slotTurret} };
+                        if (_index != -1) then {
+                            private _state = _played select _index;
+                            private _salvo = (_state select 6) min (_state select 4);
+                            _state set [3, ((_slotFireAt - CBA_missionTime) max (_state select 3)) + _salvo * (_state select 5)];
+                            _state set [4, (_state select 4) - _salvo];
+                            _coveredReach set [_key, _tierReach];
+                            _settled pushBack _key;
+                        };
+                    };
+                };
+                _looked set [_key, true];
+                _planEntry deleteAt "reserveSlot";
                 private _object = _planEntry get "object";
                 private _ballistic = (_planEntry get "class") in ["artilleryShell", "rocket", "bomb"];
                 private _avoid = (_planEntry getOrDefault ["avoid", []]) select { (_x select 2) > CBA_missionTime };
@@ -810,27 +918,52 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                         };
                     };
                 } forEach _played;
-                // Held back only if a longer-reach launcher would still have a
-                // shot should this tier's miss: one that can fire once its
-                // planned intercept has had AEGISM_RESERVE_RELOOK s to show a
-                // miss, and still meet the munition before it comes down. A
-                // high-arc rocket coming down steeply only falls back into a
-                // RAM's reach in its last seconds -- planned to the RAMs there,
-                // it held every Patriot back until no second shot was left.
-                if (_best isNotEqualTo []) then {
-                    private _relookAt = (_best select 2) + AEGISM_RESERVE_RELOOK;
-                    private _fallback = (_launcherEntries findIf {
+                // Whether a longer-reach launcher would still have a shot at it
+                // should this tier's miss: one that can fire once the tier's
+                // intercept (_this s from now) has had AEGISM_RESERVE_RELOOK s
+                // to show a miss, and still meet the munition before it comes
+                // down.
+                private _fnSecondShot = {
+                    private _relookAt = _this + AEGISM_RESERVE_RELOOK;
+                    (_launcherEntries findIf {
                         _x params ["_candSystem", "", "_candInfo"];
                         (_candInfo select 5) > _tierReach
                             && {(_planEntry get "class") in ((_candSystem call _fnSettings) getOrDefault ["targetClassAllowlist", []])}
                             && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) == -1}
                             && {([_candSystem, _candInfo, [_candSystem call _fnSettings, _candInfo, "launcher"] call aegism_intercept_fnc_envelopeBounds,
                                 _object, _ballistic, _relookAt, _tti, _key] call _fnPlanShot) isNotEqualTo []}
+                    }) != -1
+                };
+                // A kill that leaves no such second shot is still this tier's
+                // when that's only its queue: one of its launchers, with
+                // nothing ahead of it, would kill the munition early enough.
+                // The longer-reach launchers then step in only for what this
+                // tier has no missile or no time left for. (At the 3.3 s a
+                // missile they were measured at, two RAM launchers with 42
+                // missiles had the time for 41 of the 44 rockets of a salvo
+                // left to them; four Patriots fired 11 at it for the second
+                // shot alone, 2026-10-06.)
+                // If even a free launcher of this tier could only kill it that
+                // late, the longer-reach launchers may take it now: a high-arc
+                // rocket coming down steeply only falls back into a RAM's
+                // reach in its last seconds -- planned to the RAMs there, it
+                // held every Patriot back until no second shot was left.
+                if (_best isNotEqualTo [] && {!((_best select 2) call _fnSecondShot)}) then {
+                    private _queueOnly = (_played findIf {
+                        _x params ["_candSystem", "_candInfo", "_candSettings", "_nextFree", "_rounds", "", "", "_reaction", "_bounds"];
+                        _rounds > 0
+                            && {_nextFree > _reaction}
+                            && {(_planEntry get "class") in (_candSettings getOrDefault ["targetClassAllowlist", []])}
+                            && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) == -1}
+                            && {
+                                private _free = [_candSystem, _candInfo, _bounds, _object, _ballistic, _reaction, _tti, _key] call _fnPlanShot;
+                                _free isNotEqualTo [] && {(_free select 1) call _fnSecondShot}
+                            }
                     }) != -1;
-                    if (!_fallback) then {
+                    if (!_queueOnly) then {
                         if !(_planEntry getOrDefault ["noFallbackLogged", false]) then {
                             _planEntry set ["noFallbackLogged", true];
-                            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " RESERVE-RELEASED: %1 (%2, impact in %3s) -- the %4m launcher tier could only kill it %5s before impact, leaving the longer-reach launchers no second shot if it missed: they may take it now.",
+                            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " RESERVE-RELEASED: %1 (%2, impact in %3s) -- the %4m launcher tier could only kill it %5s before impact, even with nothing ahead of it on a launcher, leaving the longer-reach launchers no second shot if it missed: they may take it now.",
                                 _object, _planEntry get "class", round _tti, round _tierReach, round ((_tti - (_best select 2)) * 10) / 10];
                         };
                         _best = [];
@@ -839,13 +972,31 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                 if (_best isNotEqualTo []) then {
                     _best params ["_index", "_fireTime"];
                     private _state = _played select _index;
+                    // The plan has this launcher firing at it at its first
+                    // chance: nothing ahead of it, and the munition in reach as
+                    // soon as its crew has reacted.
+                    private _atOnce = (_state select 3) <= (_state select 7) && {_fireTime <= (_state select 7) + AEGISM_RESERVE_PLAN_STEP};
                     private _salvo = (_state select 6) min (_state select 4);
                     _state set [3, _fireTime + _salvo * (_state select 5)];
                     _state set [4, (_state select 4) - _salvo];
                     _coveredReach set [_key, _tierReach];
-                    // When the plan first had the tier firing at it, for the
-                    // check that it does (RESERVE-MISSED, below).
-                    if !("reserveFireAt" in _planEntry) then { _planEntry set ["reserveFireAt", CBA_missionTime + _fireTime]; };
+                    _planFire set [_key, _fireTime - (_state select 7)];
+                    _planEntry set ["reserveSlot", [_tierReach, _state select 0, (_state select 1) select 0, CBA_missionTime + _fireTime]];
+                    // When the plan has the tier firing at it, for the check
+                    // that it does (RESERVE-MISSED, below): its latest
+                    // estimate, until it has a launcher firing at its first
+                    // chance -- from then that stands, or a plan that said
+                    // "as soon as its crew has reacted" on every run would
+                    // never be seen to fail. It used to be the plan's first
+                    // estimate, made as the munition came into view a minute
+                    // out, and that one is early: about 4 s for a RAM
+                    // launcher and an MLRS rocket, and more with the game run
+                    // at 2-4x, where the rockets' predicted impact slid 6 s
+                    // during their flight -- the check then gave twelve
+                    // rockets to the Patriots 25-32 s from impact, before a
+                    // RAM launcher could reach them, and the Patriots ran dry
+                    // (2026-10-06).
+                    if (!_atOnce || {!("reserveFireAt" in _planEntry)}) then { _planEntry set ["reserveFireAt", CBA_missionTime + _fireTime]; };
                     _settled pushBack _key;
                 };
             };
@@ -853,6 +1004,7 @@ if (count _tierReaches > 1 && {_anyFree}) then {
         _planKeys = _planKeys - _settled;
     } forEach (_tierReaches select [0, count _tierReaches - 1]);
 };
+PERF_COORD_RESERVE_MS call _fnPerfPart;
 
 {
     private _contactKey = _x;
@@ -899,7 +1051,10 @@ if (count _tierReaches > 1 && {_anyFree}) then {
         // have killed.
         private _ballistic = _class in ["artilleryShell", "rocket", "bomb"];
         private _handoff = [];
-        if (_isMunition && {_hasLauncher}) then {
+        // Its launchers aren't looked at in this run (_asleep, above): neither
+        // its claim's hand-off nor a launcher for it.
+        private _asleepNow = _contactKey in _asleep;
+        if (_isMunition && {_hasLauncher} && {!_asleepNow}) then {
             private _index = _existing findIf { (_x get "role") == "launcher" && {(_x get "roundsFired") == 0} };
             if (_index != -1) then {
                 private _record = _existing select _index;
@@ -908,7 +1063,11 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                 // (The plan needs the launcher's reach: one with none known
                 // keeps the old test.)
                 private _bounds = [(_record get "system") call _fnSettings, _record get "weaponInfo", "launcher"] call aegism_intercept_fnc_envelopeBounds;
-                private _planned = _eta > AEGISM_RESERVE_PLAN_STEP && {_eta < AEGISM_NO_ROUND} && {(_bounds select 1) > 0};
+                // (Nor is there a plan for one that isn't coming down on the
+                // Site, time to impact 1e10: no impact to land a shot before.)
+                private _planned = _eta > AEGISM_RESERVE_PLAN_STEP && {_eta < AEGISM_NO_ROUND} && {(_bounds select 1) > 0} && {_timeToImpact < 1e9};
+                // (For the review of this claim on the next run, above.)
+                _record set ["planned", _planned];
                 private _late = if (_planned) then {
                     ([_record get "system", _record get "weaponInfo", _bounds, _object, _ballistic, _eta, _timeToImpact + AEGISM_LATE_MARGIN, _contactKey] call _fnPlanShot) isEqualTo []
                 } else {
@@ -926,6 +1085,10 @@ if (count _tierReaches > 1 && {_anyFree}) then {
         {
             private _role = _x;
             private _covered = [_hasLauncher, _hasCiws] select (_role == "ciws");
+            // A munition whose launchers aren't looked at in this run
+            // (_asleep -- not due, or its look put off by the reserve plan):
+            // no launcher is decided for it in this one. Its guns are.
+            if (_role == "launcher" && {_asleepNow}) then { _covered = true; };
 
             if (!_covered) then {
                 // [index in _allWeapons, flight time] of every weapon that can
@@ -1005,10 +1168,14 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                         // RAM launchers that could meet a rocket at 5 km
                         // weren't offered it until it was there. The margin
                         // covers eyePos vs vehicle position.
-                        private _beyond = _role == "launcher" && {
+                        // A free gun the same way, by the gun's own bound
+                        // (_fnGunBeyond).
+                        private _beyond = if (_role == "launcher") then {
                             private _reach = _candInfo select 5;
                             private _span = ([_candInfo, _reach] call aegism_intercept_fnc_missileFlightTime) max 0;
                             ((getPosASL _candSystem) distance _targetPos) > _reach + 50 + _speed * _span + 0.5 * AEGISM_GRAVITY * _span * _span
+                        } else {
+                            !_conflict && {[_candSystem, _candInfo, _candSettings] call _fnGunBeyond}
                         };
                         // A launcher whose own queue and reaction alone run
                         // past the munition's impact can't fire at it in
@@ -1033,10 +1200,11 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                             if (_queueReady >= _timeToImpact) then {
                                 _tooLate pushBack [_queueReady, _candSystem, false];
                             } else {
-                                // (The plan needs the launcher's reach: one with
-                                // none known keeps the shot-fired-now test.)
+                                // (The plan needs the launcher's reach, and an
+                                // impact to land before: without either it
+                                // keeps the shot-fired-now test.)
                                 private _bounds = [_candSettings, _candInfo, "launcher"] call aegism_intercept_fnc_envelopeBounds;
-                                if (_queueReady > AEGISM_RESERVE_PLAN_STEP && {(_bounds select 1) > 0} && {_class in (_candSettings getOrDefault ["targetClassAllowlist", []])}) then {
+                                if (_queueReady > AEGISM_RESERVE_PLAN_STEP && {(_bounds select 1) > 0} && {_timeToImpact < 1e9} && {_class in (_candSettings getOrDefault ["targetClassAllowlist", []])}) then {
                                     _planShot = [_candSystem, _candInfo, _bounds, _object, _ballistic, _queueReady, _timeToImpact, _contactKey] call _fnPlanShot;
                                     if (_planShot isEqualTo []) then {
                                         _noShot = true;
@@ -1263,6 +1431,39 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                 _object, _class, round _timeToImpact, round (selectMin (_memberPositions apply { _x distance _targetPos })), _why joinString "; "];
         };
 
+        // When its launchers are looked at next, for a munition that isn't
+        // urgent (_asleep, above). With a launcher on it: AEGISM_FAR_INTERVAL
+        // s on, for its claim's hand-off check. With none, and the reserve
+        // plan holding it for a launcher to fire at later: a turn and a plan
+        // step before that launcher's crew would have to start on it (the
+        // plan has its reaction counted from now, and its fire time is only
+        // as fine as its steps -- woken a turn before the fire time alone,
+        // RAM launchers were given their rockets 0.9 s later than when every
+        // run looked), or AEGISM_FAR_INTERVAL s on if that's sooner.
+        // Otherwise: the next run.
+        //
+        // And the time that look has to come by ("launcherLookBy"): a run
+        // that has done enough new work may put it off (the reserve plan,
+        // _mustLook), but not past when that crew would have to start, nor
+        // more than AEGISM_FAR_INTERVAL s. One with no launcher and none
+        // planned for it is never put off.
+        if (_isMunition && {!_asleepNow} && {_timeToImpact > AEGISM_URGENT_TTI} && {_timeToImpact < 1e9}) then {
+            private _lookIn = 0;
+            private _lookBy = 0;
+            if (_hasLauncher) then {
+                _lookIn = AEGISM_FAR_INTERVAL;
+                _lookBy = AEGISM_FAR_INTERVAL;
+            } else {
+                if (_contactKey in _planFire) then {
+                    private _startIn = ((_planFire get _contactKey) - AEGISM_RESERVE_PLAN_STEP - AEGISM_COORDINATOR_INTERVAL) max 0;
+                    _lookIn = AEGISM_FAR_INTERVAL min _startIn;
+                    _lookBy = (2 * AEGISM_FAR_INTERVAL) min _startIn;
+                };
+            };
+            _entry set ["launcherLookAt", CBA_missionTime + _lookIn];
+            _entry set ["launcherLookBy", CBA_missionTime + _lookBy];
+        };
+
         if (_existing isNotEqualTo []) then { _claims set [_contactKey, _existing]; };
     };
 } forEach _orderedKeys;
@@ -1351,4 +1552,12 @@ private _buckets = _members apply { [[], []] };
     };
 } forEach _members;
 
+// The launcher shots of the munitions whose look this run put off: their
+// questions are kept on the Site, and its loop works them out in the frames
+// before the next run (aegism_intercept_fnc_planAhead, from aegism_network_
+// fnc_moduleInit).
+_logic setVariable ["AEGISM_planLeft", _plan select 3, false];
+_logic setVariable ["AEGISM_assignMore", (_plan select 3) isNotEqualTo [], false];
+
+PERF_COORD_ASSIGN_MS call _fnPerfPart;
 call _fnPerf;

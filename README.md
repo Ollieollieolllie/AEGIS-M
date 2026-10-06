@@ -458,7 +458,8 @@ that can fire in time (its readiness, its queue, its own Seconds Between
 Missiles and the missile's flight time, against the threat's time to
 impact); then the **shortest-reach** interceptor, keeping long-range
 missiles for threats only they can reach; then the one with the **most
-rounds left**; then the soonest ready and closest warhead size. A launcher
+rounds left** once the munitions already queued on it are served, so like
+launchers share a salvo; then the soonest ready and closest warhead size. A launcher
 is free for its next target as soon as its missiles are away (they guide
 themselves), and can **queue** several incoming munitions -- so a deep,
 fast-cycling magazine like a RAM launcher takes the bulk of a rocket
@@ -506,17 +507,20 @@ to it (`RESERVE` in the RPT); only rounds no cheaper tier can take in time
 -- the volume has saturated it -- open up the long-range launchers
 (`SATURATION`). So a Patriot battery sitting behind RAM launchers doesn't
 spend its missiles on MLRS rockets the RAMs will handle, but steps in, early
-and far out, for the part of a barrage they can't. If the cheaper tier was
-due to fire at a round 3 s ago and none of its launchers has it, or its shot
-missed, the reserve stops holding back for that round (`RESERVE-MISSED`):
-a long-range rocket coming down too steep for the RAMs once held every
-Patriot back until it was too late. And it only holds back at all if a
-long-range launcher would still have a second shot should the cheaper
-tier's planned kill miss (3 s to see the miss, then a shot that meets the
-round before it comes down). A high-arc rocket falls back into a RAM's
-reach only in its last seconds; planned to the RAMs there, it left the
-Patriots no second chance, so now the Patriots take it early
-(`RESERVE-RELEASED`).
+and far out, for the part of a barrage they can't: the rounds the cheaper
+tier has no missile or no time left for. If the cheaper tier was due to fire
+at a round 3 s ago (by the plan's latest estimate) and none of its launchers
+has it, or its shot missed, the reserve stops holding back for that round
+(`RESERVE-MISSED`): a long-range rocket coming down too steep for the RAMs
+once held every Patriot back until it was too late. One more case opens the
+reserve early (`RESERVE-RELEASED`): a round that even a free launcher of the
+cheaper tier could only kill too late for a long-range launcher to have a
+second shot (3 s to see the miss, then a shot that meets the round before it
+comes down). A high-arc rocket falls back into a RAM's reach only in its
+last seconds; planned to the RAMs there, it left the Patriots no second
+chance. A kill that's only that late because the cheaper tier is working
+through its queue stays with the cheaper tier, so its launchers empty their
+magazines before the long-range ones are spent.
 
 Guns are matched by warhead size, then distance. A gun is only given an
 incoming munition it has its **Minimum Firing Window** on (CIWS setting, 3 s
@@ -658,6 +662,30 @@ state (its sound sources) and Zeus edits. On the server:
   out each launcher's timing once per run, doesn't re-judge a launcher whose
   missiles are already flying, and rules out far-off contacts with a
   distance check before the full engagement check.
+- It doesn't work out again what hasn't changed. Of each munition's path it
+  remembers the stretch with no launcher shot in it and goes straight past
+  it; a launcher's claim waiting its turn in a queue is judged by its
+  planned shot alone; and a gun's reach is checked with one distance before
+  the gun's own full check.
+- A munition more than 20 s from impact isn't looked at for launchers on
+  every run. Its next look is 1.5 s before the crew of the launcher the
+  reserve plan has firing at it would have to start on it, or 2 s on,
+  whichever is sooner, and at once if it loses its launcher. Meanwhile it
+  keeps the place the reserve plan last gave it, so the plan still sees a
+  saturated tier and the long-range launchers still step in early. Guns are
+  looked at for it as ever. Only a munition within 20 s of impact makes the
+  coordinator run at once when it's first seen; one further out waits for
+  the Site's next half-second turn.
+- It spreads a salvo's work over runs and frames. Once a run has worked out
+  10 new steps of launcher shots, the far munitions still due a look are
+  put off to a later run: each keeps its place in the plan meanwhile, and
+  its shots are worked out in the frames before the next run, 5 ms a frame,
+  so that run finds them ready. A munition is looked at whole or not at
+  all, so no decision ever waits on work half done. A look is never put off
+  more than 2 s, nor past the time the launcher planned for the munition
+  would have to start on it, nor at all for a munition with no launcher and
+  none planned for it. A munition new to the Site gets its first look within
+  2 s.
 - Config values are read once per class and cached.
 
 The `PERF` line (below) shows all of this. An AA crew that another machine
@@ -862,7 +890,10 @@ by its Site); `L` launcher, `C` CIWS.
 
 **RPT performance summary** (CBA setting "AEGIS-M > Debug > RPT Performance
 Summary", on by default) -- every 10 s, while AEGIS-M is doing anything, the
-server writes one `PERF` line: coordinator runs and time (total and worst),
+server writes one `PERF` line: coordinator runs and time (total and worst;
+the total split into reviewing its claims, the reserve plan and assigning;
+the time spent between runs working out launcher shots ahead, and how many
+looks at a munition the runs put off for that),
 engagement ticks with work, aim solves and per-frame steers, CIWS rounds
 tracked / checked near the target / skipped in flight / time, engageability
 checks, standalone target re-evaluations, Fired events seen / threats among

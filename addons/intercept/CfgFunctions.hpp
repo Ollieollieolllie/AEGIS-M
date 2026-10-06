@@ -42,6 +42,8 @@ class CfgFunctions
             class bodyPass {};
             class ammoBurst {};
             class selectTarget {};
+            class planShot {};
+            class planAhead {};
             class assignEngagements {};
             class engagementLoop {};
             class fireWeapon {};

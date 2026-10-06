@@ -10,7 +10,13 @@ Description:
     idle mission logs nothing.
 
     Columns (per interval):
-        coord - Site coordinator runs, total and worst single run (ms)
+        coord - Site coordinator runs, total and worst single run (ms);
+            the total by part -- reviewing the claims it has, listing
+            weapons and timing contacts with the layered-reserve plan,
+            assigning; then, apart from the runs, the time spent in the
+            frames between them working out launcher shots ahead, how many
+            such frames, and how many looks at a munition the runs put off
+            for that
         ticks - engagement loop ticks that had work to do
         aim - full CIWS/launcher aim solves / CIWS per-frame steers
         rounds - CIWS rounds tracked, per-frame checks near the target,
@@ -60,7 +66,7 @@ if (!_active) exitWith {};
 
 private _ms = { (round (_this * 10)) / 10 };
 
-diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms) | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %27 rays, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms; review %28 / reserve %29 / assign %30ms) + %32ms in %31 frames between, %33 looks put off | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %27 rays, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
     _c select PERF_COORD_RUNS, (_c select PERF_COORD_MS) call _ms, (_c select PERF_COORD_MAX_MS) call _ms,
     _c select PERF_ENGAGE_TICKS,
     _c select PERF_AIM_SOLVES, _c select PERF_STEER_FRAMES,
@@ -72,4 +78,5 @@ diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coo
     _c select PERF_PLAN_HITS, _c select PERF_PLAN_BUILDS,
     round ((_c select PERF_FRAMES) / (_span max 0.001)), round (_c select PERF_FRAME_MAX_MS),
     _c select PERF_OPEN_FIRE_BUILDS, (_c select PERF_SENSOR_MS) call _ms,
-    _c select PERF_SLOW_FRAMES, _c select PERF_PLAN_SOLVES, _c select PERF_LOS_RAYS];
+    _c select PERF_SLOW_FRAMES, _c select PERF_PLAN_SOLVES, _c select PERF_LOS_RAYS,
+    (_c select PERF_COORD_REVIEW_MS) call _ms, (_c select PERF_COORD_RESERVE_MS) call _ms, (_c select PERF_COORD_ASSIGN_MS) call _ms, _c select PERF_COORD_CARRIED, (_c select PERF_COORD_AHEAD_MS) call _ms, _c select PERF_COORD_PUT_OFF];

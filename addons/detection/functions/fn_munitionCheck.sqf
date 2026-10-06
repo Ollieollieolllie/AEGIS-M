@@ -62,6 +62,7 @@ Author:
 ---------------------------------------------------------------------------- */
 
 #include "..\..\main\perf.hpp"
+#include "..\..\main\coordinator.hpp"
 
 // How old a vehicle's last sensor read may be and still count: its reads
 // come once a second, plus a frame or two.
@@ -240,10 +241,18 @@ if (_isArm) then {
                     };
                     if (_class in (_settings getOrDefault ["targetClassAllowlist", []])
                         && {[_network, _projectile, _class, 1, _seenBy] call aegism_detect_fnc_addContact}) then {
-                        // New to the Site: its coordinator runs at once, not
-                        // at its next turn (aegism_network_fnc_moduleInit).
+                        // New to the Site and close to impact (AEGISM_URGENT_
+                        // TTI): its coordinator runs at once, not at its next
+                        // turn (aegism_network_fnc_moduleInit). One further
+                        // out waits for that turn, at most half a second:
+                        // every rocket of a long-range salvo used to set off
+                        // a run of its own, twice as many as the Site's turns.
                         if !(_network in _addedTo) then {
-                            (_network getVariable ["AEGISM_linkLead", _network]) setVariable ["AEGISM_assignNow", true, false];
+                            private _lead = _network getVariable ["AEGISM_linkLead", _network];
+                            private _protected = ((_lead getVariable ["AEGISM_groupMembers", _lead getVariable ["AEGISM_networkMembers", []]]) select { !isNull _x && {alive _x} }) apply { getPosASL _x };
+                            if (([_projectile, _class, _protected] call aegism_intercept_fnc_timeToImpact) <= AEGISM_URGENT_TTI) then {
+                                _lead setVariable ["AEGISM_assignNow", true, false];
+                            };
                         };
                         _addedTo pushBackUnique _network;
                         _sitesAdded pushBack _network;

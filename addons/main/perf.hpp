@@ -28,13 +28,25 @@
 #define PERF_SENSOR_MS 21
 #define PERF_PLAN_SOLVES 22
 #define PERF_LOS_RAYS 23
+// The coordinator's time by part (aegism_intercept_fnc_assignEngagements):
+// reviewing the claims it has; listing weapons, timing contacts and the
+// layered-reserve plan; assigning. And, apart from its runs, the frames
+// between them that worked out launcher shots ahead, and their time (aegism_
+// intercept_fnc_planAhead), for the munitions whose look a run put off (how
+// many times that was).
+#define PERF_COORD_REVIEW_MS 24
+#define PERF_COORD_RESERVE_MS 25
+#define PERF_COORD_ASSIGN_MS 26
+#define PERF_COORD_CARRIED 27
+#define PERF_COORD_AHEAD_MS 28
+#define PERF_COORD_PUT_OFF 29
 // Indices below PERF_WORK_COUNT are AEGIS-M's own work: a summary is only
 // written when one of them moved. The frame counters after it run always.
-#define PERF_WORK_COUNT 24
-#define PERF_FRAMES 24
-#define PERF_FRAME_MAX_MS 25
-#define PERF_SLOW_FRAMES 26
-#define PERF_COUNT 27
+#define PERF_WORK_COUNT 30
+#define PERF_FRAMES 30
+#define PERF_FRAME_MAX_MS 31
+#define PERF_SLOW_FRAMES 32
+#define PERF_COUNT 33
 
 // A frame slower than this counts as slow (20 fps).
 #define PERF_SLOW_FRAME_MS 50

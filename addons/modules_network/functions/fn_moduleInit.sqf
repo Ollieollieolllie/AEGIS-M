@@ -101,8 +101,7 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-// Seconds between the coordinator's runs (assignments, links, alarm).
-#define AEGISM_COORDINATOR_INTERVAL 0.5
+#include "..\..\main\coordinator.hpp"
 
 params ["_logic", "_units", "_activated"];
 
@@ -292,21 +291,30 @@ if (isServer) then {
 // assignments it has just made; its sound stops with the Site.
 if (isServer) then {
     // Every frame, but only working every AEGISM_COORDINATOR_INTERVAL s --
-    // or at once when a munition has just come into the picture ("AEGISM_
-    // assignNow", aegism_detect_fnc_munitionCheck): it's seconds from impact,
-    // and waiting for the next turn cost up to half a second of it.
+    // or at once when a munition close to impact has just come into the
+    // picture ("AEGISM_assignNow", aegism_detect_fnc_munitionCheck): waiting
+    // for the next turn cost up to half a second of the seconds it has left.
+    // Between turns, the launcher shots of the munitions whose look its
+    // last run put off are worked out ("AEGISM_assignMore", aegism_
+    // intercept_fnc_planAhead).
     [{
         params ["_args", "_pfhHandle"];
-        _args params ["_logic", "_alarm", "_lastTime"];
+        _args params ["_logic", "_alarm", "_lastTime", "_seenAt"];
         // Gone: each player's machine stops its alarm by itself (aegism_
         // network_fnc_alarmPlayer).
         if (isNull _logic) exitWith {
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
-        // Paused (game time not moving): nothing has changed. A paused
-        // game used to keep the coordinator running twice a second.
-        if (CBA_missionTime == _lastTime) exitWith {};
-        if (CBA_missionTime < _lastTime + AEGISM_COORDINATOR_INTERVAL && {!(_logic getVariable ["AEGISM_assignNow", false])}) exitWith {};
+        // Paused (game time not moving since the last frame): nothing has
+        // changed. A paused game used to keep the coordinator running twice
+        // a second.
+        if (CBA_missionTime == _seenAt) exitWith {};
+        _args set [3, CBA_missionTime];
+        if (CBA_missionTime < _lastTime + AEGISM_COORDINATOR_INTERVAL && {!(_logic getVariable ["AEGISM_assignNow", false])}) exitWith {
+            if ((_logic getVariable ["AEGISM_assignMore", false]) && {(_logic getVariable ["AEGISM_linkLead", _logic]) == _logic}) then {
+                [_logic] call aegism_intercept_fnc_planAhead;
+            };
+        };
         _logic setVariable ["AEGISM_assignNow", false, false];
         _args set [2, CBA_missionTime];
         // Linked to another Site through a shared vehicle: the group's lead
@@ -321,7 +329,7 @@ if (isServer) then {
             [_logic] call aegism_intercept_fnc_assignEngagements;
         };
         [_logic, _alarm] call aegism_network_fnc_siteAlarm;
-    }, 0, [_logic, ["", "", 0], -1]] call CBA_fnc_addPerFrameHandler;
+    }, 0, [_logic, ["", "", 0], -1, -1]] call CBA_fnc_addPerFrameHandler;
 };
 
 diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " Site %1 established with %2 member vehicle(s) -- allowlist=%3", _logic, count _units, _allowlist];
