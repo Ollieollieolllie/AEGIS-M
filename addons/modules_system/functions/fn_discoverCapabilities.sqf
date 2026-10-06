@@ -64,7 +64,15 @@ Description:
     CIWS: non-missile ammo whose FIRING WEAPON has a fire mode faster than
     AEGISM_CIWS_ROF_THRESHOLD. Rate of fire is a CfgWeapons per-mode
     reloadTime, NOT CfgAmmo reloadTime (an unrelated submunition field that
-    real CIWS rounds like B_35mm_AA don't define at all).
+    real CIWS rounds like B_35mm_AA don't define at all). Cannons only, not
+    machine guns: a weapon built on CfgWeapons MGunCore (the base of every
+    vanilla machine gun, which mods build on) is left out -- POOK's SAM
+    vehicles' self-defence M2HB and PKT were being run as CIWS against
+    rockets. Its ball rounds don't burst (vanilla .50 ball: hit 30,
+    indirectHit 0; the Phalanx and 20-35 mm AA rounds: hit 60-70,
+    indirectHit 6-25). The vehicle override "Guns Used as CIWS" (AEGISM_
+    ovr_ciwsGuns) changes this per vehicle: "all" every rapid-fire gun,
+    machine guns too; "none" no gun at all.
 
     Every weapon also carries its own REAL engagement envelope, read from
     config and never scaled by the AEGIS-M range-scale setting:
@@ -242,6 +250,9 @@ private _clutterHeight = -1;
 
 private _launcherWeapons = [];
 private _ciwsWeapons = [];
+// Which rapid-fire guns count as CIWS (see header): "auto" cannons only,
+// "all", or "none" -- the vehicle's own override, with its master switch on.
+private _ciwsGuns = if (_vehicle getVariable ["AEGISM_ovr_enabled", false]) then { _vehicle getVariable ["AEGISM_ovr_ciwsGuns", "auto"] } else { "auto" };
 
 // Every magazine a weapon accepts: its own magazines[] plus every magazine
 // listed in each CfgMagazineWells class named in its magazineWell[].
@@ -327,7 +338,30 @@ private _fnModeStats = {
         if (_class in ["rocket", "bomb"]) exitWith {};
 
         if (_fastestReload > 0 && {_fastestReload < AEGISM_CIWS_ROF_THRESHOLD}) then {
-            _ciwsWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, 0, _modeMin, _modeMax, _burstTime];
+            private _machineGun = _weaponClass isKindOf ["MGunCore", configFile >> "CfgWeapons"];
+            // Once per vehicle and gun: it has a line per magazine, and is
+            // discovered more than once.
+            private _skipLogged = _vehicle getVariable ["AEGISM_ciwsSkipLogged", []];
+            private _logSkip = !_quiet && {AEGISM_RPT_VERBOSE} && {!(_weaponClass in _skipLogged)};
+            if (_logSkip && {(_ciwsGuns == "none") || {_machineGun && {_ciwsGuns != "all"}}}) then {
+                _skipLogged pushBack _weaponClass;
+                _vehicle setVariable ["AEGISM_ciwsSkipLogged", _skipLogged];
+            };
+            switch (true) do {
+                case (_ciwsGuns == "none"): {
+                    if (_logSkip) then {
+                        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DISCOVERY: %1's %2 not used as CIWS -- its vehicle override Guns Used as CIWS is None.", _vehicle, _weaponClass];
+                    };
+                };
+                case (_machineGun && {_ciwsGuns != "all"}): {
+                    if (_logSkip) then {
+                        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DISCOVERY: %1's %2 (%3) not used as CIWS -- a machine gun (CfgWeapons MGunCore), not a cannon; its vehicle override Guns Used as CIWS = Every Rapid-Fire Gun uses it.", _vehicle, _weaponClass, _ammoClassName];
+                    };
+                };
+                default {
+                    _ciwsWeapons pushBackUnique [_turretPath, _weaponClass, _magClass, 0, _modeMin, _modeMax, _burstTime];
+                };
+            };
         } else {
             if (_quiet) exitWith {};
             if (AEGISM_RPT_VERBOSE) then {

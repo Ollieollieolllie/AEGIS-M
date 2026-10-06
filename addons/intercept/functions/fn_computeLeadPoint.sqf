@@ -31,11 +31,10 @@ Description:
             The one approximation: drag is taken at the round's speed along
             its line; gravity's own small change to that speed is second
             order.
-        missile (launcher) - its flight simulated from config (aegism_
+        missile (launcher) - its speed curve learned from its own flights
+            this mission, or simulated from config until then (aegism_
             intercept_fnc_missileProfile: launch speed, the motor's thrust
-            and fade, drag) -- its flight times scaled by how fast it has
-            really flown this mission (aegism_intercept_fnc_
-            recordMissileSpeed). No drop: the missile is guided. Pointing
+            and fade, drag). No drop: the missile is guided. Pointing
             the launcher at this point instead of the target's current
             position saves the missile a hard turn right off the rail.
         missile launched OFF-BORE (_launchDir given, with the missile's turn
@@ -162,16 +161,9 @@ private _isGun = _role == "ciws";
 // in the scope it's called from.
 ([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics)
     params ["", "_v0", "_k", "", "", "", "", "_maxTime"];
-// A missile's simulated flight (aegism_intercept_fnc_missileProfile), and its
-// speed as measured in flight (aegism_intercept_fnc_recordMissileSpeed): its
-// real flight times are the simulation's this many times over. 1 until
-// measured.
-private _profile = [];
-private _speedFactor = 1;
-if (!_isGun) then {
-    _profile = [_weaponClass, _magazineClass] call aegism_intercept_fnc_missileProfile;
-    _speedFactor = ((missionNamespace getVariable ["AEGISM_missileSpeed", createHashMap]) getOrDefault [_weaponClass + "|" + _magazineClass, [[], 1]]) select 1;
-};
+// A missile's flight: learned from its own flights, or its config simulation
+// until then (aegism_intercept_fnc_missileProfile).
+private _profile = if (_isGun) then { [] } else { [_weaponClass, _magazineClass] call aegism_intercept_fnc_missileProfile };
 
 // Time for the round/missile to cover a distance; -1 = it can't.
 private _fnTimeOfFlight = if (_isGun) then {
@@ -185,9 +177,7 @@ private _fnTimeOfFlight = if (_isGun) then {
 } else {
     {
         params ["_d"];
-        private _time = [_profile, "time", _d] call aegism_intercept_fnc_missileProfileAt;
-        if (_time < 0) exitWith { -1 };
-        _speedFactor * _time
+        [_profile, "time", _d] call aegism_intercept_fnc_missileProfileAt
     }
 };
 
@@ -205,7 +195,7 @@ private _turn = [0, 0, _origin];
 // Distance a missile covers in its first _t s: the inverse of its flight time.
 private _fnDistanceAt = {
     params ["_t"];
-    [_profile, "distance", _t / _speedFactor] call aegism_intercept_fnc_missileProfileAt
+    [_profile, "distance", _t] call aegism_intercept_fnc_missileProfileAt
 };
 
 // Flight time to a point: straight, or turning onto it first; -1 = it can't.

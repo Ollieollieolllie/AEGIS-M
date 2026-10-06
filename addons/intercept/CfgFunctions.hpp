@@ -9,12 +9,14 @@ class CfgFunctions
             class munitionSize {};
             class weaponKinematics {};
             class fireModeStats {};
+            class weaponReload {};
             class openFireRange {};
             class turretConfig {};
             class turretState {};
             class computeLeadPoint {};
             class missileProfile {};
             class missileProfileAt {};
+            class missileFlightKey {};
             class missileFlightTime {};
             class lockTurret {};
             class gunnerLock {};

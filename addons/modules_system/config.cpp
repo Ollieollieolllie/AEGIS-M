@@ -282,6 +282,23 @@ class Cfg3DEN
                         description = "";
                         condition = "objectVehicle";
                     };
+                    class AEGISM_ovr_ciwsGuns
+                    {
+                        displayName = "Guns Used as CIWS";
+                        tooltip = "Which of this vehicle's rapid-fire guns AEGIS-M runs as CIWS. Auto: cannons only -- a machine gun (a self-defence .50 or PKT on a SAM vehicle) isn't used. Every Rapid-Fire Gun: machine guns too. None: no gun at all. Read when the vehicle is adopted.";
+                        property = "AEGISM_ovr_ciwsGuns";
+                        control = "Combo";
+                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsGuns', _value]};";
+                        typeName = "STRING";
+                        defaultValue = "''";
+                        condition = "objectVehicle";
+                        class Values
+                        {
+                            class Auto { name = "Auto (cannons, not machine guns)"; value = ""; };
+                            class All { name = "Every Rapid-Fire Gun"; value = "all"; };
+                            class None { name = "None"; value = "none"; };
+                        };
+                    };
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsMaxRange,"AEGISM_ovr_ciwsMaxRange","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsMaxRange', parseNumber _value]};","Max Range (m)","0 = the gun's own config reach. Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsMinElevation,"AEGISM_ovr_ciwsMinElevation","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsMinElevation', parseNumber _value]};","Min Elevation (deg)","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsOpenFireChance,"AEGISM_ovr_ciwsOpenFireChance","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsOpenFireChance', parseNumber _value]};","Open Fire at Hit Chance (%)","Fires only where one burst is at least this likely to hit, from the gun's measured accuracy and the round's flight. 0 = its full reach. Blank = Site setting.");

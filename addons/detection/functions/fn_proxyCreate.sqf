@@ -41,6 +41,7 @@ Author:
 
 #include "..\proxy.hpp"
 #include "..\..\main\perf.hpp"
+#include "..\..\main\rpt.hpp"
 
 params ["_entry"];
 _entry params ["_projectile", "_class", "", "_key", "", "", "", "_flags"];
@@ -64,16 +65,37 @@ private _proxy = (format ["AEGISM_MunitionProxy_%1", _class]) createVehicleLocal
 // Shot down, its munition dies (aegism_detect_fnc_destroyMunition): the
 // proxy is what sensors see and lock, so a weapon fired at the munition --
 // a gunner locking it on radar -- hits the proxy, never the munition (no
-// projectile hits a projectile). Weapon damage only, from anyone, added up
-// until it would destroy the proxy -- a rocket of a salvo detonating can
-// take out the ones flying beside it -- but not a collision (a proxy moved
-// every frame can graze the ground). The proxy itself is never damaged: it
-// goes with its munition (aegism_detect_fnc_munitionTracker). PROXY-HIT.
+// projectile hits a projectile). Weapon damage only, added up until it
+// would destroy the proxy -- an intercept's blast can take out the rockets
+// flying beside it -- but not a collision (a proxy moved every frame can
+// graze the ground). The proxy itself is never damaged: it goes with its
+// munition (aegism_detect_fnc_munitionTracker). PROXY-HIT.
+// Not the incoming side's own blasts: damage from the side that fired the
+// munition counts only from a munition AEGIS-M has just destroyed nearby
+// (destroyMunition notes each, AEGISM_KILL_NOTE) -- its blast is credited to
+// whoever fired it. The rest is the salvo landing: an MLRS's warheads going
+// off at impact were logged as kills of the rockets coming down beside them
+// (11 in one test, 2026-10-06). An AEGIS-M weapon always counts, even on its
+// own side's munition (a Site that engages friendly threats).
 _proxy addEventHandler ["HandleDamage", {
     params ["_proxy", "", "_damage", "_source", "_ammo", "_hitIndex", "_instigator"];
     private _entry = _proxy getVariable ["AEGISM_proxyEntry", [objNull]];
     private _attacker = [_instigator, _source] select (isNull _instigator);
-    if (_ammo != "" && {_hitIndex == -1} && {_damage > 0}) then {
+    private _firerSide = _entry param [2, sideUnknown];
+    private _counts = isNull _attacker || {_firerSide == sideUnknown} || {!isNil { (vehicle _attacker) getVariable "AEGISM_system" }} || {(side group _attacker) != _firerSide} || {
+        private _at = getPosASL _proxy;
+        ((missionNamespace getVariable ["AEGISM_recentKills", []]) findIf {
+            CBA_missionTime - (_x select 0) <= AEGISM_KILL_NOTE && {(_at distance (_x select 1)) <= (_x select 2) + AEGISM_PROXY_OFFSET}
+        }) != -1
+    };
+    if (!_counts && {_ammo != ""} && {!(_proxy getVariable ["AEGISM_ownBlastLogged", false])}) then {
+        _proxy setVariable ["AEGISM_ownBlastLogged", true];
+        if (AEGISM_RPT_VERBOSE) then {
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PROXY-DAMAGE-IGNORED: %1 (%2) -- its sensor proxy was hit by %3 (%4, %5), the side that fired it, with no intercept nearby: its salvo landing, not a kill (logged once per munition).",
+                typeOf (_entry select 0), _proxy getVariable ["AEGISM_proxyKey", "?"], _attacker, typeOf _attacker, _ammo];
+        };
+    };
+    if (_counts && {_ammo != ""} && {_hitIndex == -1} && {_damage > 0}) then {
         private _total = (_proxy getVariable ["AEGISM_proxyDamage", 0]) + _damage;
         _proxy setVariable ["AEGISM_proxyDamage", _total];
         private _munition = _entry select 0;

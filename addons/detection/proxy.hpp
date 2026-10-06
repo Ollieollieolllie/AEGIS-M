@@ -39,3 +39,10 @@
 // from it a quarter second after it was made half a second after launch, in
 // testing.
 #define AEGISM_PROXY_ATTACH_TOLERANCE 20
+
+// A proxy hit by the incoming side's own blast (aegism_detect_fnc_
+// proxyCreate) only counts within this many seconds of AEGIS-M destroying a
+// munition whose blast reaches it (aegism_detect_fnc_destroyMunition) -- the
+// salvo neighbours an intercept takes out with it. Otherwise it's the salvo
+// landing: the MLRS's own warheads going off at impact were logged as kills.
+#define AEGISM_KILL_NOTE 0.5

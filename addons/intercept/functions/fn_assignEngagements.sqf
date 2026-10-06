@@ -26,7 +26,10 @@ Description:
            flight. This is judged from the real missiles (captured by
            aegism_intercept_fnc_onSystemFired), not a fixed timer -- the old
            8s timer called a long-range shot "failed" while its missile was
-           still flying and fired a second one at the same target.
+           still flying and fired a second one at the same target. Only
+           once a missile has actually left: a fire command that fired
+           nothing (FIRE-FAILED) is taken back and the launcher holds; if
+           none ever leaves, it's released after AEGISM_NO_LAUNCH_TIMEOUT s
          - CIWS idle: hasn't fired for AEGISM_CIWS_IDLE_GRACE seconds
          - launcher crew failed to fire (reliability roll, flagged by
            aegism_intercept_fnc_engagementLoop): the contact is re-tasked,
@@ -35,7 +38,13 @@ Description:
          - launcher out of missiles before firing at it
          - never fired within AEGISM_NEVER_FIRED_TIMEOUT seconds of being
            assigned (turret can't bear, LOS never clears) -- frees the
-           contact for a better-placed weapon instead of holding it forever
+           contact for a better-placed weapon instead of holding it forever.
+           A launcher's claim counts from when it reached the front of the
+           launcher's queue ("frontSince", aegism_intercept_fnc_
+           engagementLoop), not from when it was queued: a deep queue
+           released claims as "never fired" while they waited their turn,
+           and they were handed straight back with the crew's reaction
+           restarted (17 times in one POOK test, 2026-10-06)
 
     3. Assign free roles, contacts in Target Priority order -- except a
        contact only passive radar hears (aegism_fnc_hasTrack), which only
@@ -152,6 +161,10 @@ Author:
 #include "..\..\main\rpt.hpp"
 
 #define AEGISM_INTERCEPTOR_SETTLE 1.5
+// A launcher's salvo is away but no missile ever left it this long after its
+// last fire command (a FIRE-FAILED its shot count wasn't taken back for):
+// released.
+#define AEGISM_NO_LAUNCH_TIMEOUT 5
 #define AEGISM_CIWS_IDLE_GRACE 8
 // A gun crew's reaction is capped at this (automated fire control), as its
 // engagement loop applies it (aegism_intercept_fnc_engagementLoop).
@@ -338,9 +351,17 @@ private _fnDropLastDitch = {
                     "crew failed to fire (reliability roll) -- re-tasking it to the rest of the Site"
                 };
                 case (_unfiredLauncher && {(_system magazineTurretAmmo [_weaponInfo select 2, _weaponInfo select 0]) <= 0}): { "launcher out of missiles" };
-                case (_role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])} && {CBA_missionTime > _lastShotAt + AEGISM_INTERCEPTOR_SETTLE} && {((_record get "interceptors") findIf { !isNull _x && {alive _x} }) == -1}): { "missed (salvo spent, no interceptor still in flight)" };
+                // Missed only once a missile has actually left: a fire command
+                // that fired nothing (aegism_intercept_fnc_fireWeapon,
+                // FIRE-FAILED) isn't a miss -- a launcher firing into its
+                // magazine reload had its targets released as missed.
+                case (_role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])} && {CBA_missionTime > _lastShotAt + AEGISM_INTERCEPTOR_SETTLE} && {(_record get "interceptors") isNotEqualTo []} && {((_record get "interceptors") findIf { !isNull _x && {alive _x} }) == -1}): { "missed (salvo spent, no interceptor still in flight)" };
+                case (_role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])} && {(_record get "interceptors") isEqualTo []} && {CBA_missionTime > _lastShotAt + AEGISM_NO_LAUNCH_TIMEOUT}): { "fired, but no missile ever left the launcher" };
                 case (_role == "ciws" && {_lastShotAt >= 0} && {CBA_missionTime > _lastShotAt + AEGISM_CIWS_IDLE_GRACE}): { "CIWS idle" };
-                case (_lastShotAt < 0 && {CBA_missionTime > (_record get "assignedAt") + AEGISM_NEVER_FIRED_TIMEOUT}): { "never fired (cannot bear or no LOS)" };
+                // From when a launcher's claim reached the front of its queue
+                // (a gun works every claim it has at once): one still waiting
+                // its turn hasn't failed to fire.
+                case (_lastShotAt < 0 && {CBA_missionTime > ([_record get "assignedAt", _record getOrDefault ["frontSince", 1e10]] select (_role == "launcher")) + AEGISM_NEVER_FIRED_TIMEOUT}): { "never fired (cannot bear or no LOS)" };
                 default { "" };
             };
 
@@ -448,8 +469,9 @@ if (_memberPositions isNotEqualTo [] && {count _orderedKeys > 1}) then {
 // One launcher turret's firing rhythm right now: [crew reaction s, cooldown
 // s until it may fire again, shot spacing s, missiles left, missiles per
 // target]. Reaction is none for an automated/UAV system. Cooldown is its
-// shot interval since its last missile, or a crew's lost fire cycle
-// (turret state "holdUntil"), whichever ends later. Shot spacing is
+// shot interval since its last missile, a crew's lost fire cycle (turret
+// state "holdUntil"), or its weapon's own reload, whichever ends latest.
+// Shot spacing is
 // the launcher's own MEASURED time per missile (turret state "spacing",
 // aegism_intercept_fnc_engagementLoop), which includes lost reliability
 // rolls and re-aiming between targets; before its first back-to-back shots
@@ -501,6 +523,10 @@ private _fnLauncherTiming = {
     private _interval = ([_candSystem, _weaponInfo, _settings] call aegism_intercept_fnc_launcherInterval) * (_mods get "shotIntervalMult");
     private _spacing = _ts getOrDefault ["spacing", _interval / ((_mods get "reliability") max 0.05)];
     private _readyAt = ((_ts getOrDefault ["shotAt", -1e9]) + _interval) max (_ts getOrDefault ["holdUntil", -1e9]);
+    // Its weapon still loading its next magazine or readying its next round
+    // (aegism_intercept_fnc_weaponReload): POOK's launchers reload for
+    // minutes, and the engine shows the new magazine's count meanwhile.
+    _readyAt = _readyAt max (CBA_missionTime + (([_candSystem, _turretPath, _weaponInfo select 1] call aegism_intercept_fnc_weaponReload) select 1));
     // In combat, its crew's Reaction Once in Combat, as its engagement loop
     // applies it (aegism_intercept_fnc_engagementLoop): the full reaction
     // made it look slower than it was.

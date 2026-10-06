@@ -25,8 +25,12 @@ Early development.
 vehicle's own native config and current loadout: every sensor it has
 (active radar, IR, visual, passive radar -- with each one's own reach, arc
 and whether it turns with a turret); if it has guided missiles, it's a
-launcher; if it also has a high-rate-of-fire gun (a SHORAD or Tigris-style
-all-in-one vehicle), it's also a CIWS/CRAM. There is no role checkbox, no detection
+launcher; if it also has a high-rate-of-fire cannon (a SHORAD or Tigris-style
+all-in-one vehicle), it's also a CIWS/CRAM. A machine gun doesn't count (a
+weapon built on the game's `MGunCore`, as every vanilla machine gun is): the
+self-defence .50 or PKT on a mod SAM vehicle isn't run as a CIWS. A vehicle
+override, **Guns Used as CIWS**, changes that per vehicle: Every Rapid-Fire
+Gun, or None. There is no role checkbox, no detection
 range/arc, no missile count, no guidance speed, no ammo classname to set
 anywhere -- all of that is either read live from the vehicle's real
 sensors/magazines, or is simply the game's own weapon simulation once
@@ -124,9 +128,11 @@ records which kinds of sensor saw it.
   velocity from then on (`PROXY-LOW`, once per type). It's deleted with its
   munition. It's also what a gunner's radar shows and locks, so a weapon
   that shoots the proxy down -- any weapon, a player's included --
-  destroys its munition in the air (`PROXY-HIT`). A rocket of a salvo
-  detonating can take out the ones flying beside it this way; collisions
-  don't count. (Proxies
+  destroys its munition in the air (`PROXY-HIT`). An intercept's blast can
+  take out the rockets flying beside it this way; collisions don't count,
+  and nor do the incoming side's own blasts unless AEGIS-M has just
+  destroyed a munition there -- a salvo's warheads going off as they land
+  aren't kills (`PROXY-DAMAGE-IGNORED`, Verbose). (Proxies
   exist only on the server, so in multiplayer only the host's own sensors
   and weapons see them.) There's one
   proxy class per kind of munition (`AEGISM_MunitionProxy_missile` /
@@ -277,10 +283,13 @@ launch speed, the motor lighting after `initTime`, thrust at full for 75% of
 `thrustTime` then fading out, and drag of 0.00225 x `airFriction` x speed^2
 along its nose. `airFriction` is each missile's own; the 0.00225 is the
 engine's, in no config, fitted to AEGIS-M's own missiles' measured speeds.
-`maxSpeed` is not applied: the Patriot's real flights ran well past it. The RPT's `MISSILE-PROFILE` line
-gives each missile's simulated speeds and times, and `MISSILE-SPEED`
-compares every flight's real speed with them, second by second, however it
-ended (both Verbose). Launchers
+`maxSpeed` is not applied: some missiles stop at it and some run well past
+it. That's only where a missile starts: each one's own flights then teach
+AEGIS-M its real speed, second by second (see **Learning in play**), so a
+launcher from any mod is predicted on what its missiles actually do. The
+RPT's `MISSILE-PROFILE` line gives each missile's simulated speeds and
+times, and `MISSILE-SPEED` compares every flight's real speed with the
+prediction, second by second, however it ended (both Verbose). Launchers
 leave the rail already pointed at the meeting point instead of turning
 hard after launch: a launcher fires only
 with its barrel within 2 degrees of that point, or once its turret has
@@ -577,7 +586,7 @@ learned far. The limits are all in `addons/intercept/calibration.hpp`.
 
 | What's learned | From | Safeguards |
 |---|---|---|
-| A missile's real speed | Every AEGIS-M missile that reaches its target: its flight time against what its simulated flight gives for the length of the path it flew (`MISSILE-SPEED`). Predictions then use it as a speed; the lead solver lays out an off-bore turn itself. It takes in what the simulation leaves out: gravity on a climb, speed lost turning, and any error in the simulation itself. | Only flights that hit the target they were fired at, after at least 1 s. A flight outside 0.5-2x its profile's time is thrown away. What's used is the median of the last 15 flights, once there are 3. |
+| A missile's speed curve | Every AEGIS-M missile, however its flight ends: its real speed each second after launch (`MISSILE-SPEED`). Each second's median replaces the config simulation's speed there; beyond the last second learned, the simulation's curve carries on, scaled as there. That takes in whatever the simulation gets wrong: a `maxSpeed` that caps one missile and not another, gravity on a climb, speed lost turning, a mod that flies its missiles by script. | A speed under 0.2x or over 5x the config simulation's at that second is a measuring problem, and isn't used. Each second uses the median of the last 15 flights to reach it, once there are 3. |
 | A missile's turn rate (missiles the game guides; ACE's give theirs in config) | The fastest sustained turn of each flight launched off the intercept (`MISSILE-TURN`). | A flight whose seeker changed target isn't used, nor a turn over 180 deg/s. Once two flights have turned, the rate is the second fastest, so no one flight sets it. |
 | A gun's aim correction (lead and elevation) | Every third round, measured against the track it was aimed at (`SPOTTING`). | A round missing over 4x the median of its last 30 rounds' misses is an outlier, left out (counted in `SPOTTING`). A round saying the gun needs over 0.5 s of lead or 10 mrad of elevation isn't believed. Rounds fired only by the last-ditch rule, off the gate, are never measured. |
 | A gun's scatter, and how far targets stray from their predicted track (its open-fire range) | The same rounds. | The same outlier check. A target's straying is only believed up to what it could accelerate away in the round's flight. |
@@ -688,8 +697,13 @@ thing, labels stacked rather than drawn over each other:
 Each hit is logged as `INTERCEPT`, with where: its distance from the vehicle
 that fired and its height above the ground.
 
-An assigned weapon that can't fire logs why: `NO-SOLUTION`, `LOS-BLOCKED` (the line from the weapon's own muzzle to the target, naming what's in the way: terrain, or the object, its class and how far its top is above the muzzle), `FIRE-SKIP`, or
-`ASSIGN-CLEAR` with a reason. A threat munition 10 s from impact with no
+An assigned weapon that can't fire logs why: `NO-SOLUTION`, `LOS-BLOCKED` (the line from the weapon's own muzzle to the target, naming what's in the way: terrain, or the object, its class and how far its top is above the muzzle), `FIRE-SKIP`, `RELOADING`, or
+`ASSIGN-CLEAR` with a reason. A launcher never fires while its weapon is
+still loading its next magazine: the game already shows the new magazine's
+count, and a fire command then fires nothing. Mod launchers can take minutes
+(POOK's S-125: 900 s), and the Site gives their targets to other weapons
+meanwhile. A fire command that still fires nothing is logged `FIRE-FAILED`
+and isn't counted as a shot, so the target isn't taken for missed. A threat munition 10 s from impact with no
 weapon on it at all is logged once (`UNENGAGED`), with each weapon's reason:
 held in reserve, out of its reach, busy or too late. Every AEGIS-M RPT line carries the mission's
 game time (`[AEGIS-M] t=123.4 ...`): the RPT's own timestamp is wall-clock
@@ -879,7 +893,9 @@ differ for that vehicle; everything left on "Site setting" (or blank) keeps
 following the Site. Examples: set a long-range SAM's "Artillery, Mortar and
 MLRS Rounds" to Ignore so it never spends missiles on shells, or give one
 CIWS a shorter Max Range as an inner layer, or keep one long-range search
-radar Always on while the rest stay Silent until cued. Overrides on a radar
+radar Always on while the rest stay Silent until cued, or set **Guns Used as
+CIWS** to Every Rapid-Fire Gun on a vehicle whose machine gun should still
+work as one. Overrides on a radar
 affect its Interception Targets (what it reports, and which munitions it
 treats as threats) and its Radar Emission. A vehicle's active overrides are logged at start
 (`OVERRIDES:` in the RPT). Script equivalent:

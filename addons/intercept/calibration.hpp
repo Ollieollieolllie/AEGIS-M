@@ -18,16 +18,16 @@
 #define AEGISM_MAX_ACCEL_MUNITION 981
 #define AEGISM_MAX_ACCEL(CLASS) ([AEGISM_MAX_ACCEL_AIRCRAFT, AEGISM_MAX_ACCEL_MUNITION] select ((CLASS) in ["missile", "rocket", "bomb", "artilleryShell"]))
 
-// --- Missile speed (aegism_intercept_fnc_recordMissileSpeed) -----------------
-// One flight's real time over its simulated flight's time (aegism_intercept_
-// fnc_missileProfile) for the distance it covered. A flight outside these is
-// thrown away.
-#define AEGISM_SPEED_FACTOR_MIN 0.5
-#define AEGISM_SPEED_FACTOR_MAX 2
-// A flight shorter than this says little: one frame is a large part of it, s.
-#define AEGISM_SPEED_MIN_FLIGHT 1
-// The factor used is the median of the last AEGISM_SPEED_SAMPLES flights,
-// once there are AEGISM_SPEED_MIN_SAMPLES: one odd flight can't move it.
+// --- Missile speed curve (aegism_intercept_fnc_recordMissileSpeed) -----------
+// A missile's real speed at one second after launch over its config
+// simulation's then (aegism_intercept_fnc_missileProfile). Outside these it's
+// a measuring problem and isn't used -- wide, since the simulation itself can
+// be far out: no cap on maxSpeed puts POOK's S-300 at 7473 m/s.
+#define AEGISM_SPEED_RATIO_MIN 0.2
+#define AEGISM_SPEED_RATIO_MAX 5
+// Each second's speed is the median of the last AEGISM_SPEED_SAMPLES flights
+// to reach it, used once AEGISM_SPEED_MIN_SAMPLES have: one odd flight can't
+// move it.
 #define AEGISM_SPEED_SAMPLES 15
 #define AEGISM_SPEED_MIN_SAMPLES 3
 

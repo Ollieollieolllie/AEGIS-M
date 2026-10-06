@@ -19,6 +19,10 @@ Description:
     Target classes are overridden one at a time ("AEGISM_ovr_allow_<class>"
     true/false) and applied to the inherited allowlist.
 
+    "AEGISM_ovr_ciwsGuns" ("all" / "none"; nil = cannons only) isn't a
+    setting: it decides which guns are CIWS at all, read when the vehicle's
+    weapons are discovered (aegism_system_fnc_discoverCapabilities).
+
 Parameters:
     _vehicle - the System vehicle <OBJECT>
     _settings - the inherited settings, never modified <HASHMAP>

@@ -48,13 +48,17 @@ Parameters:
     _interceptors - the assignment's in-flight interceptor list; a fired
         missile is appended to it (by reference) <ARRAY>
     _burstDuration - CIWS only: sustained burst length, seconds <NUMBER>
+    _state - optional, launcher only: the engagement state the shot counts
+        in (aegism_intercept_fnc_engagementLoop). If no missile leaves --
+        the fire command fired nothing -- the shot is taken back off its
+        roundsFired (FIRE-FAILED), so it isn't judged a miss <HASHMAP>
 
 Returns:
     1 fired, 0 crew hesitated (reliability roll failed), -1 could not fire
     (hold, dead target, no ammo, crew being moved to the server) <NUMBER>
 
 Examples:
-    [_samSite, _heli, _weaponInfo, 0.85, "launcher", _interceptors] call aegism_intercept_fnc_fireWeapon;
+    [_samSite, _heli, _weaponInfo, 0.85, "launcher", _interceptors, 0, _engagementState] call aegism_intercept_fnc_fireWeapon;
     [_cheetah, _rocket, _weaponInfo, 0.85, "ciws", _interceptors, 4] call aegism_intercept_fnc_fireWeapon;
 
 Author:
@@ -67,7 +71,7 @@ Author:
 // a launch is off-bore (OFFBORE-LAUNCH).
 #define AEGISM_LAUNCH_ON_BORE 2
 
-params ["_system", "_target", "_weaponInfo", "_reliability", "_role", ["_interceptors", []], ["_burstDuration", 0]];
+params ["_system", "_target", "_weaponInfo", "_reliability", "_role", ["_interceptors", []], ["_burstDuration", 0], ["_state", createHashMap]];
 _weaponInfo params ["_turretPath", "_weaponClass", "_magazineClass"];
 
 private _isCiws = _role == "ciws";
@@ -178,24 +182,43 @@ if (_isCiws) then {
     [_system, _weaponClass, _turretPath] call BIS_fnc_fire;
 };
 
-// Each launcher fire command should consume exactly one missile; more means
-// the engine fired a ripple. Counted against the fire commands actually
-// issued to this turret in the meantime (turret state "shots") -- a
-// launcher on a 1s interval legitimately fires its NEXT missile inside the
-// 1s check window. (A CIWS burst reports its own count, BURST-END.)
+// Checked once the capture context has run out:
+//   - no missile came of it (the context was never taken, aegism_intercept_
+//     fnc_onSystemFired): FIRE-FAILED, and the shot is taken back off the
+//     engagement's count, so the coordinator doesn't release the target as
+//     missed -- the launcher holds until it can really fire (aegism_
+//     intercept_fnc_weaponReload) or the target goes to another weapon.
+//     POOK's launchers fired into their magazine reloads and nothing left.
+//   - more missiles than commands: the engine fired a ripple. Counted
+//     against the fire commands actually issued to this turret in the
+//     meantime (turret state "shots") -- a launcher on a short interval
+//     legitimately fires its NEXT missile inside the window.
+// (A CIWS burst reports its own count, BURST-END.)
 if (!_isCiws) then {
     private _shotsBefore = _ts getOrDefault ["shots", 0];
     _ts set ["shots", _shotsBefore + 1];
+    private _expiresAt = (_ts get "capture") select 3;
     [{
-        params ["_system", "_magazineClass", "_turretPath", "_ammoBefore", "_ts", "_shotsBefore"];
+        params ["_system", "_weaponClass", "_magazineClass", "_turretPath", "_ammoBefore", "_ts", "_shotsBefore", "_expiresAt", "_state", "_target"];
         if (isNull _system) exitWith {};
+        if (((_ts getOrDefault ["capture", []]) param [3, -1]) == _expiresAt) exitWith {
+            _ts deleteAt "capture";
+            if ((_state getOrDefault ["roundsFired", 0]) > 0) then { _state set ["roundsFired", (_state get "roundsFired") - 1]; };
+            ([_system, _turretPath, _weaponClass] call aegism_intercept_fnc_weaponReload) params ["_ready", "_wait", "_loading", "_phases"];
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FIRE-FAILED: %1 fired %2 at %3 and no missile left -- %4 Not counted as a shot.", _system, _weaponClass, _target,
+                switch (true) do {
+                    case (_loading): { format ["it's loading its next magazine, ready in ~%1s.", round _wait] };
+                    case (!_ready): { format ["it's readying its next round, ready in ~%1s (weaponState reload phases %2).", round _wait, _phases] };
+                    default { format ["its weapon reports ready (weaponState reload phases %1, %2 rounds left); the vehicle's mod may launch some other way.", _phases, _system magazineTurretAmmo [_magazineClass, _turretPath]] };
+                }];
+        };
         private _consumed = _ammoBefore - (_system magazineTurretAmmo [_magazineClass, _turretPath]);
         private _commanded = (_ts getOrDefault ["shots", 0]) - _shotsBefore;
         // A reload in the window refills the count; only an excess is an anomaly.
         if (_consumed > _commanded) then {
             diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " FIRE-ANOMALY: %1 -- %2 fire command(s) consumed %3 missiles.", _system, _commanded, _consumed];
         };
-    }, [_system, _magazineClass, _turretPath, _ammoBefore, _ts, _shotsBefore], 1] call CBA_fnc_waitAndExecute;
+    }, [_system, _weaponClass, _magazineClass, _turretPath, _ammoBefore, _ts, _shotsBefore, _expiresAt, _state, _target], _contextLifetime + 0.2] call CBA_fnc_waitAndExecute;
 };
 
 1

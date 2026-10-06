@@ -1,50 +1,41 @@
 /* ----------------------------------------------------------------------------
 Function: aegism_intercept_fnc_recordMissileSpeed
-
 Description:
-    One AEGIS-M missile's flight to an intercept (aegism_intercept_fnc_
-    interceptorPFH), folded into how fast that missile really flies: its
-    real flight time over the time its flight simulated from config
-    (aegism_intercept_fnc_missileProfile) gives for the length of the path
-    it actually flew. Its predictions use the result from then on (aegism_
-    intercept_fnc_computeLeadPoint, aegism_intercept_fnc_missileFlightTime),
-    as a speed: the time to cover any path, straight or turning.
+    One AEGIS-M missile's flight (aegism_intercept_fnc_interceptorPFH),
+    folded into its learned speed curve: its real speed 1, 2, 3... s after
+    launch joins the samples for that second ("AEGISM_missileSpeedSamples",
+    per flight config, aegism_intercept_fnc_missileFlightKey, from the start
+    of each mission), and its
+    profile is rebuilt from them (aegism_intercept_fnc_missileProfile) --
+    the speeds AEGIS-M predicts its flights with from then on.
 
-    The path flown, not the straight line from launch: the lead solver lays
-    out an off-bore launch's turn itself, and a factor measured on the
-    straight line also took in the turn's extra length -- counted twice,
-    ACE's RIM-116 (every launch 12-21 deg off-bore) was predicted ~9% long
-    once its factor applied (2026-10-06).
+    Every flight counts, however it ended: a miss, a lost target, a
+    retarget or the game's own proximity fuse fly the same speeds as a hit
+    (the RIM-162's engine-fused kills left it with no speed data at all
+    while only intercepts counted). Speeds, not flight times: a time also
+    takes in an off-bore launch's turn, which the lead solver lays out
+    itself -- a factor measured on flight times counted it twice, and ACE's
+    RIM-116 was predicted ~9% long once it applied (2026-10-06). This
+    replaces that factor.
 
-    Measured against the raw simulation, never the factor in use (that would
-    feed on itself). Per weapon and magazine, as the simulation is; from the
-    start of each mission. The factor takes in whatever the real flight
-    costs in speed that the simulation leaves out: gravity on a climb, speed
-    lost turning, and any error in the simulation itself (the MIM-145's
-    speed levelling off, aegism_intercept_fnc_missileProfile).
+    Safeguards (calibration.hpp): a speed outside AEGISM_SPEED_RATIO_MIN-MAX
+    times the config simulation's at that second is a measuring problem,
+    not the missile, and isn't used; each second keeps its last AEGISM_
+    SPEED_SAMPLES; the curve uses a second's median once AEGISM_SPEED_MIN_
+    SAMPLES flights have reached it, so one odd flight can't move it.
 
-    Safeguards (calibration.hpp): only a flight that ended in AEGIS-M's own
-    intercept, on the target it was fired at -- not one its seeker changed to
-    -- after at least AEGISM_SPEED_MIN_FLIGHT s; a flight outside AEGISM_
-    SPEED_FACTOR_MIN-MAX times the simulation's time is thrown away; the factor
-    used is the median of the last AEGISM_SPEED_SAMPLES flights, from AEGISM_
-    SPEED_MIN_SAMPLES on, so one odd flight can't move it.
-
-    Logged per flight (MISSILE-SPEED, Verbose), with its real speed every
-    second against the simulation's -- to check the simulation on each new
-    missile. A flight that ended any other way (_ended: it missed, lost its
-    target, or ran out of life) is logged with its speeds too, but not
-    scored: its speed still checks the simulation, and a missile that never
-    hits (the RIM-162 in the 2026-10-06 test) would otherwise leave none.
+    Logged per flight (MISSILE-SPEED, Verbose): its real speed every second
+    against what was predicted (the curve in use before this flight), and
+    for an intercept its flight time against the predicted time for the
+    path it flew -- to check each new missile.
 
 Parameters:
     _weaponClass - CfgWeapons class it was fired from <STRING>
     _magazineClass - its CfgMagazines class <STRING>
-    _flightTime - seconds from launch to the intercept <NUMBER>
-    _distance - metres it flew, along its path, to the intercept <NUMBER>
-    _retargeted - its seeker changed target in flight <BOOLEAN>
-    _speeds - optional, its real speed 1, 2, 3... s after launch, m/s
-        <ARRAY>
+    _flightTime - seconds from launch to the end of its flight <NUMBER>
+    _distance - an intercept: metres it flew along its path; -1 otherwise
+        <NUMBER>
+    _speeds - its real speed 1, 2, 3... s after launch, m/s <ARRAY>
     _ended - optional, how a flight that DIDN'T end in its intercept ended;
         "" (default) for one that did <STRING>
     _straight - optional, metres from where it was launched to the
@@ -54,7 +45,7 @@ Returns:
     Nothing
 
 Examples:
-    ["weapon_rim116Launcher", "magazine_Missiles_rim116_x21", 9.1, 4400, false, [327, 561, 725], "", 4300] call aegism_intercept_fnc_recordMissileSpeed;
+    ["weapon_rim116Launcher", "magazine_Missiles_rim116_x21", 9.1, 4400, [327, 561, 725], "", 4300] call aegism_intercept_fnc_recordMissileSpeed;
 
 Author:
     Snow(Dryden)
@@ -63,75 +54,64 @@ Author:
 #include "..\..\main\rpt.hpp"
 #include "..\calibration.hpp"
 
-params ["_weaponClass", "_magazineClass", "_flightTime", "_distance", ["_retargeted", false], ["_speeds", []], ["_ended", ""], ["_straight", -1]];
+params ["_weaponClass", "_magazineClass", "_flightTime", "_distance", ["_speeds", []], ["_ended", ""], ["_straight", -1]];
 
 if (_weaponClass == "" || {_magazineClass == ""}) exitWith {};
-private _ammoClass = ([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics) select 0;
-private _profile = [_weaponClass, _magazineClass] call aegism_intercept_fnc_missileProfile;
-if (_profile isEqualTo []) exitWith {};
+private _sim = [_weaponClass, _magazineClass, true] call aegism_intercept_fnc_missileProfile;
+if (_sim isEqualTo []) exitWith {};
+// What its flights were predicted with until now.
+private _predicted = [_weaponClass, _magazineClass] call aegism_intercept_fnc_missileProfile;
 
-// Its real speed each second against the simulation's.
-private _fnTrace = {
-    private _trace = [];
-    {
-        _trace pushBack format ["%1s %2/%3", _forEachIndex + 1, round _x, round ([_profile, "speed", _forEachIndex + 1] call aegism_intercept_fnc_missileProfileAt)];
-    } forEach _speeds;
-    [_trace joinString ", ", "none (under 1s)"] select (_trace isEqualTo [])
-};
-
-// Not its intercept: logged for its speeds, not scored (see header).
-if (_ended != "") exitWith {
-    if (AEGISM_RPT_VERBOSE) then {
-        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSILE-SPEED: %1 (%2) flew %3s and %4 -- not scored. Speed real/simulated, m/s: %5.",
-            _ammoClass, _weaponClass, round (_flightTime * 10) / 10, _ended, call _fnTrace];
-    };
-};
-
-// The raw simulation's time for that distance.
-private _profileTime = [_profile, "time", _distance] call aegism_intercept_fnc_missileProfileAt;
-private _sample = if (_profileTime > 0) then { _flightTime / _profileTime } else { -1 };
-
-private _key = _weaponClass + "|" + _magazineClass;
-private _table = missionNamespace getVariable "AEGISM_missileSpeed";
+// Kept per flight config, not per weapon (aegism_intercept_fnc_
+// missileFlightKey): missiles that fly alike learn together.
+private _key = [_weaponClass, _magazineClass] call aegism_intercept_fnc_missileFlightKey;
+private _table = missionNamespace getVariable "AEGISM_missileSpeedSamples";
 if (isNil "_table") then {
     _table = createHashMap;
-    missionNamespace setVariable ["AEGISM_missileSpeed", _table];
+    missionNamespace setVariable ["AEGISM_missileSpeedSamples", _table];
 };
-(_table getOrDefault [_key, [[], 1]]) params ["_samples", "_factor"];
+private _perSecond = _table getOrDefault [_key, []];
+_table set [_key, _perSecond];
 
-private _rejected = switch (true) do {
-    case (_retargeted): { "its seeker changed target in flight" };
-    case (_flightTime < AEGISM_SPEED_MIN_FLIGHT || {_profileTime <= 0}): { format ["a %1s flight is too short to measure", round (_flightTime * 10) / 10] };
-    case (_sample < AEGISM_SPEED_FACTOR_MIN || {_sample > AEGISM_SPEED_FACTOR_MAX}): {
-        format ["outside %1-%2x the simulation's time, a measuring problem rather than the missile", AEGISM_SPEED_FACTOR_MIN, AEGISM_SPEED_FACTOR_MAX]
+private _trace = [];
+private _rejected = 0;
+{
+    private _second = _forEachIndex + 1;
+    private _simSpeed = [_sim, "speed", _second] call aegism_intercept_fnc_missileProfileAt;
+    _trace pushBack format ["%1s %2/%3", _second, round _x, round ([_predicted, "speed", _second] call aegism_intercept_fnc_missileProfileAt)];
+    private _ratio = _x / (_simSpeed max 1);
+    if (_ratio < AEGISM_SPEED_RATIO_MIN || {_ratio > AEGISM_SPEED_RATIO_MAX}) then {
+        _rejected = _rejected + 1;
+    } else {
+        while {count _perSecond < _second} do { _perSecond pushBack []; };
+        private _samples = _perSecond select (_second - 1);
+        _samples pushBack _x;
+        if (count _samples > AEGISM_SPEED_SAMPLES) then { _samples deleteAt 0; };
     };
-    default { "" };
-};
+} forEach _speeds;
 
-if (_rejected == "") then {
-    _samples pushBack _sample;
-    if (count _samples > AEGISM_SPEED_SAMPLES) then { _samples deleteAt 0; };
-    private _count = count _samples;
-    if (_count >= AEGISM_SPEED_MIN_SAMPLES) then {
-        private _sorted = +_samples;
-        _sorted sort true;
-        _factor = if (_count % 2 == 1) then {
-            _sorted select floor (_count / 2)
-        } else {
-            ((_sorted select (_count / 2 - 1)) + (_sorted select (_count / 2))) / 2
-        };
-    };
-    _table set [_key, [_samples, _factor]];
-};
+// Every curve is rebuilt on its next use: any weapon's missile may fly like
+// this one.
+missionNamespace setVariable ["AEGISM_cacheMissileLearned", createHashMap];
 
 if (AEGISM_RPT_VERBOSE) then {
-    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSILE-SPEED: %1 (%2) flew %3m%9 in %4s; its simulated flight says %5s, %6x. %7 Speed real/simulated, m/s: %8.",
-        _ammoClass, _weaponClass, round _distance, round (_flightTime * 10) / 10, round (_profileTime * 10) / 10, round (_sample * 100) / 100,
-        switch (true) do {
-            case (_rejected != ""): { format ["Not used: %1.", _rejected] };
-            case (count _samples < AEGISM_SPEED_MIN_SAMPLES): { format ["Predictions keep the simulation's times until %1 flights are in (%2 so far).", AEGISM_SPEED_MIN_SAMPLES, count _samples] };
-            default { format ["Predictions now use %1x the simulation's flight times: the median of its last %2 flight(s).", round (_factor * 100) / 100, count _samples] };
+    private _now = [_weaponClass, _magazineClass] call aegism_intercept_fnc_missileProfile;
+    private _predictedTime = if (_ended == "" && {_distance > 0}) then { [_predicted, "time", _distance] call aegism_intercept_fnc_missileProfileAt } else { -1 };
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSILE-SPEED: %1 (%2) %3 Speed real/predicted, m/s: %4.%5 Its speed curve: %6.",
+        ([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics) select 0, _weaponClass,
+        if (_ended == "") then {
+            format ["flew %1m%2 in %3s to its intercept; predicted %4s for that path%5.", round _distance,
+                ["", format [" along its path (%1m straight)", round _straight]] select (_straight >= 0),
+                round (_flightTime * 10) / 10, round (_predictedTime * 10) / 10,
+                ["", format [", %1x", round (_flightTime / _predictedTime * 100) / 100]] select (_predictedTime > 0)]
+        } else {
+            format ["flew %1s and %2.", round (_flightTime * 10) / 10, _ended]
         },
-        call _fnTrace,
-        ["", format [" along its path (%1m straight)", round _straight]] select (_straight >= 0)];
+        [_trace joinString ", ", "none (under 1s)"] select (_trace isEqualTo []),
+        ["", format [" %1 second(s) left out: over %2x or under %3x the config simulation's, a measuring problem.", _rejected, AEGISM_SPEED_RATIO_MAX, AEGISM_SPEED_RATIO_MIN]] select (_rejected > 0),
+        if (count _now > 3) then {
+            format ["learned for its first %1s, from %2 flight(s)", _now select 3, _now select 4]
+        } else {
+            format ["its config simulation until %1 flights have flown a second", AEGISM_SPEED_MIN_SAMPLES]
+        }];
 };

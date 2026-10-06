@@ -38,7 +38,11 @@ Description:
         3. Fire cadence:
              launcher - doctrine salvoSize per engagement, the launcher's
                  shot interval between shots (aegism_intercept_fnc_
-                 launcherInterval; both crew-modulated)
+                 launcherInterval; both crew-modulated), and never while
+                 its weapon is still readying its next round or loading its
+                 next magazine (aegism_intercept_fnc_weaponReload,
+                 RELOADING): the engine shows the new magazine's count
+                 before it can fire it
              ciws - sustained bursts (aegism_intercept_fnc_ciwsBurst) of a
                  random doctrine ciwsBurstMin..ciwsBurstMax seconds at the
                  gun's own rate of fire, and ciwsBurstPause (crew-modulated)
@@ -308,6 +312,20 @@ private _fnExecute = {
     if (_intervalFrom >= 0 && {CBA_missionTime < _intervalFrom + _interval}) exitWith { _state set ["status", "reloading"]; };
     if (CBA_missionTime < (_state getOrDefault ["nextAttemptAt", -1])) exitWith { _state set ["status", "reloading"]; };
     if (!_isCiws && {CBA_missionTime < (_ts getOrDefault ["holdUntil", -1])}) exitWith { _state set ["status", "reloading"]; };
+    // A launcher's weapon still readying its next round or loading its next
+    // magazine (aegism_intercept_fnc_weaponReload): a fire command now fires
+    // nothing. A magazine load is logged once (RELOADING); the coordinator
+    // counts the time left before giving this launcher anything.
+    private _reload = if (_isCiws) then { [true] } else { [_system, _turretPath, _weaponClass] call aegism_intercept_fnc_weaponReload };
+    if !(_reload select 0) exitWith {
+        _state set ["status", "reloading"];
+        _reload params ["", "_wait", "_loading", "_phases"];
+        if (_loading && {CBA_missionTime > (_ts getOrDefault ["reloadLoggedUntil", -1e9])}) then {
+            _ts set ["reloadLoggedUntil", CBA_missionTime + (_wait max 5)];
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " RELOADING: %1 (%2) turret %3 -- %4 is loading its next magazine (%5 rounds in it), ready in ~%6s (weaponState reload phases %7); holding fire on %8.",
+                _system, _role, _turretPath, _weaponClass, _system magazineTurretAmmo [_magClass, _turretPath], round _wait, _phases, _target];
+        };
+    };
 
     if (!_losClear) exitWith {
         _state set ["status", "losBlocked"];
@@ -421,7 +439,7 @@ private _fnExecute = {
         _burstDuration = _burstMin + random (_burstMax - _burstMin);
     };
 
-    private _result = [_system, _target, _weaponInfo, _crewMods get "reliability", _role, _state get "interceptors", _burstDuration] call aegism_intercept_fnc_fireWeapon;
+    private _result = [_system, _target, _weaponInfo, _crewMods get "reliability", _role, _state get "interceptors", _burstDuration, _state] call aegism_intercept_fnc_fireWeapon;
     switch (_result) do {
         case 1: {
             _state set ["lastShotAt", CBA_missionTime];
@@ -480,7 +498,15 @@ if (!isNull _network) exitWith {
             (_x get "weaponInfo") params ["_turretPath"];
             private _salvoAway = !_isCiws && {(_x get "roundsFired") >= _salvoSize};
             if (_isCiws || _salvoAway || {!(_turretPath in _workingTurrets)}) then {
-                if (!_isCiws && {!_salvoAway}) then { _workingTurrets pushBack _turretPath; };
+                if (!_isCiws && {!_salvoAway}) then {
+                    _workingTurrets pushBack _turretPath;
+                    // When it first reached the front of the queue: the
+                    // coordinator's "never fired" timeout counts from here
+                    // (aegism_intercept_fnc_assignEngagements). Kept if it
+                    // drops back, so a blocked claim bouncing in and out of
+                    // the front is still released.
+                    if (isNil {_x get "frontSince"}) then { _x set ["frontSince", CBA_missionTime]; };
+                };
                 [_target, _x get "weaponInfo", _x] call _fnExecute;
                 if (!_isCiws) then { _x set ["working", !_salvoAway && {!((_x getOrDefault ["status", ""]) in ["losBlocked", "noSolution"])}]; };
             } else {

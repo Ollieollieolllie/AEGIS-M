@@ -18,6 +18,12 @@ Description:
     first so aegism_detect_fnc_watchProjectile doesn't start tracking the
     payload.
 
+    Each kill is noted for a moment ("AEGISM_recentKills": when, where, its
+    blast radius): the blast of a munition AEGIS-M destroyed is credited to
+    whoever FIRED it, and the sensor proxies it takes out with it still
+    count (aegism_detect_fnc_proxyCreate), where the incoming side's own
+    blasts otherwise don't.
+
 Parameters:
     _munition - the munition <OBJECT>
 
@@ -31,9 +37,16 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\proxy.hpp"
+
 params ["_munition"];
 
 if (isNull _munition || {!alive _munition}) exitWith {};
+
+// Noted for its blast (see header): the last AEGISM_KILL_NOTE s of kills.
+private _kills = (missionNamespace getVariable ["AEGISM_recentKills", []]) select { CBA_missionTime - (_x select 0) <= AEGISM_KILL_NOTE };
+_kills pushBack [CBA_missionTime, getPosASL _munition, getNumber (configOf _munition >> "indirectHitRange")];
+missionNamespace setVariable ["AEGISM_recentKills", _kills];
 
 if ((toLower getText (configOf _munition >> "simulation")) == "shotsubmunitions") then {
     _munition setVariable ["AEGISM_intercepted", true];

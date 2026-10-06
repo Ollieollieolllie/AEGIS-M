@@ -3,11 +3,11 @@ Function: aegism_intercept_fnc_missileFlightTime
 
 Description:
     Seconds a launcher's missile flies toward a point a given distance away,
-    on its flight simulated from config (aegism_intercept_fnc_
-    missileProfile), scaled by how fast it has really flown this mission
-    (aegism_intercept_fnc_recordMissileSpeed) -- until it gets there, or
-    until its lifetime (CfgAmmo timeToLive) runs out if that's sooner. The
-    same flight aegism_intercept_fnc_computeLeadPoint solves with.
+    on its speed curve learned from its own flights, or simulated from
+    config until then (aegism_intercept_fnc_missileProfile) -- until it gets
+    there, or until its lifetime (CfgAmmo timeToLive) runs out if that's
+    sooner. The same flight aegism_intercept_fnc_computeLeadPoint solves
+    with.
 
     Used to rule out, without solving anything, a target too far out for a
     missile to meet inside its reach: in the time the missile takes to fly to
@@ -34,9 +34,6 @@ _weaponInfo params ["", "_weaponClass", "_magazineClass"];
 
 private _time = [[_weaponClass, _magazineClass] call aegism_intercept_fnc_missileProfile, "time", _distance] call aegism_intercept_fnc_missileProfileAt;
 if (_time < 0) exitWith { -1 };
-// How fast it has really flown this mission (aegism_intercept_fnc_
-// recordMissileSpeed): 1 until measured.
-_time = _time * (((missionNamespace getVariable ["AEGISM_missileSpeed", createHashMap]) getOrDefault [_weaponClass + "|" + _magazineClass, [[], 1]]) select 1);
 private _lifetime = ([_weaponClass, _magazineClass] call aegism_intercept_fnc_weaponKinematics) select 7;
 if (_lifetime > 0) then { _time = _time min _lifetime; };
 _time
