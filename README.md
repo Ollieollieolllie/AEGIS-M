@@ -945,6 +945,35 @@ either, both or neither.
   Sensors, radars and alarms carry on as before. A linked Site that isn't
   the coordinator and is switched off leaves the rest of the group running.
 
+**Surface Strike** is a third laptop attribute (same places, off by
+default; it needs Manual Interception). It adds a **Surface** switch to the
+Interception page. Switched on, a click on the map where no track is puts a
+**strike point** on the ground there; pick a weapon and **Engage**:
+
+- **A launcher** fires one guided missile. It is first sent for a point
+  above the strike point -- 0.35 m up for every metre of ground beyond the
+  last 400 m, 3 km at most -- and that point comes down as the missile
+  closes, so it climbs over what is between and comes down on the strike
+  point from above. Not nearer than 300 m, nor beyond the launcher's reach.
+  Small missiles aren't offered: one whose warhead's blast radius is under
+  8 m (a Stinger or Titan AA has 6; the RIM-116 has 10, the Patriot 30).
+- **A gun** fires one burst (its shortest Burst Length) along its own
+  ballistic path. It needs a turret that can point there and a line to the
+  point clear of the ground; trees and buildings don't count.
+- The weapon's turret is the strike's until its missile is away or its
+  burst is over; what the Site had it doing waits. **Cease Fire** with the
+  strike point (or nothing) picked calls off a strike that hasn't fired yet
+  and stops a burst.
+
+Nothing of this is automatic: the Site never fires at the ground on its
+own, a strike doesn't sound its alarm, and its rounds and missile are left
+to the game -- no AEGIS-M fuse, no self-destruct. `STRIKE` in the RPT says
+how each one ended and how near its missile came. A missile guided by the
+game is given the point directly; one guided by a mod (ACE) is given an
+object to chase there -- for a radar seeker, which only keeps munitions and
+aircraft, a chemlight held above the point and kept moving along the
+missile's line of sight (an infrared one where there is one).
+
 An order goes to the front of its launcher's queue and stays with that
 launcher: it isn't handed to another, a lost crew fire cycle is tried
 again, and it ends when its missiles have missed, its target is down or
@@ -1151,8 +1180,8 @@ Eden (same names, tooltips and choices, current values filled in):
 - **Either:** right-click it for **AEGIS-M Settings**, or place the module
   **AEGIS-M > Edit Air Defence** on it (or within 50 m of a Site).
 - **A terminal laptop:** the same right-click or button sets its Terminal
-  Access (Status Only or Full Control) and Manual Interception (see **Site
-  terminal**).
+  Access (Status Only or Full Control), Manual Interception and Surface
+  Strike (see **Site terminal**).
 
 An edit reaches every machine, including players who join later, and the
 Site's vehicles pick it up at once (`SITE-SETTINGS` / `OVERRIDES` in the

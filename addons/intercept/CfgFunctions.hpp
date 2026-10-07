@@ -43,6 +43,9 @@ class CfgFunctions
             class ammoBurst {};
             class selectTarget {};
             class planShot {};
+            class surfaceShot {};
+            class surfaceStrike {};
+            class strikeMissile {};
             class planAhead {};
             class assignEngagements {};
             class engagementLoop {};

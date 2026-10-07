@@ -66,6 +66,14 @@ private _trackList = _display displayCtrl AEGISM_TERMINAL_TRACKS_IDC;
 _state set ["filling", true];
 lbClear _trackList;
 private _selectedRow = -1;
+// (Surface Strike's point, first: picked like a track.)
+private _strikePoint = _state getOrDefault ["strikePoint", []];
+if (_strikePoint isNotEqualTo []) then {
+    private _row = _trackList lbAdd format ["STRIKE POINT  grid %1  %2", mapGridPosition _strikePoint, (_from distance _strikePoint) call _fnRange];
+    _trackList lbSetData [_row, "@strike"];
+    _trackList lbSetColor [_row, [1, 0.65, 0.15, 1]];
+    if (_trackKey == "@strike") then { _selectedRow = _row; };
+};
 {
     (_tracks select (_x select 2)) params ["_key", "_class", "_kind", "", "", "_name", "_tti", "_on"];
     private _text = format ["%1  %2  %3", toUpper _class, _name, (_x select 1) call _fnRange];
@@ -220,4 +228,5 @@ if (_lines isEqualTo []) then { _lines pushBack format ["<t color='%1'>No orders
 
 // The buttons follow what's picked.
 (_display displayCtrl AEGISM_TERMINAL_ENGAGE_IDC) ctrlEnable ((_state get "trackKey") != "" && {_pickedRow param [5, false]});
-(_display displayCtrl AEGISM_TERMINAL_CEASE_IDC) ctrlEnable (_orders isNotEqualTo []);
+// (Cease Fire always: a surface strike isn't among the orders listed.)
+(_display displayCtrl AEGISM_TERMINAL_CEASE_IDC) ctrlEnable true;

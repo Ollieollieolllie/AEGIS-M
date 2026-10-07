@@ -12,8 +12,8 @@ Parameters:
     _terminal - the terminal <OBJECT>
     _anchor - the Site or vehicle its action was made for <OBJECT>
     _node - the Site or vehicle picked on its screen <OBJECT>
-    _selected - the contact key of the track picked there, "" for none
-        <STRING, default "">
+    _selected - the contact key of the track picked there, "" for none --
+        or Surface Strike's point, ASL <STRING or ARRAY, default "">
 
 Returns:
     Nothing
@@ -115,7 +115,10 @@ private _ownSide = if (_groupMembers isEqualTo []) then { sideUnknown } else { s
 // --- Weapons ---------------------------------------------------------------------
 // [vehicle, role, turret, weapon, magazine, rounds, reach m (0 = none known),
 // a track is picked, it has a shot at it, why not]
-private _target = _objects getOrDefault [_selected, objNull];
+// (Against the track picked -- or the strike point, on a terminal that
+// has Surface Strike: aegism_intercept_fnc_surfaceShot.)
+private _strikePoint = if (_selected isEqualType [] && {count _selected == 3} && {_terminal getVariable ["AEGISM_terminalSurface", false]}) then { _selected } else { [] };
+private _target = if (_selected isEqualType "") then { _objects getOrDefault [_selected, objNull] } else { objNull };
 private _weapons = [];
 {
     private _vehicle = _x;
@@ -130,6 +133,11 @@ private _weapons = [];
             private _reach = if (_role == "launcher") then { ([_settings, _x, _role] call aegism_intercept_fnc_envelopeBounds) param [1, 0] } else { _modeMax };
             private _can = false;
             private _why = "";
+            if (_strikePoint isNotEqualTo []) then {
+                private _shot = [_vehicle, _role, _x, _strikePoint] call aegism_intercept_fnc_surfaceShot;
+                _can = _shot select 0;
+                _why = _shot select 1;
+            };
             if (!isNull _target) then {
                 if (_rounds <= 0) then {
                     _why = "nothing left to fire";
@@ -139,7 +147,7 @@ private _weapons = [];
                     _why = _engage param [1, ""];
                 };
             };
-            _weapons pushBack [_vehicle, _role, _turretPath, _weaponClass, _magClass, _rounds, _reach max 0, !isNull _target, _can, _why];
+            _weapons pushBack [_vehicle, _role, _turretPath, _weaponClass, _magClass, _rounds, _reach max 0, !isNull _target || {_strikePoint isNotEqualTo []}, _can, _why];
         } forEach (_data getOrDefault [["launcherWeapons", "ciwsWeapons"] select (_role == "ciws"), []]);
     } forEach ["launcher", "ciws"];
 } forEach _vehicles;
@@ -157,6 +165,11 @@ private _missiles = [];
         } forEach (_x getOrDefault ["interceptors", []]);
     } forEach _y;
 } forEach _claims;
+
+// (And a surface strike's: aegism_intercept_fnc_strikeMissile.)
+{
+    if (!isNull _x && {alive _x}) then { _missiles pushBack [getPosASL _x, velocity _x, true]; };
+} forEach (missionNamespace getVariable ["AEGISM_strikeMissiles", []]);
 
 // --- Radars: of the Site or vehicle picked ------------------------------------
 // [vehicle, emitting, ordered ("on", "off", "" = its own emission control),

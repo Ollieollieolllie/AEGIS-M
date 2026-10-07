@@ -12,6 +12,7 @@ Parameters:
     _nodes - [object, label, "site" or "vehicle"] each <ARRAY>
     _access - "status" or "control" <STRING>
     _engage - the terminal has the Interception page <BOOLEAN, default false>
+    _surface - and Surface Strike on it <BOOLEAN, default false>
 
 Returns:
     Nothing
@@ -25,13 +26,23 @@ Author:
 
 #include "..\terminal.hpp"
 
-params [["_nodes", []], ["_access", "status"], ["_engage", false]];
+params [["_nodes", []], ["_access", "status"], ["_engage", false], ["_surface", false]];
 
 private _display = uiNamespace getVariable ["AEGISM_terminalDisplay", displayNull];
 private _state = uiNamespace getVariable "AEGISM_terminalState";
 if (isNull _display || {isNil "_state"}) exitWith {};
 _state set ["access", _access];
 _state set ["engage", _engage];
+// Surface Strike: its switch beside the automation switch, on that page.
+_state set ["surface", _surface];
+if (!_surface) then {
+    _state set ["surfaceMode", false];
+    _state set ["strikePoint", []];
+};
+(_state get "autoRect") params ["_autoX", "_autoY", "_autoW", "_autoH"];
+(_display displayCtrl AEGISM_TERMINAL_AUTO_IDC) ctrlSetPosition [_autoX, _autoY, [_autoW, 0.58 * _autoW] select _surface, _autoH];
+(_display displayCtrl AEGISM_TERMINAL_AUTO_IDC) ctrlCommit 0;
+(_display displayCtrl AEGISM_TERMINAL_SURFACE_IDC) ctrlShow (_surface && {(_state get "tab") == "intercept"});
 (_display displayCtrl AEGISM_TERMINAL_BADGE_IDC) ctrlSetStructuredText parseText format [
     "<t align='right' size='0.8'><t color='%1'>%2%4</t><t color='%3'>   |   Esc to close</t></t>",
     [AEGISM_TERMINAL_DIM_HEX, AEGISM_TERMINAL_WARN_HEX] select (_access == "control" || {_engage}),
@@ -68,7 +79,7 @@ if (_nodes isEqualTo []) exitWith {
     _state set ["node", -1];
     lbClear _list;
     (_display displayCtrl AEGISM_TERMINAL_GROUP_IDC) ctrlShow true;
-    { (_display displayCtrl _x) ctrlShow false; } forEach ([AEGISM_TERMINAL_FORM_IDC, AEGISM_TERMINAL_APPLY_IDC, AEGISM_TERMINAL_REVERT_IDC] + AEGISM_TERMINAL_INTERCEPT_IDCS);
+    { (_display displayCtrl _x) ctrlShow false; } forEach ([AEGISM_TERMINAL_FORM_IDC, AEGISM_TERMINAL_APPLY_IDC, AEGISM_TERMINAL_REVERT_IDC, AEGISM_TERMINAL_SURFACE_IDC] + AEGISM_TERMINAL_INTERCEPT_IDCS);
     _state set ["tab", "status"];
     (_display displayCtrl AEGISM_TERMINAL_BOARD_IDC) ctrlSetStructuredText parseText "<t color='#90A4AE'>This terminal isn't synced to a Site or to an AEGIS-M vehicle.</t>";
 };

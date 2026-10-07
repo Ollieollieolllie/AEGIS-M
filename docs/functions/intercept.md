@@ -2185,3 +2185,117 @@ reload, each taken for a missed shot, and its targets got through
 (2026-10-06). POOK's launchers reload for minutes (the S-125's
 magazineReloadTime is 900 s).
 ```
+
+## aegism_intercept_fnc_surfaceStrike
+
+`addons/intercept/functions/fn_surfaceStrike.sqf`
+
+```text
+Surface strikes (2026-10-07). From the user: "It was more for launchers
+and CIWS, setMissileTargetPos should work for the launchers, just need
+CIWS and sams to account for LOFT, ballistic trajectories and the like,
+laptop option only and requires another tick box".
+
+Deliberately NOT run through the coordinator, claims or the engagement
+loop: all of that is built round an airborne target object (envelope
+heights, open-fire range from hit probability, the guns' minimum
+elevation, fuses and kill credit), and none of it could be tested for a
+point on the ground. A strike is its own small state machine, one
+per-frame handler an order:
+
+  aim       surfaceShot solved twice a second, the turret sent there
+            (lockTurret); on when the barrel is within 3 deg (launcher) or
+            0.3 deg (gun) and the weapon is ready. After 8 s a launcher
+            fires as it stands (off-bore), a gun gives up.
+  launched  a launcher: the fire command given; "away" when the vehicle's
+            Fired handler has taken the capture, failed after 2 s.
+  burst     a gun: fired every frame the weapon is ready, as
+            aegism_intercept_fnc_ciwsBurst does, for the vehicle's
+            ciwsBurstMin.
+
+The turret: "strikeUntil" in its state is kept a second ahead while the
+handler runs; aegism_intercept_fnc_engagementLoop skips its idle cue and
+holds its engagements ("held") while it's set. "strikeAbort" (Cease Fire)
+ends it.
+
+The Fired handler (aegism_intercept_fnc_onSystemFired) sees a capture with
+role "strike": a missile goes to aegism_intercept_fnc_strikeMissile, a
+gun's rounds are ignored. That branch sits before the Site is marked as
+having fired, so a strike doesn't start its alarm.
+
+No crew reaction and no reliability roll: an operator's order, fired when
+the weapon is on. One missile or one burst an order.
+
+First test, 13:55 RPT 2026-10-07 (user: "vanilla missiles it works, ace
+it does not"):
+- game-guided missiles: work (setMissileTargetPos, AGL, every frame).
+- ACE RIM-116 (IR seeker) on the plain helper object
+  ("Land_HelipadEmpty_F", server-local): eight strikes, each within 1-4 m
+  of its point, 6.1 s of flight.
+- ACE Patriot: 1263 m off after 55 s. Its seeker is ACE's "DopplerRadar"
+  (fnc_seekerType_Doppler, fnc_doppler_onFired, fnc_shouldFilterRadarHit):
+  at launch a target that isn't AllVehicles or a CfgAmmo object is thrown
+  away; in flight it only keeps a CfgAmmo target as given (anything else
+  is searched for again among its lockableTypes, "Air"); and it drops a
+  target with ground behind it unless the target's own velocity along the
+  line of sight is over minimumSpeedFilter (10 m/s).
+  So such a missile is now given a chemlight to chase (a CfgAmmo object,
+  harmless, lives 15 min; ACE_G_Chemlight_IR if there is one), moved to
+  the loft point every frame like the other helper and given 25 m/s
+  toward the missile every frame (along the line of sight, so the
+  navigation sees no crossing speed), and shared with reportRemoteTarget
+  for a launcher whose own radar is on. UNTESTED.
+- Not seen yet: a gun's strike; the Stinger (same IR seeker as the
+  RIM-116, so it should be the same).
+```
+
+## aegism_intercept_fnc_surfaceShot
+
+`addons/intercept/functions/fn_surfaceShot.sqf`
+
+```text
+The check and the aim for a surface strike, used by the order, the strike
+itself and a terminal's "has a shot".
+
+Launcher: guided missiles only, with a blast radius (indirectHitRange) of
+at least AEGISM_STRIKE_MIN_BLAST, 8 m -- the user: "smaller calibre
+missiles like stingers probably should not have surface strike
+capability". The game's config has no calibre for a missile; its warhead
+is what tells them apart (Titan AA / 70 mm 6 m, RIM-116 10, Zephyr 12,
+RIM-162 13, MIM-145 / S-750 30; read 2026-10-07), and 8 is my cut between
+the Stinger and the RIM-116. Within its envelope's reach and not under
+max(its minimum range, 300 m); the turret is pointed at the first loft
+point, or as near as it reaches (the missile turns).
+
+Gun: within the weapon's reach; aimed by aegism_intercept_fnc_compute
+LeadPoint exactly as at an air target -- so its drag and drop are the
+solver's -- on a server-local object moved to the point
+("AEGISM_surfaceProbe"); the turret has to be able to point there; and a
+line from the muzzle to 1 m above the point clear of the GROUND only
+(terrainIntersectAtASL; the user: "the only thing that should obstruct
+the guns is terrain, dont care for trees or structures"), ground nearer
+than 15 m to the point counting as the point itself.
+
+All figures in strike.hpp are mine.
+```
+
+## aegism_intercept_fnc_strikeMissile
+
+`addons/intercept/functions/fn_strikeMissile.sqf`
+
+```text
+Flies a strike's missile. Every frame the object it chases is put above
+the aim point by
+
+  1.5 m + min(0.35 x max(0, ground still to cover - 400 m), 3000 m)
+
+For pure pursuit of that point the path from d0 out is about
+h(d) = 0.35 d ln(d0 / d): from 5 km it peaks near 640 m, and it arrives
+steeply. Inside 400 m there's no loft, so it's flown straight at the
+point and isn't still being turned as it lands.
+
+It's set off when it has passed the point (came within 300 m and is going
+away) having come within 20 m; a miss is set off 2 s after passing, as a
+lost interceptor is. Otherwise the ground does it. The missile is listed
+in "AEGISM_strikeMissiles" for the terminals' map.
+```

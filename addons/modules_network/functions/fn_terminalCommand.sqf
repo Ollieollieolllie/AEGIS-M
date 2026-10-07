@@ -11,7 +11,7 @@ Parameters:
     _command - "request" (ask for the picture), "track" [contact key],
         "weapon" [weapon row id], "radar" [radar id], "mapClick" [map
         control, x, y], "engage", "cease", "automation", "radarOrder"
-        ["on", "off" or ""] <STRING>
+        ["on", "off" or ""], "surface" (Surface Strike's switch) <STRING>
     _args - as its command needs <ARRAY, default []>
 
 Returns:
@@ -39,8 +39,12 @@ private _terminal = _state get "terminal";
 private _anchor = _state get "anchor";
 (_state getOrDefault ["picture", []]) params ["", "", ["_automation", true], "", ["_tracks", []], ["_weapons", []]];
 
+// (What's picked goes with it, for the weapons' "has a shot": a track's
+// key, or the strike point itself -- "@strike" in the track list.)
 private _fnRequest = {
-    [_terminal, _anchor, _node, _state getOrDefault ["trackKey", ""]] remoteExecCall ["aegism_network_fnc_terminalPicture", 2];
+    private _picked = _state getOrDefault ["trackKey", ""];
+    if (_picked == "@strike") then { _picked = _state getOrDefault ["strikePoint", []]; };
+    [_terminal, _anchor, _node, _picked] remoteExecCall ["aegism_network_fnc_terminalPicture", 2];
 };
 private _fnNote = {
     (_display displayCtrl AEGISM_TERMINAL_NOTE_IDC) ctrlSetStructuredText parseText format ["<t size='0.85' color='%1'>%2</t>", AEGISM_TERMINAL_DIM_HEX, _this];
@@ -101,6 +105,13 @@ switch (_command) do {
             _state set ["trackKey", _best];
             call _fnRequest;
         };
+        // No track there, and Surface Strike switched on: the strike point.
+        if (_best == "" && {_state getOrDefault ["surfaceMode", false]}) then {
+            private _world = _map ctrlMapScreenToWorld [_clickX, _clickY];
+            _state set ["strikePoint", [_world select 0, _world select 1, (getTerrainHeightASL _world) max 0]];
+            _state set ["trackKey", "@strike"];
+            call _fnRequest;
+        };
     };
 
     case "engage": {
@@ -113,7 +124,11 @@ switch (_command) do {
         if (_key == "" || {_index == -1}) exitWith { "Pick a track and a weapon first." call _fnNote; };
         (_rows select _index) params ["", "_vehicles", "_turretPath", "_weaponClass"];
         "Sending..." call _fnNote;
-        [_terminal, _anchor, _node, "engage", [_key, _vehicles, _turretPath, _weaponClass]] remoteExecCall ["aegism_network_fnc_terminalOrder", 2];
+        if (_key == "@strike") then {
+            [_terminal, _anchor, _node, "strike", [_state getOrDefault ["strikePoint", []], _vehicles, _turretPath, _weaponClass]] remoteExecCall ["aegism_network_fnc_terminalOrder", 2];
+        } else {
+            [_terminal, _anchor, _node, "engage", [_key, _vehicles, _turretPath, _weaponClass]] remoteExecCall ["aegism_network_fnc_terminalOrder", 2];
+        };
         call _fnRequest;
     };
 
@@ -122,6 +137,22 @@ switch (_command) do {
         "Sending..." call _fnNote;
         [_terminal, _anchor, _node, "cease", [_state getOrDefault ["trackKey", ""]]] remoteExecCall ["aegism_network_fnc_terminalOrder", 2];
         call _fnRequest;
+    };
+
+    // Surface Strike's switch: off takes the strike point away.
+    case "surface": {
+        if !(_state getOrDefault ["surface", false]) exitWith {};
+        private _on = !(_state getOrDefault ["surfaceMode", false]);
+        _state set ["surfaceMode", _on];
+        (_display displayCtrl AEGISM_TERMINAL_SURFACE_IDC) ctrlSetText (["SURFACE: OFF", "SURFACE: ON"] select _on);
+        if (_on) then {
+            "Surface strike: click the map where no track is to put the strike point." call _fnNote;
+        } else {
+            _state set ["strikePoint", []];
+            if ((_state getOrDefault ["trackKey", ""]) == "@strike") then { _state set ["trackKey", ""]; };
+            "" call _fnNote;
+            call _fnRequest;
+        };
     };
 
     case "automation": {

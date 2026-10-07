@@ -35,7 +35,7 @@ private _state = uiNamespace getVariable "AEGISM_terminalState";
 if (isNil "_state" || {(_state get "tab") != "intercept"}) exitWith {};
 
 (_state getOrDefault ["picture", []]) params ["", "", "", "", ["_tracks", []], ["_weapons", []], "", "", ["_missiles", []], ["_radars", []]];
-(_state getOrDefault ["icons", []]) params [["_iconTrack", ""], ["_iconAir", ""], ["_iconPick", ""], ["_iconVehicle", ""], ["_iconMissile", ""], ["_iconRadar", ""]];
+(_state getOrDefault ["icons", []]) params [["_iconTrack", ""], ["_iconAir", ""], ["_iconPick", ""], ["_iconVehicle", ""], ["_iconMissile", ""], ["_iconRadar", ""], ["_iconStrike", ""]];
 private _age = (CBA_missionTime - (_state getOrDefault ["pictureAt", CBA_missionTime])) min 3;
 private _trackKey = _state getOrDefault ["trackKey", ""];
 
@@ -66,6 +66,13 @@ private _radarId = _state getOrDefault ["radarId", ""];
             1, 0.03, "RobotoCondensed", "left"];
     };
 } forEach _radars;
+
+// --- Surface Strike's point ---------------------------------------------------------
+private _strikePoint = _state getOrDefault ["strikePoint", []];
+if (_strikePoint isNotEqualTo []) then {
+    if (_trackKey == "@strike") then { _map drawIcon [_iconPick, [1, 1, 1, 1], _strikePoint, 34, 34, 0, "", 0, 0.03, "RobotoCondensed", "right"]; };
+    _map drawIcon [_iconStrike, [1, 0.65, 0.15, 1], _strikePoint, 26, 26, 0, "STRIKE POINT", 1, 0.032, "RobotoCondensed", "right"];
+};
 
 // --- The Site's own missiles in flight ------------------------------------------
 {

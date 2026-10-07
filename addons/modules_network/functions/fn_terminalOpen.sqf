@@ -41,8 +41,9 @@ uiNamespace setVariable ["AEGISM_terminalState", createHashMapFromArray [
     ["tab", "status"], ["formRows", []], ["formControls", []], ["formFor", objNull],
     ["picture", []], ["pictureAt", 0], ["pictureFor", objNull], ["trackKey", ""], ["weaponId", ""], ["filling", false],
     ["rows", []], ["rings", []], ["labelled", []], ["radarId", ""],
+    ["surface", false], ["surfaceMode", false], ["strikePoint", []],
     ["icons", ["mil_triangle" call _fnMarkerIcon, "mil_arrow2" call _fnMarkerIcon, "mil_circle" call _fnMarkerIcon, "mil_box" call _fnMarkerIcon,
-        "mil_arrow" call _fnMarkerIcon, "mil_objective" call _fnMarkerIcon]]
+        "mil_arrow" call _fnMarkerIcon, "mil_objective" call _fnMarkerIcon, "mil_destroy" call _fnMarkerIcon]]
 ]];
 _display displayAddEventHandler ["Unload", { uiNamespace setVariable ["AEGISM_terminalState", nil]; }];
 
@@ -174,6 +175,17 @@ _auto ctrlSetText "AUTOMATION: ON";
 _auto ctrlSetTooltip "Off: this Site's weapons fire on this page's orders only. On: the Site also runs them on its own.";
 _auto ctrlCommit 0;
 _auto ctrlAddEventHandler ["ButtonClick", { ["automation"] call aegism_network_fnc_terminalCommand; }];
+// Surface Strike's switch, beside it on a terminal that has it (aegism_
+// network_fnc_terminalFill makes the room): on, a click on the map away
+// from any track puts the strike point there.
+(uiNamespace getVariable "AEGISM_terminalState") set ["autoRect", [_colX, _contentY, _colW, _tabH]];
+private _surfaceButton = _display ctrlCreate ["RscButtonMenu", AEGISM_TERMINAL_SURFACE_IDC];
+_surfaceButton ctrlSetPosition [_colX + 0.6 * _colW, _contentY, 0.4 * _colW, _tabH];
+_surfaceButton ctrlSetText "SURFACE: OFF";
+_surfaceButton ctrlSetTooltip "On: click the map to put a strike point on the ground, pick a weapon, and Engage. A launcher lofts one missile onto it; a gun fires one burst and needs a clear line to it.";
+_surfaceButton ctrlCommit 0;
+_surfaceButton ctrlShow false;
+_surfaceButton ctrlAddEventHandler ["ButtonClick", { ["surface"] call aegism_network_fnc_terminalCommand; }];
 
 private _rowY = _contentY + _tabH + 0.5 * _padY;
 private _tracksHead = _display ctrlCreate ["RscStructuredText", AEGISM_TERMINAL_TRACKS_HEAD_IDC];

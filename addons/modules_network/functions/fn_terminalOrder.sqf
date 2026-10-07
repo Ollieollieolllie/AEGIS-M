@@ -12,9 +12,11 @@ Parameters:
     _terminal - the terminal <OBJECT>
     _anchor - the Site or vehicle its action was made for <OBJECT>
     _node - the Site or vehicle picked on its screen <OBJECT>
-    _command - "engage", "cease", "automation" or "radar" <STRING>
+    _command - "engage", "strike", "cease", "automation" or "radar" <STRING>
     _args - "engage": [contact key, vehicle or the vehicles of one row of
         launchers (the best placed fires), turret path, weapon class];
+        "strike": [point ASL, vehicle or vehicles, turret path, weapon
+        class] (a terminal with Surface Strike only);
         "cease": [contact key, "" for every order]; "automation": [on];
         "radar": [radar vehicles ([] for every radar picked), "on", "off"
         or "" for its own emission control] <ARRAY>
@@ -184,8 +186,69 @@ switch (_command) do {
         [format ["Ordered: %1 onto %2.", getText (configOf _vehicle >> "displayName"), _name]] call _fnAnswer;
     };
 
+    // A point on the ground (aegism_intercept_fnc_surfaceStrike): one missile
+    // lofted onto it, or one burst of a gun. Of a row of launchers, one
+    // that has the shot and isn't on a strike already; then the least busy,
+    // then the fullest.
+    case "strike": {
+        _args params [["_point", []], ["_candidates", objNull], ["_turretPath", []], ["_weaponClass", ""]];
+        if !(_candidates isEqualType []) then { _candidates = [_candidates]; };
+        if !(_terminal getVariable ["AEGISM_terminalSurface", false]) exitWith { "this terminal has no surface strike" call _fnRefuse; };
+        if !(_point isEqualType [] && {count _point == 3}) exitWith { "there's no strike point" call _fnRefuse; };
+
+        private _why = "that weapon isn't within this terminal's reach";
+        private _able = [];
+        {
+            private _vehicle = _x;
+            if (!isNull _vehicle && {_vehicle in _vehicles}) then {
+                private _data = _vehicle getVariable ["AEGISM_system", createHashMap];
+                private _fnWeapon = { (_data getOrDefault [_this, []]) select { (_x select 0) isEqualTo _turretPath && {(_x select 1) == _weaponClass} } };
+                private _role = "launcher";
+                private _found = "launcherWeapons" call _fnWeapon;
+                if (_found isEqualTo []) then {
+                    _role = "ciws";
+                    _found = "ciwsWeapons" call _fnWeapon;
+                };
+                private _weaponInfo = _found param [0, []];
+                _why = switch (true) do {
+                    case (_weaponInfo isEqualTo []): { "that isn't a weapon AEGIS-M runs" };
+                    case (CBA_missionTime < (([_vehicle, _turretPath] call aegism_intercept_fnc_turretState) getOrDefault ["strikeUntil", -1])): { "it's on another strike" };
+                    default {
+                        private _shot = [_vehicle, _role, _weaponInfo, _point] call aegism_intercept_fnc_surfaceShot;
+                        ["", format ["it has no shot at it (%1)", _shot select 1]] select !(_shot select 0)
+                    };
+                };
+                if (_why == "") then {
+                    private _working = { (_x getOrDefault ["status", ""]) != "inFlight" } count ((_vehicle getVariable ["AEGISM_assigned", createHashMap]) getOrDefault [_role, []]);
+                    _able pushBack [_working, -(_vehicle magazineTurretAmmo [_weaponInfo select 2, _turretPath]), count _able, _vehicle, _role, _weaponInfo];
+                };
+            };
+        } forEach _candidates;
+        if (_able isEqualTo []) exitWith { _why call _fnRefuse; };
+        _able sort true;
+        (_able select 0) params ["", "", "", "_vehicle", "_role", "_weaponInfo"];
+
+        ([_vehicle, _role, _weaponInfo, _point, _lead] call aegism_intercept_fnc_surfaceStrike) params ["_started", "_reason"];
+        if (!_started) exitWith { _reason call _fnRefuse; };
+        (format ["%1 ordered %2 (%3) to strike grid %4.", _userName, _vehicle, _weaponClass, mapGridPosition _point]) call _fnNote;
+        [format ["Strike ordered: %1 onto grid %2.", getText (configOf _vehicle >> "displayName"), mapGridPosition _point]] call _fnAnswer;
+    };
+
     case "cease": {
         _args params [["_key", ""]];
+        // (A surface strike still coming onto its point, or a gun's burst
+        // at one: called off. aegism_intercept_fnc_surfaceStrike.)
+        private _calledOff = 0;
+        if (_key in ["", "@strike"]) then {
+            {
+                {
+                    if (CBA_missionTime < (_y getOrDefault ["strikeUntil", -1])) then {
+                        _y set ["strikeAbort", CBA_missionTime];
+                        _calledOff = _calledOff + 1;
+                    };
+                } forEach (_x getVariable ["AEGISM_turrets", createHashMap]);
+            } forEach _vehicles;
+        };
         private _claims = _lead getVariable ["AEGISM_claims", createHashMap];
         private _kept = [];
         private _ended = 0;
@@ -217,8 +280,8 @@ switch (_command) do {
         } forEach (_lead getVariable ["AEGISM_manualOrders", []]);
         _lead setVariable ["AEGISM_manualOrders", _kept, false];
         _lead setVariable ["AEGISM_assignNow", true, false];
-        if (_ended > 0) then { (format ["%1 ended %2 order(s): cease fire.", _userName, _ended]) call _fnNote; };
-        [format ["Cease fire: %1 order(s) ended.", _ended]] call _fnAnswer;
+        if (_ended + _calledOff > 0) then { (format ["%1 ended %2 order(s) and called off %3 strike(s): cease fire.", _userName, _ended, _calledOff]) call _fnNote; };
+        [format ["Cease fire: %1 order(s) ended, %2 strike(s) called off.", _ended, _calledOff]] call _fnAnswer;
     };
 
     // A radar ordered on, silent, or back to its own emission control

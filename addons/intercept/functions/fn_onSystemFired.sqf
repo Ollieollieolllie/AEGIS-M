@@ -70,6 +70,19 @@ _context params ["_target", "_role", "_interceptors", "_expiresAt", "_targetIsMu
 
 if (CBA_missionTime > _expiresAt) exitWith { _ts deleteAt "capture"; };
 
+// A terminal's surface strike (aegism_intercept_fnc_surfaceStrike): its
+// missile is flown onto its point (aegism_intercept_fnc_strikeMissile); a
+// gun's rounds are left to fly as they are -- nothing fuses, follows or
+// self-destructs them. (Before the Site is marked as having fired: a
+// strike doesn't sound its alarm.)
+if (_role == "strike") exitWith {
+    _launch params [["_seeker", objNull], ["_aimPos", []]];
+    if (!isNull _seeker) then {
+        _ts deleteAt "capture";
+        [_projectile, _seeker, _aimPos] call aegism_intercept_fnc_strikeMissile;
+    };
+};
+
 // The Site's going-live alarm lasts a while after its last shot (aegism_
 // network_fnc_siteAlarm), and its crews are in combat meanwhile (aegism_
 // intercept_fnc_engagementLoop) -- a vehicle with no Site by its own. Every

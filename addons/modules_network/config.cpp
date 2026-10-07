@@ -80,6 +80,17 @@ class Cfg3DEN
                         defaultValue = "false";
                         condition = "(1 - objectBrain) * (1 - objectVehicle)";
                     };
+                    class AEGISM_terminalSurface
+                    {
+                        displayName = "Surface Strike";
+                        tooltip = "With Manual Interception: lets this terminal order the Site's launchers and guns to fire at a point on the ground, picked on the Interception page's map. A launcher's missile is lofted onto the point; a gun fires one burst along its own ballistic path, and needs a clear line to it. Only from a terminal, only on an order: the Site never fires at the ground on its own.";
+                        property = "AEGISM_terminalSurface";
+                        control = "Checkbox";
+                        expression = "_this setVariable ['AEGISM_terminalSurface', _value, true];";
+                        typeName = "BOOL";
+                        defaultValue = "false";
+                        condition = "(1 - objectBrain) * (1 - objectVehicle)";
+                    };
                 };
             };
         };

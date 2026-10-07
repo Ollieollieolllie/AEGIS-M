@@ -60,6 +60,7 @@ private _intercept = _shownTab == "intercept";
 (_display displayCtrl AEGISM_TERMINAL_GROUP_IDC) ctrlShow (_shownTab == "status");
 { (_display displayCtrl _x) ctrlShow _settings; } forEach [AEGISM_TERMINAL_FORM_IDC, AEGISM_TERMINAL_APPLY_IDC, AEGISM_TERMINAL_REVERT_IDC];
 { (_display displayCtrl _x) ctrlShow _intercept; } forEach AEGISM_TERMINAL_INTERCEPT_IDCS;
+(_display displayCtrl AEGISM_TERMINAL_SURFACE_IDC) ctrlShow (_intercept && {_state getOrDefault ["surface", false]});
 // (The map takes no part of the screen while it isn't shown.)
 private _map = _display displayCtrl AEGISM_TERMINAL_MAP_IDC;
 (_state get "mapRect") params ["_mapX", "_mapY", "_mapW", "_mapH"];
@@ -96,6 +97,7 @@ if (_intercept) exitWith {
         _state set ["rings", []];
         _state set ["labelled", []];
         _state set ["radarId", ""];
+        _state set ["strikePoint", []];
         (_display displayCtrl AEGISM_TERMINAL_ORDERS_IDC) ctrlSetStructuredText parseText format ["<t size='0.75' color='%1'>Connecting...</t>", AEGISM_TERMINAL_DIM_HEX];
         (_display displayCtrl AEGISM_TERMINAL_NOTE_IDC) ctrlSetStructuredText parseText "";
         // (Over the next frames, once it has its size: aegism_network_fnc_

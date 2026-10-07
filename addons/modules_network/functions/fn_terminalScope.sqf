@@ -76,10 +76,11 @@ if (_reply) then {
     private _owner = remoteExecutedOwner;
     // (And whether it has the Interception page, its own attribute.)
     private _engage = !isNull _terminal && {_terminal getVariable ["AEGISM_terminalEngage", false]};
+    private _surface = _engage && {_terminal getVariable ["AEGISM_terminalSurface", false]};
     if (!isMultiplayer || {_owner in [0, clientOwner]}) then {
-        [_nodes, _access, _engage] call aegism_network_fnc_terminalFill;
+        [_nodes, _access, _engage, _surface] call aegism_network_fnc_terminalFill;
     } else {
-        [_nodes, _access, _engage] remoteExecCall ["aegism_network_fnc_terminalFill", _owner];
+        [_nodes, _access, _engage, _surface] remoteExecCall ["aegism_network_fnc_terminalFill", _owner];
     };
 };
 

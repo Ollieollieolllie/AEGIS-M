@@ -41,12 +41,15 @@ if ([_entity] call aegism_network_fnc_isTerminal) exitWith {
             ["COMBO", ["Terminal Access", "What players can do at this laptop once it is synced to a Site or an air-defence vehicle. Status Only: see the live status board. Full Control: also change the settings of what it reaches."],
                 [["status", "control"], ["Status Only", "Full Control"], (["status", "control"] find (_entity getVariable ["AEGISM_terminalAccess", "status"])) max 0], true],
             ["CHECKBOX", ["Manual Interception", "Gives this laptop the Interception page: a map of what its Site tracks and its weapons, from which a player can order a chosen weapon onto a chosen track (a friendly included), end those orders, and switch the Site's automation off or on."],
-                _entity getVariable ["AEGISM_terminalEngage", false], true]
+                _entity getVariable ["AEGISM_terminalEngage", false], true],
+            ["CHECKBOX", ["Surface Strike", "With Manual Interception: lets this laptop order the Site's launchers and guns to fire at a point on the ground, picked on the Interception page's map."],
+                _entity getVariable ["AEGISM_terminalSurface", false], true]
         ], {
             params ["_values", "_terminal"];
             if (!isNull _terminal) then {
                 _terminal setVariable ["AEGISM_terminalAccess", _values select 0, true];
                 _terminal setVariable ["AEGISM_terminalEngage", _values select 1, true];
+                _terminal setVariable ["AEGISM_terminalSurface", _values select 2, true];
             };
         }, {}, _entity] call zen_dialog_fnc_create;
     };

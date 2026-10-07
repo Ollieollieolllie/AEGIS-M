@@ -95,7 +95,9 @@ private _fnCue = {
     private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
     // (-1: with its crew. 0: cued, never aimed.)
     private _lockedAt = _ts getOrDefault ["lockAt", -1];
-    if (CBA_missionTime >= (_ts getOrDefault ["cueAt", -1]) && {_lockedAt < 0 || {CBA_missionTime - _lockedAt > AEGISM_TURRET_RELEASE}}) then {
+    // (Not a turret a terminal's surface strike has: aegism_intercept_fnc_
+    // surfaceStrike, "strikeUntil".)
+    if (CBA_missionTime >= (_ts getOrDefault ["cueAt", -1]) && {CBA_missionTime >= (_ts getOrDefault ["strikeUntil", -1])} && {_lockedAt < 0 || {CBA_missionTime - _lockedAt > AEGISM_TURRET_RELEASE}}) then {
         _ts set ["cueAt", CBA_missionTime + AEGISM_CUE_INTERVAL];
         // A launcher's gunner lets go of the aircraft it locked: a cue is no lock.
         if (!_isCiws && {_lockedAt >= 0}) then { [_system, _turretPath, objNull] call aegism_intercept_fnc_gunnerLock; };
@@ -181,6 +183,10 @@ private _fnExecute = {
     if (!_isCiws && {(_state get "roundsFired") >= (_state getOrDefault ["salvo", _salvoSize])}) exitWith { _state set ["status", "inFlight"]; };
 
     private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
+
+    // The turret is on a terminal's surface strike (aegism_intercept_fnc_
+    // surfaceStrike): this engagement waits for it.
+    if (CBA_missionTime < (_ts getOrDefault ["strikeUntil", -1])) exitWith { _state set ["status", "held"]; };
 
     // A gun's per-frame tracker keeps the turret on this target between
     // ticks, bursts or not; a running burst stops once the turret's "tickAt"
