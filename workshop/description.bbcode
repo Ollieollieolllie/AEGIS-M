@@ -1,0 +1,56 @@
+[h1]AEGIS-M[/h1]
+[b]A modular, Eden/Zeus-configurable integrated air-defence framework for Arma 3.[/b]
+
+AEGIS-M is not a faction or a vehicle pack. Take any radar, SAM launcher, SHORAD or CIWS/C-RAM vehicle, vanilla or from a mod, and sync it to one [b]AEGIS-M: Site[/b] module. It becomes part of a coordinated air-defence network, with nothing to set up on the vehicle: no role to tick, no range, missile count or classname to enter.
+
+[h2]What it does[/h2]
+[list]
+[*][b]Shoots down munitions as well as aircraft.[/b] Missiles, rockets, bombs, artillery, mortar and MLRS rounds are tracked and intercepted, with a real proximity fuse on the interceptor.
+[*][b]Uses each vehicle as it really is.[/b] Roles, sensors, reach and envelopes are read from the vehicle's own config and loadout. It fires the vehicle's own weapons, so ballistics, guidance and damage are the game's.
+[*][b]Coordinated, layered defence.[/b] A Site pools what all its sensors see and gives each threat to the best-fit weapon. Short-range launchers take the bulk of a salvo, long-range missiles are held in reserve for what only they can reach, and guns are the inner layer.
+[*][b]Only engages what threatens it.[/b] Hostile aircraft by side relations; incoming munitions only while they threaten the Site or its protected area. A shell landing clear doesn't cost a round.
+[*][b]Radar emission control.[/b] Radars can run automatically, stay silent until cued, or search in bursts handed from radar to radar, and they shut down for an anti-radiation missile.
+[*][b]Human-feeling crews.[/b] Crew skill and temperament set reaction time and reliability, instead of a fixed reaction timer.
+[*][b]CIWS that corrects its own aim[/b] from where its rounds go, and only opens fire where a burst has a real chance of hitting.
+[*][b]Linked Sites.[/b] Several batteries share one picture and one coordinator, so they never waste missiles on the same target.
+[*][b]Alarms.[/b] A going-live warning and an incoming alarm per Site, with your own sounds if you want.
+[*][b]Site terminal.[/b] Sync a laptop to a Site and players get a live status board. Optionally it also gives them the Site's settings, a manual interception page with a map (order a chosen weapon onto a chosen track, switch the Site's automation off, control its radars), and surface strikes on a point on the ground.
+[*][b]Zeus.[/b] Every Site setting and vehicle override can be edited live (with Zeus Enhanced).
+[*][b]Runs on the server.[/b] All detection and engagement logic is server-side.
+[/list]
+
+[h2]Quick start[/h2]
+[olist]
+[*]Place your vehicles: any radar, SAM launcher, SHORAD or CIWS.
+[*]Place the [b]AEGIS-M: Site[/b] module (the AEGIS-M module folder, in Eden or Zeus) and sync it to every vehicle of the site.
+[*]Play. Every default is chosen so a Site works out of the box.
+[/olist]
+A self-contained AA vehicle with its own sensor and weapons (a Cheetah or Tigris, for example) also works on its own, without a Site.
+
+Each Site has its own settings (targets, ranges, crew, radar emission, alarms), and every vehicle can override them. They are all listed in the documentation on GitHub.
+
+[h2]Requirements[/h2]
+[list]
+[*][url=https://steamcommunity.com/workshop/filedetails/?id=450814997]CBA_A3[/url] (required)
+[*][url=https://steamcommunity.com/workshop/filedetails/?id=1779063631]Zeus Enhanced[/url] (optional: needed to edit Sites, vehicles and terminals from Zeus)
+[*]Arma 3 2.18 or later
+[/list]
+
+[h2]Other mods[/h2]
+AEGIS-M works with air-defence vehicles from other mods, as long as their sensors and weapons are in their config. It includes a compatibility addon for POOK's SAM pack, loaded only when that mod is. Missiles flown by a scripted missile guidance mod are handed their target as well.
+
+[h2]Status[/h2]
+Early development. Things will change between versions. Bug reports and suggestions are welcome on GitHub.
+
+[h2]Links[/h2]
+[list]
+[*][url=https://github.com/Ollieollieolllie/AEGIS-M]GitHub[/url]: source and full documentation
+[*][url=https://github.com/Ollieollieolllie/AEGIS-M/issues]Report a bug or suggest a feature[/url]
+[*][url=https://github.com/Ollieollieolllie/AEGIS-M/releases]Releases[/url]: zipped builds for servers
+[/list]
+
+[h2]Servers[/h2]
+The mod is signed, and the server key is in its [b]keys[/b] folder.
+
+[h2]License[/h2]
+[url=https://www.bohemia.net/community/licenses/arma-public-license-nd]Arma Public License No Derivatives (APL-ND)[/url]. You may share it unchanged, with credit and not commercially. You may not distribute modified versions.

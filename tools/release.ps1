@@ -14,8 +14,10 @@
     5. Tags the commit, pushes the branch and the tag.
     6. Creates the GitHub release and uploads the zip.
 
-    Needs: hemtt, git, the GitHub CLI logged in (gh auth login), an
-    "origin" remote (tools\github-setup.cmd), and nothing uncommitted.
+    Needs: hemtt, git, the GitHub CLI (winget install GitHub.cli) and an
+    "origin" remote (tools\github-setup.cmd). If the GitHub CLI isn't
+    logged in, the login is started for you. If something isn't committed,
+    you're asked for a commit message to commit it with, or it stops.
 
 .PARAMETER Bump
     major, minor, patch, build, or keep -- instead of being asked.
@@ -68,23 +70,62 @@ function Stop-Unless-Dry([string]$Message) {
     if ($DryRun) { Write-Host "(a real run would stop here: $Message)" -ForegroundColor Yellow } else { Stop-Script $Message }
 }
 
+# The GitHub CLI: on the PATH, or where its installer puts it (a terminal
+# opened before it was installed doesn't have it on its PATH yet).
+function Find-GitHubCli {
+    $command = Get-Command gh -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    foreach ($folder in $env:ProgramFiles, ${env:ProgramFiles(x86)}, "$env:LOCALAPPDATA\Programs") {
+        if ($folder -and (Test-Path "$folder\GitHub CLI\gh.exe")) { return "$folder\GitHub CLI\gh.exe" }
+    }
+    return $null
+}
+# Logged in to GitHub? If not, the login is started here (it opens the
+# browser), and asked again after.
+function Test-GitHubLogin([string]$Cli) {
+    & $Cli auth status 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) { return $true }
+    Write-Host ""
+    Write-Host "The GitHub CLI isn't logged in yet. Starting the login (it opens your browser)..." -ForegroundColor Yellow
+    & $Cli auth login --hostname github.com --git-protocol https --web
+    & $Cli auth status 2>&1 | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $projectFile = ".hemtt\project.toml"
 
 # --- What it needs ---------------------------------------------------------
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Stop-Script "git isn't installed (or isn't on the PATH)." }
 if (-not (Get-Command hemtt -ErrorAction SilentlyContinue)) { Stop-Unless-Dry "hemtt isn't installed (or isn't on the PATH)." }
-if (Get-Command gh -ErrorAction SilentlyContinue) {
-    gh auth status | Out-Null
-    if ($LASTEXITCODE -ne 0) { Stop-Unless-Dry "Not logged in to GitHub. Run:  gh auth login" }
-} else {
-    Stop-Unless-Dry "The GitHub CLI isn't installed. Install it with:  winget install GitHub.cli   then log in with:  gh auth login"
+$gh = Find-GitHubCli
+if (-not $gh) {
+    Stop-Unless-Dry "The GitHub CLI isn't installed. Install it with:  winget install GitHub.cli   and run this again."
+} elseif ($DryRun) {
+    & $gh auth status 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Stop-Unless-Dry "the GitHub CLI isn't logged in (a real run starts the login itself)." }
+} elseif (-not (Test-GitHubLogin $gh)) {
+    Stop-Script "Still not logged in to GitHub. Run:  `"$gh`" auth login   and then this again."
 }
 if (@(git remote) -notcontains "origin") { Stop-Unless-Dry "This repository has no 'origin' remote yet. Run tools\github-setup.cmd first." }
+# A release is built from what's committed. Anything that isn't: commit it
+# here and now, with a message of your own, or stop.
 $dirty = @(git status --porcelain)
 if ($dirty.Count -gt 0) {
-    $dirty | Select-Object -First 10 | ForEach-Object { Write-Host "   $_" }
-    Stop-Unless-Dry "There are uncommitted changes. Commit them (or put them aside) first: a release is built from what's committed."
+    Write-Host ""
+    Write-Host "Not committed yet:" -ForegroundColor Yellow
+    $dirty | Select-Object -First 20 | ForEach-Object { Write-Host "   $_" }
+    if ($dirty.Count -gt 20) { Write-Host "   ... and $($dirty.Count - 20) more" }
+    if ($DryRun -or $Yes) {
+        Stop-Unless-Dry "There are uncommitted changes, and a release is built from what's committed. Commit them first."
+    } else {
+        $message = Read-Host "A release is built from what's committed. Type a commit message to commit all of these now, or just press Enter to stop"
+        if ($message.Trim() -eq "") { Stop-Script "Nothing was changed. Commit them (or put them aside) and run this again." }
+        git add -A
+        git commit -q -m $message.Trim()
+        if ($LASTEXITCODE -ne 0) { Stop-Script "That commit failed (see above)." }
+        Write-Host "Committed."
+    }
 }
 $branch = (git rev-parse --abbrev-ref HEAD).Trim()
 
@@ -225,7 +266,7 @@ $arguments = @("release", "create", $tag, $zip.FullName, "--title", "AEGIS-M $ta
 if ($Notes) { $arguments += @("--notes", $Notes) } else { $arguments += "--generate-notes" }
 if ($Draft) { $arguments += "--draft" }
 if ($PreRelease) { $arguments += "--prerelease" }
-& gh @arguments
+& $gh @arguments
 if ($LASTEXITCODE -ne 0) { Stop-Script "GitHub didn't create the release (see above). The branch and the tag are pushed; create it by hand with:  gh release create $tag `"$($zip.FullName)`" --generate-notes" }
 
 Write-Host ""

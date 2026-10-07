@@ -564,10 +564,12 @@ from a terminal in the repository (or by double-click):
   `-Bump patch` or `-Version 1.2.3` skip the question.
 
 They need [HEMTT](https://github.com/BrettMayson/HEMTT) and the GitHub
-CLI, logged in: `winget install GitHub.cli`, then `gh auth login`. The
-version lives in `.hemtt/project.toml`. A release is built from what is
-committed, so the script stops if anything is uncommitted; if the build
-fails, its version commit is taken back and nothing is pushed.
+CLI (`winget install GitHub.cli`); if it isn't logged in yet, the script
+starts the login in your browser. The version lives in
+`.hemtt/project.toml`. A release is built from what is committed: if
+something isn't, the script lists it and asks for a commit message to
+commit it with, or stops. If the build fails, its version commit is taken
+back and nothing is pushed.
 
 ## License
 
