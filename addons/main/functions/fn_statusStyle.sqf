@@ -2,24 +2,9 @@
 Function: aegism_fnc_statusStyle
 
 Description:
-    How the debug overlays (aegism_fnc_debugDraw, aegism_fnc_debugHint) show
-    one engagement's state -- the "status" aegism_intercept_fnc_
-    engagementLoop records on it every tick -- so each munition queued on a
-    launcher shows where it actually is, not one colour for the lot:
-
-        queued - waiting its turn: the launcher is on another first (blue)
-        assigned - just assigned, not worked yet (green)
-        reacting - crew reaction time (amber)
-        slewing - turret swinging onto it (amber)
-        locking - on it, waiting for its gunner's lock on an aircraft (amber)
-        reloading - shot interval / burst pause / lost fire cycle (orange)
-        rangeHold - a gun tracking it, beyond its open-fire range (teal)
-        cued - a gun on it before it's in reach, holding until it is (teal)
-        firing - a gun's burst on it, or a missile just launched (red)
-        inFlight - salvo away, missiles guiding (gold)
-        losBlocked / noSolution - can't see it / can't reach it (purple)
-        crewFailed / held / noAmmo - crew missed its cycle, fire held, empty
-            (grey)
+    How the debug overlays show one engagement's state: its label and
+    colour.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _status - the engagement's status <STRING>

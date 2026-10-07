@@ -5,20 +5,7 @@ Description:
     Starts tracking one fired projectile if it classifies as a threat
     (aegism_detect_fnc_trackMunition), and follows it through submunition
     handoffs.
-
-    A carrier (CfgAmmo simulation "shotSubmunitions") is deleted mid-flight
-    and replaced by the projectile(s) it releases. The MLRS rocket
-    R_230mm_HE, for example, becomes R_230mm_fly after triggerDistance =
-    500m, which then flies the rest of the way. Without following that, the
-    tracker saw the carrier vanish and dropped the contact for good. The
-    handoff uses the projectile "SubmunitionCreated" event (as ACE's CLGP
-    code does) and runs this same function on each released projectile, so
-    multi-stage carriers work too. Only a carrier that releases ONE round
-    (aegism_detect_fnc_ammoThreatInfo, from its config) is followed: a
-    cluster carrier's dozens of bomblets (R_230mm_Cluster 50,
-    Cluster_155mm_AMOS 35) can't be intercepted one by one, and every tracked
-    round is checked against every sensor. Released projectiles that don't classify are
-    ignored the normal way anyway (Mo_cluster_AP has no artilleryLock).
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _projectile - the fired or released projectile <OBJECT>
@@ -49,7 +36,7 @@ if (_class == "" && {!_isCarrier}) then {
     _isCarrier = _knownCarrier;
 };
 
-// A cluster's bomblets aren't followed (see header) -- and aren't munitions
+// A cluster's bomblets aren't followed (see notes) -- and aren't munitions
 // nothing fired either.
 if (_isCarrier && {_submunitions != 1}) then {
     _projectile addEventHandler ["SubmunitionCreated", {

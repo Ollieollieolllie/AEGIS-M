@@ -1,0 +1,72 @@
+/* ----------------------------------------------------------------------------
+Function: aegism_network_fnc_terminalFill
+
+Description:
+    Fills this machine's open terminal screen with what the terminal
+    reaches, as the server worked it out (aegism_network_fnc_terminalScope),
+    and picks the first -- or, when its reach has changed since, lists it
+    again and keeps what was picked if that's still within it.
+    Full notes: docs/functions/modules_network.md
+
+Parameters:
+    _nodes - [object, label, "site" or "vehicle"] each <ARRAY>
+    _access - "status" or "control" <STRING>
+
+Returns:
+    Nothing
+
+Examples:
+    [_nodes, "control"] remoteExecCall ["aegism_network_fnc_terminalFill", _owner];
+
+Author:
+    Snow(Dryden)
+---------------------------------------------------------------------------- */
+
+#include "..\terminal.hpp"
+
+params [["_nodes", []], ["_access", "status"]];
+
+private _display = uiNamespace getVariable ["AEGISM_terminalDisplay", displayNull];
+private _state = uiNamespace getVariable "AEGISM_terminalState";
+if (isNull _display || {isNil "_state"}) exitWith {};
+_state set ["access", _access];
+(_display displayCtrl AEGISM_TERMINAL_BADGE_IDC) ctrlSetStructuredText parseText format [
+    "<t align='right' size='0.8'><t color='%1'>%2</t><t color='%3'>   |   Esc to close</t></t>",
+    [AEGISM_TERMINAL_DIM_HEX, AEGISM_TERMINAL_WARN_HEX] select (_access == "control"),
+    ["STATUS ONLY", "FULL CONTROL"] select (_access == "control"),
+    AEGISM_TERMINAL_DIM_HEX];
+(_display displayCtrl AEGISM_TERMINAL_TAB_SETTINGS_IDC) ctrlShow (_access == "control");
+
+// The same reach as it shows (the request is repeated every few seconds: a
+// Site handed the Shared Site Coordinator's place, a vehicle lost, a new
+// sync all change it): only its access may have changed.
+private _shown = _state get "nodes";
+if (_shown isNotEqualTo [] && {_nodes isEqualTo _shown}) exitWith {
+    if (_access != "control" && {(_state get "tab") == "settings"}) then { [-1, "status"] call aegism_network_fnc_terminalSelect; };
+};
+
+private _list = _display displayCtrl AEGISM_TERMINAL_LIST_IDC;
+if (_nodes isEqualTo []) exitWith {
+    _state set ["nodes", []];
+    _state set ["node", -1];
+    lbClear _list;
+    (_display displayCtrl AEGISM_TERMINAL_GROUP_IDC) ctrlShow true;
+    { (_display displayCtrl _x) ctrlShow false; } forEach [AEGISM_TERMINAL_FORM_IDC, AEGISM_TERMINAL_APPLY_IDC, AEGISM_TERMINAL_REVERT_IDC];
+    (_display displayCtrl AEGISM_TERMINAL_BOARD_IDC) ctrlSetStructuredText parseText "<t color='#90A4AE'>This terminal isn't synced to a Site or to an AEGIS-M vehicle.</t>";
+};
+
+// What was picked, if it's still within reach; else the first.
+private _node = _state get "node";
+private _picked = if (_node >= 0) then { (_shown param [_node, []]) param [0, objNull] } else { objNull };
+private _index = (_nodes findIf { (_x select 0) isEqualTo _picked }) max 0;
+_state set ["nodes", _nodes];
+_state set ["node", -1];
+lbClear _list;
+{
+    _x params ["", "_label", "_kind"];
+    private _row = _list lbAdd ([format ["    %1", _label], _label] select (_kind == "site"));
+    _list lbSetColor [_row, [[0.85, 0.88, 0.9, 1], AEGISM_TERMINAL_ACCENT] select (_kind == "site")];
+} forEach _nodes;
+// (Selecting a row picks its node: the list's own event.)
+_list lbSetCurSel _index;
+if ((_state get "node") != _index) then { [_index] call aegism_network_fnc_terminalSelect; };

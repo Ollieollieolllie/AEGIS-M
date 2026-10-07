@@ -2,24 +2,9 @@
 Function: aegism_intercept_fnc_debugBenchmark
 
 Description:
-    Times AEGIS-M's per-call hot paths on the running game (diag_code
-    Performance) and writes one BENCHMARK line per function to the RPT, so
-    the per-second counts in the PERF line (aegism_fnc_perfLog) can be
-    turned into real milliseconds. Run from the debug console (Local Exec,
-    singleplayer / Eden Preview / host), looking at a System, with any live
-    object as the target -- a placed helicopter, or a flying shell.
-
-    Timed per call:
-        classify bullet / shell - ammo classification (cached after the
-            first call, as in play)
-        canEngage - one engageability check (the coordinator and standalone
-            selection run these)
-        aimWeapon - one full aim solve (a CIWS runs these at 20 Hz)
-        ciwsTrack steer - one per-frame steer between solves
-        turretPoints - muzzle and camera positions
-        computeLeadPoint - one intercept solve
-
-    Note: aimWeapon and ciwsTrack really aim the turret while they run.
+    Times AEGIS-M's per-call hot paths on the running game and writes one
+    BENCHMARK line per function to the RPT.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the System to time <OBJECT>

@@ -2,42 +2,9 @@
 Function: aegism_fnc_pollSyncedObjects
 
 Description:
-    Generic live-resync helper for AEGIS-M's push-model modules
-    (EngagementSettings, Crew, Network): a placed module's own init
-    function runs exactly once, at its own activation, and pushes its data
-    to whatever is synced to it AT THAT MOMENT -- a sync line drawn or
-    erased afterward (e.g. a Zeus operator re-syncing an EngagementSettings
-    module to an additional System mid-mission) does not re-trigger that
-    init function, since nothing new is being activated. Nothing in vanilla
-    Arma raises an event for a sync-graph change either, so the only way to
-    detect one is to poll synchronizedObjects, which always reflects the
-    CURRENT live graph regardless of when a link was drawn.
-
-    Registers a low-frequency, server-only per-frame handler (mirroring
-    every other AEGIS-M loop's isServer gating, see aegism_system_fnc_
-    moduleInit) that diffs _logic's synchronizedObjects against last poll's
-    set: _applyFn runs once for each newly-synced object, _clearFn once for
-    each newly-unsynced one. Both are called with explicit arguments rather
-    than relying on closure capture of the caller's private variables --
-    correct here, since the code runs from a later, separate PFH tick after
-    the calling script has already returned, by which point any of its
-    privates are gone; only what's threaded through _data (or bound into
-    _applyFn/_clearFn's own call arguments) survives to reach them.
-
-    The initial "last poll set" is seeded from synchronizedObjects _logic
-    AT REGISTRATION TIME (i.e. whatever's already synced when the caller's
-    own one-time init runs), not an empty array -- a caller (e.g. aegism_
-    network_fnc_moduleInit) that already applies its data to every
-    initially-synced unit directly, before ever calling this function, would
-    otherwise have _applyFn redundantly re-run against every one of them on
-    this poll's first tick. Harmless for an idempotent _applyFn (repeating a
-    setVariable/pushBackUnique changes nothing), but this is a generic
-    helper other callers may use with a non-idempotent _applyFn, so it's
-    seeded correctly rather than relying on every future caller happening to
-    write one.
-
-    If _logic itself is deleted (e.g. a Zeus operator deletes a Network mid-
-    mission), _onDeletedFn is called once and the handler removes itself.
+    Live-resync helper for AEGIS-M's modules: watches a placed module's
+    synced objects, so one synced or unsynced after its init is handled.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _logic - the module logic object to poll synchronizedObjects on <OBJECT>

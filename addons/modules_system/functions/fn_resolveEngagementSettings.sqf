@@ -2,16 +2,9 @@
 Function: aegism_system_fnc_resolveEngagementSettings
 
 Description:
-    Resolves which Doctrine data applies to a given System vehicle:
-        1. the base -- the Site's doctrine (AEGISM_Module_Site's moduleInit
-           copies it onto every member as "AEGISM_engagement", and it is
-           also read from the Site logic via "AEGISM_network"), or, while
-           the Site is linked with others under a Shared Site Coordinator,
-           that Site's (aegism_fnc_siteSettingsSource), or the hardcoded
-           defaults for a standalone vehicle;
-        2. then the vehicle's own per-vehicle overrides on top, if it has
-           any enabled (aegism_system_fnc_applyOverrides) -- each setting
-           left on "Site setting" keeps the base value.
+    Resolves which Doctrine data applies to a System vehicle: its Site's (or
+    the defaults), with its own overrides.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _systemObject - the vehicle to resolve Doctrine data for <OBJECT>

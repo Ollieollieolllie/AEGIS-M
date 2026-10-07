@@ -5,23 +5,7 @@ Description:
     A target's body as AEGIS-M knows it: its model's bounding box, in its
     own model space (x right, y forward, z up), and half its diagonal (the
     sphere that holds all of it).
-
-    The box is taken from the model's collision (Geometry) layer where it
-    has one, else the visual layer's. For projectiles the two have always
-    been identical, and no LOD of one can be hit by a line
-    (lineIntersectsSurfaces; aegism_intercept_fnc_debugProbeMunitions found
-    none on R_230mm_HE, 2026-10-06), so the box is the only shape there is
-    for a munition. How true it is depends on the model: FZA's Hellfire is
-    0.24 x 1.63 x 0.26 m, about the missile; vanilla's 230 mm rocket is
-    2.29 x 11.96 x 2.29 m, far wider and longer than the rocket.
-
-    A munition is hit where a round's path comes within the round's own
-    radius of the box (aegism_intercept_fnc_bodyPass), not of the sphere: the
-    sphere of that rocket's box is 6.19 m, and every round passing within
-    it -- a .50 with no blast at all -- counted as a kill.
-
-    Cached per type ("AEGISM_cacheBody"): it's read every frame. Each type's
-    boxes are logged once (TARGET-SIZE).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _target - the target object <OBJECT>

@@ -2,16 +2,8 @@
 Function: aegism_intercept_fnc_threatValue
 
 Description:
-    Pure lookup: maps a classified contact class to a threat-value score
-    used both by aegism_intercept_fnc_selectTarget's "highestValue" target-
-    priority rule and by aegism_intercept_fnc_engagementLoop's cost/value
-    judgment gate (AEGISM_Module_Site's "Enable Cost/Value Judgment"
-    Personality option) -- kept as a single shared table so the two can
-    never drift apart from each other.
-
-    Missiles outrank platforms since a missed missile is an immediate kill
-    risk to the defended asset, while a missed aircraft can be re-engaged
-    on a later pass.
+    Maps a contact class to a threat-value score.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _class - a classified contact class, from aegism_detect_fnc_

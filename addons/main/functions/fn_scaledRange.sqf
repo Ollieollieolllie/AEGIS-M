@@ -4,14 +4,7 @@ Function: aegism_fnc_scaledRange
 Description:
     Applies the active AEGIS-M range scale setting (Arma Scale / Real World
     Scale / Custom Multiplier) to a real-world-sourced base range value.
-    Every range-consuming module (System, EngagementSettings, detection loop)
-    must resolve its ranges through this function rather than reading its
-    configured base value directly, so the scale setting stays a single
-    global multiplier applied in one place.
-
-    Reads the settings' own global variables (CBA keeps every setting's
-    value in the missionNamespace variable of the same name) rather than
-    CBA_settings_fnc_get: this runs inside every envelope check.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _baseRange - the real-world-sourced base range value (metres) <NUMBER>

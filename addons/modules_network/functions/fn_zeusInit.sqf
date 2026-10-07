@@ -2,21 +2,8 @@
 Function: aegism_network_fnc_zeusInit
 
 Description:
-    Zeus access to AEGIS-M's settings (aegism_network_fnc_zeusEdit). Run on
-    every machine with an interface, from this addon's XEH_postInit.
-
-        Site module - double-click it, or place one: its settings dialog
-            opens (Zeus Enhanced's own object window is turned off for
-            Sites, see aegism_network_fnc_moduleInit)
-        Vehicle - the "AEGIS-M" button in its Zeus Enhanced attributes
-            window opens its overrides
-        Either - right-click it: "AEGIS-M Settings" in the context menu
-        Module "AEGIS-M > Edit Air Defence" - place it on a Site or an
-            air-defence vehicle (or within 50 m of a Site)
-
-    The dialogs themselves come from Zeus Enhanced (ZEN). Without it only
-    the double-click/placement hooks exist, and they hint that ZEN is
-    needed.
+    Zeus access to AEGIS-M's settings (aegism_network_fnc_zeusEdit).
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
     None

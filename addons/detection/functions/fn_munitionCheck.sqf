@@ -3,49 +3,9 @@ Function: aegism_detect_fnc_munitionCheck
 
 Description:
     One check of one tracked munition (aegism_detect_fnc_munitionTracker)
-    against every AEGIS-M vehicle with a sensor of its own (AEGISM_
-    allPoolOwners). Site logics are never checked directly -- they have no
-    sensor of their own; a Site only receives a munition from a member that
-    genuinely sees it.
-
-    Detection: the vehicle's own sensors saw the munition on their last
-    read (aegism_detect_fnc_confidenceLoop, "AEGISM_seenMunitions", four
-    times a second while a munition flies; a read older than
-    AEGISM_SEEN_FRESH s doesn't count) -- AEGIS-M's own judgement, from each
-    sensor's config (aegism_detect_fnc_munitionSeen): radar, IR and visual
-    each by their own range, arc, line of sight, fog, night, ground clutter
-    and speed limits, an active radar only while it emits. The contact
-    records the sensor kinds that saw it ("activeradar", "ir", "visual").
-
-    Where it goes:
-        standalone vehicle - its own pool
-        networked vehicle - its Site's pool (if the class is one this
-            vehicle's own settings engage). Once one member of a Site has
-            judged the munition, the Site's other members aren't judged
-            again this check; those that see it too only add their sensor
-            kinds to the contact (a radar and a Spartan's IR both show).
-            (A networked vehicle's own pool isn't kept for munitions:
-            nothing engages from it.)
-
-    IFF and threat:
-        hostile shooter - tracked outright, unless the Site's doctrine
-            engageOnlyThreats is on (the default): then only while it's a
-            threat to a Site vehicle or to a Site's protected area (aegism_
-            detect_fnc_munitionThreat) --
-            a shell or rocket predicted to land within the threat radius, a
-            missile guided at a Site vehicle or flying on a line that passes
-            within it, a bomb whose fall or line of flight does. One landing
-            3km away, or a missile flying at something else, isn't worth a
-            single round, and never becomes a contact, a claim or a burst.
-            Logged once (IGNORED); re-judged every check, so one that turns
-            toward the Site is picked up.
-        friendly/neutral shooter - only while predicted to hit the Site, and
-            only if its doctrine engageFriendlyThreats is on. An AEGIS-M
-            System's own interceptors ("AEGISM_fromSystem") never are.
-
-    An anti-radiation missile one of a Site's vehicles sees also marks the
-    radars it threatens, so they shut down (aegism_detect_fnc_armInbound),
-    whatever the Site engages.
+    against every AEGIS-M vehicle with a sensor of its own
+    (AEGISM_allPoolOwners).
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _entry - the tracked munition's entry (aegism_detect_fnc_trackMunition) <ARRAY>

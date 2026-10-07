@@ -1,3 +1,15 @@
+// How long the last frame took on the mission clock (AEGISM_frameDelta), for
+// whatever moves by the frame: the stretch of path a round or a missile
+// covered, the time a gun spent firing. diag_deltaTime is real time, and with
+// the game fast-forwarded a round covers accTime times that in a frame.
+// Registered before every other handler of AEGIS-M's, so each reads this
+// frame's.
+AEGISM_frameTime = CBA_missionTime;
+[{
+    AEGISM_frameDelta = (CBA_missionTime - AEGISM_frameTime) max 0;
+    AEGISM_frameTime = CBA_missionTime;
+}, 0, []] call CBA_fnc_addPerFrameHandler;
+
 // Debug overlays: only where there's a screen to draw on. aegism_fnc_debugDraw
 // (per frame) and aegism_fnc_debugHint (once a second) are no-ops while their
 // settings are off.

@@ -23,10 +23,11 @@
 // New steps of launcher shots (intercept solves along a munition's path,
 // aegism_intercept_fnc_planShot) a coordinator run works out before it puts
 // off the looks that can wait (aegism_intercept_fnc_assignEngagements,
-// _mustLook): about what one frame of working ahead gets through (at most 11
-// a frame in one test, 2026-10-06). A count, not a time: diag_tickTime is
-// too coarse to time single steps after an hour (perf.hpp).
-#define AEGISM_PLAN_STEPS 10
+// _mustLook): about half of what one frame of working ahead gets through (at
+// most 11 a frame in one test, 2026-10-06; at 10 the heaviest runs still
+// took 35-39 ms). A count, not a time: diag_tickTime is too coarse to time
+// single steps after an hour (perf.hpp).
+#define AEGISM_PLAN_STEPS 5
 
 // Seconds a frame between the coordinator's runs may spend working out the
 // launcher shots of the munitions a run put off (aegism_intercept_fnc_

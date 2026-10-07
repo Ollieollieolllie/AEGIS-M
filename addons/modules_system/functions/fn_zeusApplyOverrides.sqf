@@ -2,19 +2,9 @@
 Function: aegism_system_fnc_zeusApplyOverrides
 
 Description:
-    Applies a vehicle's AEGIS-M overrides as edited in Zeus (aegism_fnc_
-    zeusAttributeDialog), on every machine: each override's own Eden
-    expression runs (aegism_fnc_applyAttributeValues), so the same
-    "AEGISM_ovr_*" variables are set as by the vehicle's Eden attributes.
-    On the server the vehicle's settings are then re-resolved at once
-    rather than at its next 5-second poll, and the result is logged
-    (OVERRIDES).
-
-    Nothing applies unless "Override Site Settings" is ticked. Settings
-    entered with it off are saved and ignored -- five edits in one test went
-    that way, each a minimum range that never took effect -- so that's said
-    to whoever is in Zeus here (a hint and a chat line), and in the log, with
-    the settings it left out.
+    Applies a vehicle's AEGIS-M overrides as edited in Zeus, on every
+    machine.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the vehicle <OBJECT>

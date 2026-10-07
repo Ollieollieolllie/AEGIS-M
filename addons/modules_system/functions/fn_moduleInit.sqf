@@ -2,52 +2,8 @@
 Function: aegism_system_fnc_moduleInit
 
 Description:
-    Per-vehicle AEGIS-M System setup. There is no role checkbox or
-    per-vehicle Attribute anymore -- capability is discovered entirely from
-    the vehicle's own native config and current loadout (see aegism_system_
-    fnc_discoverCapabilities): if it has a radar, it has a radar; if it has
-    guided missiles, it's a launcher; if it also has a high-rate-of-fire gun
-    (SHORAD or Tigris-style all-in-one vehicle), it's also a CIWS/CRAM.
-    Called for every vehicle exactly once by aegism_system_fnc_
-    scanForRoles's periodic discovery sweep (this addon's XEH_postInit.sqf).
-    Guarded by "AEGISM_systemInitialized", set immediately regardless of
-    outcome, so a vehicle with no AEGIS-M-relevant capability is checked
-    once and never re-scanned, and a repeat call for one that does qualify
-    is a harmless no-op.
-
-    Stores the discovered capabilities on the vehicle ("AEGISM_system") and
-    suppresses the crew's own independent AI targeting/engagement on every
-    discovered launcher/CIWS turret (aegism_fnc_setWeaponAiSuppressed), so
-    that weapon only ever fires via aegism_intercept_fnc_fireWeapon. That
-    much runs on every machine: disableAI is local, and has to happen
-    wherever the crew is simulated (a headless client, a player's AI group).
-    A vehicle synced to a Site gets a broader version of the same
-    suppression at sync time (aegism_network_fnc_moduleInit).
-
-    The rest is the engagement pipeline, and runs on the server only (the
-    single source of truth in singleplayer, hosted and dedicated games):
-        - resolves and caches its Doctrine and Personality
-          ("AEGISM_resolvedEngagementSettings", "AEGISM_resolvedCrew", and the
-          crew's modifiers, "AEGISM_resolvedCrewMods" -- what the engagement
-          loop and the coordinator read every tick), and its contact source
-          ("AEGISM_resolvedContactSource", for aegism_system_fnc_
-          resolveContactSource's own warning). These depend on
-          "AEGISM_engagement"/"AEGISM_crew"/"AEGISM_network", which CAN
-          change later (a Zeus operator syncing a Site), so a 5-second poll
-          re-resolves them.
-        - with a sensor of its own (radar, IR or visual): its own pool
-          ("AEGISM_pooledContacts") and a detection loop (aegism_detect_fnc_
-          confidenceLoop): once a second, four times a second while any
-          munition is in flight. Once a second, it also sets whether its
-          radar emits, if it has one (Radar Emission, aegism_system_fnc_
-          emconUpdate).
-        - one 0.1-second engagement loop per weapon role (aegism_intercept_
-          fnc_engagementLoop).
-    Registering the loops on every machine would make every client detect
-    the same contact and fire its own redundant shot.
-
-    Capability discovery only ever happens once -- a vehicle's turrets and
-    sensors are fixed for its lifetime; ammo is re-checked at fire time.
+    Per-vehicle AEGIS-M System setup.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the vehicle to set up as an AEGIS-M System <OBJECT>
@@ -67,6 +23,8 @@ Author:
 // Seconds between sensor reads while any munition is in flight (once a
 // second otherwise).
 #define AEGISM_SENSOR_READ_FAST 0.25
+// Seconds between a weapon's engagement ticks.
+#define AEGISM_ENGAGE_TICK 0.1
 
 params ["_vehicle"];
 
@@ -195,9 +153,14 @@ if ("ownSensor" in _contactSource) then {
     // any munition is in flight -- a munition is a few seconds from impact by
     // the time it's seen, and reading once a second added up to a second
     // before AEGIS-M knew what the game's sensors already showed.
+    // Run every frame and due by the mission clock (_dueAt, each counted
+    // from when the last was due): a per-frame handler's own delay is real
+    // time (CBA_fnc_addPerFrameHandler compares it with diag_tickTime), so
+    // with the game fast-forwarded 4x the sensors were read a quarter as
+    // often in game time.
     [{
         params ["_args", "_pfhHandle"];
-        _args params ["_vehicle", "_lastTime", "_emconAt", "_readAt"];
+        _args params ["_vehicle", "_lastTime", "_emconAt", "_readAt", "_dueAt"];
         if (isNull _vehicle || {!alive _vehicle}) exitWith {
             private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
             missionNamespace setVariable ["AEGISM_allPoolOwners", _allOwners - [_vehicle]];
@@ -206,6 +169,8 @@ if ("ownSensor" in _contactSource) then {
         // Paused (game time not moving): nothing to detect.
         if (CBA_missionTime == _lastTime) exitWith {};
         _args set [1, CBA_missionTime];
+        if (CBA_missionTime < _dueAt) exitWith {};
+        _args set [4, (_dueAt + AEGISM_SENSOR_READ_FAST) max CBA_missionTime];
         if (CBA_missionTime >= _emconAt + 1) then {
             _args set [2, CBA_missionTime];
             [_vehicle] call aegism_system_fnc_emconUpdate;
@@ -215,27 +180,33 @@ if ("ownSensor" in _contactSource) then {
             _args set [3, CBA_missionTime];
             [_vehicle] call aegism_detect_fnc_confidenceLoop;
         };
-    }, AEGISM_SENSOR_READ_FAST, [_vehicle, -1, -1e9, -1e9]] call CBA_fnc_addPerFrameHandler;
+    }, 0, [_vehicle, -1, -1e9, -1e9, -1e9]] call CBA_fnc_addPerFrameHandler;
 };
 
-// Every weapon ticks at 0.1s: its turret has to keep re-aiming at a moving
-// lead point. A tick with nothing assigned (or nothing in a standalone
-// System's pool) returns before doing any real work.
+// Every weapon ticks every AEGISM_ENGAGE_TICK s of the mission clock: its
+// turret has to keep re-aiming at a moving lead point. A tick with nothing
+// assigned (or nothing in a standalone System's pool) returns before doing
+// any real work. Run every frame and due by that clock, as the sensor reads
+// above: on the handler's own real-time delay a weapon looked every 0.4 s of
+// game time with the game fast-forwarded 4x (in one such run the RAM
+// launchers took up to 5 s a missile; 3.2 s at normal speed, 2026-10-06).
 private _activeWeaponRoles = [];
 if ((_capabilities get "launcherWeapons") isNotEqualTo []) then { _activeWeaponRoles pushBack "launcher"; };
 if ((_capabilities get "ciwsWeapons") isNotEqualTo []) then { _activeWeaponRoles pushBack "ciws"; };
 {
     [{
         params ["_args", "_pfhHandle"];
-        _args params ["_vehicle", "_role", "_lastTime"];
+        _args params ["_vehicle", "_role", "_lastTime", "_dueAt"];
         if (isNull _vehicle || {!alive _vehicle}) exitWith {
             [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         };
         // Paused (game time not moving): nothing to do.
         if (CBA_missionTime == _lastTime) exitWith {};
         _args set [2, CBA_missionTime];
+        if (CBA_missionTime < _dueAt) exitWith {};
+        _args set [3, (_dueAt + AEGISM_ENGAGE_TICK) max CBA_missionTime];
         [_vehicle, _role] call aegism_intercept_fnc_engagementLoop;
-    }, 0.1, [_vehicle, _x, -1]] call CBA_fnc_addPerFrameHandler;
+    }, 0, [_vehicle, _x, -1, -1e9]] call CBA_fnc_addPerFrameHandler;
 } forEach _activeWeaponRoles;
 
 diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " System initialized on %1 (%2) -- sensors: %3; launcherWeapons=%4 ciwsWeapons=%5 contactSource=%6", _vehicle, typeOf _vehicle, _sensorText, count (_capabilities get "launcherWeapons"), count (_capabilities get "ciwsWeapons"), _contactSource];

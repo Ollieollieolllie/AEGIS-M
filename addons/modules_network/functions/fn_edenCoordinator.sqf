@@ -2,23 +2,9 @@
 Function: aegism_network_fnc_edenCoordinator
 
 Description:
-    Eden: keeps "Shared Site Coordinator" to one Site per group of connected
-    Sites -- Site modules synced to each other, synced to the same vehicle,
-    or with a vehicle of one synced to a vehicle of the other (directly or
-    through a crewman), chained: the links aegism_network_fnc_linkSites
-    makes at runtime. Run on every Eden
-    attribute change and every new connection (Cfg3DEN EventHandlers, this
-    addon's config).
-
-    The Site just ticked wins: each Site's last-seen value is remembered for
-    the editing session ("AEGISM_edenCoordinatorSeen"), so a Site ticked
-    since the last run keeps it and the others in its group are unticked
-    (set3DENAttribute -- undoable like any edit). Where a new connection
-    joins two groups that each had one, the first Site keeps it.
-
-    The same rule is applied in Zeus (aegism_network_fnc_zeusApplySite); a
-    group that still ends up with two (a link made in Zeus) is led by the
-    first set up (aegism_network_fnc_linkSites).
+    Eden: keeps Shared Site Coordinator to one Site per group of connected
+    Sites.
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
     Whatever the Eden event passes (not used)

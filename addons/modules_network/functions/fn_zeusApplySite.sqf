@@ -2,18 +2,8 @@
 Function: aegism_network_fnc_zeusApplySite
 
 Description:
-    Applies a Site's settings as edited in Zeus (aegism_fnc_
-    zeusAttributeDialog), on every machine: each attribute's own Eden
-    expression runs (aegism_fnc_applyAttributeValues), so the Site logic
-    gets the same variables its Eden attributes would set.
-
-    On the server the Site's doctrine and personality are then rebuilt
-    (aegism_network_fnc_readSiteSettings), handed to every member vehicle,
-    and each member System -- and, for a Site linked with others, every
-    vehicle of its group -- re-resolved at once rather than at its next
-    5-second poll. Ticking "Shared Site Coordinator" unticks it on every
-    other Site linked, synced or sharing a vehicle with this one. Logged as
-    SITE-SETTINGS.
+    Applies a Site's settings as edited in Zeus, on every machine.
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
     _logic - the Site logic <OBJECT>

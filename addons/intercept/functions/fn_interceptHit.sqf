@@ -2,24 +2,9 @@
 Function: aegism_intercept_fnc_interceptHit
 
 Description:
-    Detonates an interceptor that has reached its target (triggerAmmo: real
-    splash), and a MUNITION target with it (aegism_detect_fnc_
-    destroyMunition) -- the engine has no projectile-vs-projectile
-    collision, so an incoming round has no hitpoints for the splash to act
-    on. An aircraft target is left to real splash damage.
-
-    Against a munition, both blasts -- the interceptor's, and the warhead of
-    the munition it destroyed -- also take any other tracked munition within
-    their radius (aegism_detect_fnc_blastMunitions, BLAST-KILL): the rockets
-    flying beside it in a salvo.
-
-    An interceptor that's already gone -- the game's own proximity fuse set
-    it off within reach of its target, before AEGIS-M's fuse saw the pass
-    (aegism_intercept_fnc_interceptorPFH) -- is credited the same way, from
-    where it was and what it was (_at, _ammo).
-
-    Logged as INTERCEPT, with where: the distance from the vehicle that
-    fired it, and the height above the ground.
+    Detonates an interceptor that has reached its target, and a munition
+    target with it.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _projectile - the interceptor <OBJECT>

@@ -3,15 +3,8 @@ Function: aegism_system_fnc_resolveSettings
 
 Description:
     Resolves and caches a System's settings from its Site (or the defaults),
-    with its own overrides applied: its contact source ("AEGISM_
-    resolvedContactSource"), Doctrine ("AEGISM_resolvedEngagementSettings"),
-    Personality ("AEGISM_resolvedCrew") and the crew's timing/reliability
-    modifiers ("AEGISM_resolvedCrewMods") -- what the engagement loop and the
-    coordinator read every tick. Server only.
-
-    Run when the System initializes, every 5 seconds after (a Site synced or
-    unsynced later), and at once when a Zeus edit changes its Site's
-    settings or its own overrides.
+    with its own overrides applied.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the System vehicle <OBJECT>

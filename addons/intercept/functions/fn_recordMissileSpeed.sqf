@@ -1,33 +1,9 @@
 /* ----------------------------------------------------------------------------
 Function: aegism_intercept_fnc_recordMissileSpeed
 Description:
-    One AEGIS-M missile's flight (aegism_intercept_fnc_interceptorPFH),
-    folded into its learned speed curve: its real speed 1, 2, 3... s after
-    launch joins the samples for that second ("AEGISM_missileSpeedSamples",
-    per flight config, aegism_intercept_fnc_missileFlightKey, from the start
-    of each mission), and its
-    profile is rebuilt from them (aegism_intercept_fnc_missileProfile) --
-    the speeds AEGIS-M predicts its flights with from then on.
-
-    Every flight counts, however it ended: a miss, a lost target, a
-    retarget or the game's own proximity fuse fly the same speeds as a hit
-    (the RIM-162's engine-fused kills left it with no speed data at all
-    while only intercepts counted). Speeds, not flight times: a time also
-    takes in an off-bore launch's turn, which the lead solver lays out
-    itself -- a factor measured on flight times counted it twice, and ACE's
-    RIM-116 was predicted ~9% long once it applied (2026-10-06). This
-    replaces that factor.
-
-    Safeguards (calibration.hpp): a speed outside AEGISM_SPEED_RATIO_MIN-MAX
-    times the config simulation's at that second is a measuring problem,
-    not the missile, and isn't used; each second keeps its last AEGISM_
-    SPEED_SAMPLES; the curve uses a second's median once AEGISM_SPEED_MIN_
-    SAMPLES flights have reached it, so one odd flight can't move it.
-
-    Logged per flight (MISSILE-SPEED, Verbose): its real speed every second
-    against what was predicted (the curve in use before this flight), and
-    for an intercept its flight time against the predicted time for the
-    path it flew -- to check each new missile.
+    Folds one AEGIS-M missile's flight into its learned speed curve
+    (MISSILE-SPEED).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _weaponClass - CfgWeapons class it was fired from <STRING>

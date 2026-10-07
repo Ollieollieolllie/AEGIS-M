@@ -2,49 +2,8 @@
 Function: aegism_intercept_fnc_ciwsBurst
 
 Description:
-    Holds a CIWS gun's trigger for one sustained burst. Every frame the
-    weapon has cycled (weaponState roundReloadPhase back to 0) and the
-    turret is on its aim point, it fires again, so the gun runs at its own
-    config rate of fire (reloadTime) for the whole burst.
-
-    Each shot is the same command BIS_fnc_fire issues for a vehicle turret
-    -- the "UseMagazine" action with the loaded magazine's id -- given
-    directly: BIS_fnc_fire looks the magazine up in the vehicle's whole
-    magazine list and routes the action through remoteExec on every call,
-    ~53 times a second for a Phalanx. The magazine id is found once and
-    reused until the magazine changes (a new one shows a higher round
-    count); a turret on another machine gets the action sent to its owner,
-    as BIS_fnc_fire does.
-
-    Why sustained: BIS_fnc_fire is ONE trigger pull in the turret's selected
-    fire mode. A Cheetah gunner's selected mode is its player mode "manual"
-    (burst = 2), so one call per engagement tick gave 2-round pops about a
-    second apart instead of sustained fire.
-
-    Fires only while the gun's aim -- refreshed every frame by its tracker,
-    aegism_intercept_fnc_ciwsTrack -- is for THIS target, fresh, and aligned
-    (aegism_intercept_fnc_ciwsGate, per turret): a turret that falls off the
-    lead point mid-burst holds fire until it's back on. It also holds fire
-    while the barrel itself (aegism_intercept_fnc_barrelDirection, world
-    space) is below doctrine ciwsMinElevation, so a target dipping low
-    mid-burst never pulls rounds into the ground or friendly positions; the
-    time held is reported in BURST-END.
-
-    Once the burst's last round has had its lifetime (CfgAmmo timeToLive)
-    to pass the target, a SPOTTING line reports where this burst's measured
-    rounds went and the aim correction the gun now carries for that target
-    class (aegism_intercept_fnc_ciwsSpot).
-
-    The burst ends at its deadline -- which the engagement loop pulls in if
-    the target changes or LOS is lost -- or when the target dies, ammo runs
-    out, or the engagement loop stops working the assignment (the turret's
-    "tickAt" goes stale: the engagement was released).
-
-    Turret state "burst": [endsAt, target, burstId]. endsAt is the planned
-    deadline while the burst runs and is rewritten to the actual end time
-    when it stops, so the engagement loop's pause between bursts counts from
-    it. burstId makes each handler exit as soon as a newer burst owns the
-    turret.
+    Holds a CIWS gun's trigger for one sustained burst.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the firing System vehicle <OBJECT>
@@ -165,14 +124,14 @@ private _roundLifetime = ([_weaponClass, _magazineClass] call aegism_intercept_f
 
     private _barrelElevation = asin (((([_system, _turretPath, _weaponClass] call aegism_intercept_fnc_barrelDirection) select 2) max -1) min 1);
     if (_barrelElevation < _minElevation) exitWith {
-        _args set [9, _elevationHeld + diag_deltaTime];
+        _args set [9, _elevationHeld + AEGISM_frameDelta];
     };
-    _args set [14, _firingTime + diag_deltaTime];
+    _args set [14, _firingTime + AEGISM_frameDelta];
 
     (weaponState [_system, _turretPath, _weaponClass]) params ["", "", "", "_loadedMagazine", "_loadedAmmo", ["_reloadPhase", 0]];
     if (_reloadPhase != 0 || {_loadedAmmo <= 0}) exitWith {};
 
-    // The loaded magazine's id (see header): refreshed when the magazine
+    // The loaded magazine's id (see notes): refreshed when the magazine
     // changes.
     private _magazineId = _ts getOrDefault ["magazineId", []];
     if (_magazineId isEqualTo [] || {(_magazineId select 0) != _loadedMagazine} || {_loadedAmmo > (_magazineId select 3)}) then {

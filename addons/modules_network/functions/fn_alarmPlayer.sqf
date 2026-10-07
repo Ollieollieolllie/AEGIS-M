@@ -3,30 +3,8 @@ Function: aegism_network_fnc_alarmPlayer
 
 Description:
     Plays the Sites' alarms on this machine: every machine with a player
-    runs it every frame (this addon's XEH_postInit). The server only decides
-    each Site's alarm and publishes it ("AEGISM_alarmNow", aegism_network_
-    fnc_siteAlarm); this plays it for this machine alone (playSound3D,
-    local) at each of the Site's speakers:
-        - one cycle of the sound at a time, the next as soon as the last has
-          ended (after the sound's own CfgSFX delay, none for AEGIS-M's
-          tones). Every cycle is a new sound, so none is ever left stuck: a
-          looping engine sound source (what the server used to create)
-          wasn't heard again after the camera had been away -- Zeus, a
-          spectator, a teleport -- and sometimes not from its start;
-        - only while the camera, wherever it is (the player, Zeus, a
-          spectator), is within the sound's reach of the speaker, and from
-          the moment it comes within it;
-        - a one-shot (the All Clear) once, when it's published, from the
-          speakers in reach then.
-    A new state stops the old sound at once.
-
-    The sound is read from the class's own config, as the engine plays a
-    sound source: CfgVehicles <class> >> sound, and that CfgSFX class's
-    sounds[] (each [file, volume, pitch, reach, probability, min, mid, max
-    delay], one picked by probability for each cycle). A file named without
-    its extension, as CfgSFX allows (playSound3D needs it), is found as .wss,
-    .ogg or .wav. Resolved once per class ("AEGISM_cacheAlarmSound"); a class
-    with nothing playable is logged once (ALARM-SOUND).
+    runs it every frame (this addon's XEH_postInit).
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
     None

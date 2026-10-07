@@ -3,72 +3,9 @@ Function: aegism_intercept_fnc_engagementLoop
 
 Description:
     One engagement tick for one role ("launcher" or "ciws") of one System,
-    run on the server every 0.1s by a per-frame handler registered in
-    aegism_system_fnc_moduleInit. Ammo is read live from the vehicle's real
-    magazines; AEGIS-M counts nothing itself.
-
-    NETWORKED (synced to a Site): executes the assignments the Site's
-    coordinator (aegism_intercept_fnc_assignEngagements) published for this
-    System and role ("AEGISM_assigned", soonest impact first). It never
-    picks targets itself. Nothing assigned: returns straight away.
-
-    STANDALONE: each of its weapon turrets picks its own target from the
-    System's own pool (aegism_intercept_fnc_selectTarget) -- a target another
-    of its turrets in this role is already on is left to that turret -- and
-    keeps its own engagement state in its turret state ("standalone_<role>",
-    aegism_intercept_fnc_turretState). A launcher turret whose salvo is away
-    moves on to its next target while the missiles fly ("inFlight_launcher");
-    if they all miss, the target is back on its list (MISSED). Nothing in
-    the pool: returns straight away.
-
-    Both paths run the same per-engagement sequence on an engagement state
-    HashMap (a Site assignment record, or the standalone state) with keys
-    assignedAt, lastShotAt, roundsFired, nextAttemptAt, interceptors:
-        1. Aim -- a launcher solves here (aegism_intercept_fnc_aimWeapon); a
-           CIWS gun's per-frame tracker (aegism_intercept_fnc_ciwsTrack) is
-           handed the target and its current aim used. Every tick from the
-           moment of assignment, so the turret is already on target when the
-           crew finishes reacting.
-        2. Crew reaction time since assignment (CIWS capped at
-           AEGISM_CIWS_REACTION_CAP: automated fire control). Once in
-           combat -- the vehicle or its Site has fired within the Site's
-           live window (Warning Lasts After Last Shot) -- scaled by the
-           crew's Reaction Once in Combat: the first target of an
-           engagement gets the full reaction, each next one less.
-        3. Fire cadence:
-             launcher - doctrine salvoSize per engagement, the launcher's
-                 shot interval between shots (aegism_intercept_fnc_
-                 launcherInterval; both crew-modulated), and never while
-                 its weapon is still readying its next round or loading its
-                 next magazine (aegism_intercept_fnc_weaponReload,
-                 RELOADING): the engine shows the new magazine's count
-                 before it can fire it
-             ciws - sustained bursts (aegism_intercept_fnc_ciwsBurst) of a
-                 random doctrine ciwsBurstMin..ciwsBurstMax seconds at the
-                 gun's own rate of fire, and ciwsBurstPause (crew-modulated)
-                 before firing again at the SAME target. A gun whose last
-                 target is gone goes straight on to the next: the pause
-                 after every kill cost ~1s per shell in a salvo. A running
-                 burst is cut short if the target changes or LOS is lost.
-        4. LOS from this System (a Site contact may have been detected by a
-           sibling with a different view), re-checked every
-           AEGISM_LOS_REUSE s.
-        5. Alignment from step 1.
-        6. Fire (aegism_intercept_fnc_fireWeapon). A failed crew
-           reliability roll costs a launcher one fire cycle, and a gun its
-           crew's reaction (nextAttemptAt). A Site
-           launcher's lost cycle holds the whole turret ("holdUntil") and
-           flags the assignment "crewFailed": the coordinator re-tasks the
-           contact to another weapon rather than leaving it with a crew that
-           just failed to shoot.
-
-    Every silent wait is logged once per engagement (REACTING, SLEWING
-    every AEGISM_SLEW_LOG_INTERVAL s, LOS-BLOCKED on change), so an assigned
-    weapon that isn't firing always says why in the RPT.
-
-    Optional Cost/Value Judgment (standalone): the crew holds fire on a
-    contact if firing would leave fewer rounds than there are pooled
-    contacts of strictly higher threat value.
+    run on the server every 0.1 s of the mission clock by a per-frame
+    handler registered in aegism_system_fnc_moduleInit.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the System vehicle <OBJECT>
@@ -99,6 +36,10 @@ Author:
 #define AEGISM_CUE_INTERVAL 0.5
 // Weight of each new sample in a launcher's measured shot spacing.
 #define AEGISM_SPACING_SMOOTHING 0.3
+// A shot counts toward it only if the launcher was still held by its own
+// cycle (reload, shot interval, a lost fire cycle) this long before, s: it
+// fired as soon as it could.
+#define AEGISM_SPACING_READY_SLACK 0.5
 // A line-of-sight check stays good this long.
 #define AEGISM_LOS_REUSE 0.2
 // Standalone: a launcher's target pick is reused this long; an empty pick
@@ -117,11 +58,14 @@ private _weaponPool = _systemData getOrDefault [["launcherWeapons", "ciwsWeapons
 private _network = _system getVariable ["AEGISM_network", objNull];
 private _stateKey = "standalone_" + _role;
 
-// Between targets: a turret nothing has aimed for AEGISM_TURRET_RELEASE s
-// is kept pointed at the contact it's most likely to be given next (_fnCue)
-// while there is one -- handed back to its crew between the rockets of a
-// salvo, launchers turned 30-80 degrees away and began every next target
-// with the swing back -- and handed back once there's none.
+// Between targets, and before the first: a turret nothing has aimed for
+// AEGISM_TURRET_RELEASE s is kept pointed at the contact it's most likely
+// to be given next (_fnCue) while there is one -- handed back to its crew
+// between the rockets of a salvo, launchers turned 30-80 degrees away and
+// began every next target with the swing back -- and handed back once
+// there's none. One that hasn't been aimed yet is cued too: RAM launchers
+// began a salvo 40-70 degrees off their first rocket, 0.7-1 s of swing
+// after they were given it.
 private _fnCue = {
     private _pool = ([_network, _system] select (isNull _network)) getVariable ["AEGISM_pooledContacts", createHashMap];
     if (count _pool == 0) exitWith { objNull };
@@ -149,17 +93,20 @@ private _fnCue = {
 {
     private _turretPath = _x select 0;
     private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
+    // (-1: with its crew. 0: cued, never aimed.)
     private _lockedAt = _ts getOrDefault ["lockAt", -1];
-    if (_lockedAt >= 0 && {CBA_missionTime - _lockedAt > AEGISM_TURRET_RELEASE} && {CBA_missionTime >= (_ts getOrDefault ["cueAt", -1])}) then {
+    if (CBA_missionTime >= (_ts getOrDefault ["cueAt", -1]) && {_lockedAt < 0 || {CBA_missionTime - _lockedAt > AEGISM_TURRET_RELEASE}}) then {
         _ts set ["cueAt", CBA_missionTime + AEGISM_CUE_INTERVAL];
         // A launcher's gunner lets go of the aircraft it locked: a cue is no lock.
-        if (!_isCiws) then { [_system, _turretPath, objNull] call aegism_intercept_fnc_gunnerLock; };
+        if (!_isCiws && {_lockedAt >= 0}) then { [_system, _turretPath, objNull] call aegism_intercept_fnc_gunnerLock; };
         private _cue = call _fnCue;
         if (isNull _cue) then {
-            _ts set ["lockAt", -1];
-            _ts set ["cueAt", -1];
-            [_system, _turretPath, objNull] call aegism_intercept_fnc_lockTurret;
+            if (_lockedAt >= 0) then {
+                _ts set ["lockAt", -1];
+                [_system, _turretPath, objNull] call aegism_intercept_fnc_lockTurret;
+            };
         } else {
+            if (_lockedAt < 0) then { _ts set ["lockAt", 0]; };
             [_system, _turretPath, getPosASL _cue] call aegism_intercept_fnc_lockTurret;
         };
     };
@@ -217,7 +164,7 @@ private _inCombat = CBA_missionTime - _lastShotAt <= _liveWindow;
 if (_inCombat) then { _reactionTime = _reactionTime * (_crewMods getOrDefault ["combatReactionMult", 1]); };
 private _salvoSize = _engagementSettings getOrDefault ["salvoSize", 1];
 
-// Runs the aim/gate/fire sequence for one engagement (see header).
+// Runs the aim/gate/fire sequence for one engagement (see notes).
 private _fnExecute = {
     params ["_target", "_weaponInfo", "_state"];
     _weaponInfo params ["_turretPath", "_weaponClass", "_magClass"];
@@ -304,9 +251,12 @@ private _fnExecute = {
     private _interval = _baseInterval * (_crewMods get "shotIntervalMult");
     private _intervalFrom = if (_isCiws) then { [-1, _burstEndsAt] select (_burstTarget == _target) } else { _ts getOrDefault ["shotAt", -1] };
 
-    if (_intervalFrom >= 0 && {CBA_missionTime < _intervalFrom + _interval}) exitWith { _state set ["status", "reloading"]; };
-    if (CBA_missionTime < (_state getOrDefault ["nextAttemptAt", -1])) exitWith { _state set ["status", "reloading"]; };
-    if (!_isCiws && {CBA_missionTime < (_ts getOrDefault ["holdUntil", -1])}) exitWith { _state set ["status", "reloading"]; };
+    // (Each of a launcher's waits on its own cycle is stamped, "cycleHeldAt":
+    // its measured shot spacing only counts a shot that came straight after
+    // one, below.)
+    if (_intervalFrom >= 0 && {CBA_missionTime < _intervalFrom + _interval}) exitWith { _state set ["status", "reloading"]; _ts set ["cycleHeldAt", CBA_missionTime]; };
+    if (CBA_missionTime < (_state getOrDefault ["nextAttemptAt", -1])) exitWith { _state set ["status", "reloading"]; _ts set ["cycleHeldAt", CBA_missionTime]; };
+    if (!_isCiws && {CBA_missionTime < (_ts getOrDefault ["holdUntil", -1])}) exitWith { _state set ["status", "reloading"]; _ts set ["cycleHeldAt", CBA_missionTime]; };
     // A launcher's weapon still readying its next round or loading its next
     // magazine (aegism_intercept_fnc_weaponReload): a fire command now fires
     // nothing. A magazine load is logged once (RELOADING); the coordinator
@@ -314,6 +264,7 @@ private _fnExecute = {
     private _reload = if (_isCiws) then { [true] } else { [_system, _turretPath, _weaponClass] call aegism_intercept_fnc_weaponReload };
     if !(_reload select 0) exitWith {
         _state set ["status", "reloading"];
+        _ts set ["cycleHeldAt", CBA_missionTime];
         _reload params ["", "_wait", "_loading", "_phases"];
         if (_loading && {CBA_missionTime > (_ts getOrDefault ["reloadLoggedUntil", -1e9])}) then {
             _ts set ["reloadLoggedUntil", CBA_missionTime + (_wait max 5)];
@@ -448,12 +399,18 @@ private _fnExecute = {
                 // A gap longer than twice the estimate was idle time, not
                 // firing rate, and is ignored; one shorter than the launcher's
                 // own shot interval allows was miscounted (calibration.hpp).
+                // So is one where the launcher was ready and waiting -- for
+                // its next target to come into reach, or for a target at all:
+                // RAM launchers firing for the edge of their reach waited
+                // 1-3 s between their first rockets, their spacing was put at
+                // over 4 s for 3.1, and the reserve gave nine rockets they had
+                // the time and the missiles for to the Patriots (2026-10-07).
                 // Until then it's estimated as the coordinator does (its
                 // _fnLauncherTiming).
                 private _reliability = (_crewMods get "reliability") max 0.05;
                 private _spacing = _ts getOrDefault ["spacing", (_interval max (_reload param [4, 0])) + _interval * (1 - _reliability) / _reliability];
                 private _gap = CBA_missionTime - (_ts getOrDefault ["shotAt", -1e9]);
-                if (_gap <= 2 * _spacing && {_gap >= AEGISM_SPACING_MIN_RATIO * _interval}) then {
+                if (_gap <= 2 * _spacing && {_gap >= AEGISM_SPACING_MIN_RATIO * _interval} && {CBA_missionTime - (_ts getOrDefault ["cycleHeldAt", -1e9]) <= AEGISM_SPACING_READY_SLACK}) then {
                     _ts set ["spacing", (1 - AEGISM_SPACING_SMOOTHING) * _spacing + AEGISM_SPACING_SMOOTHING * _gap];
                 };
             };

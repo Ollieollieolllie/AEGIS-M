@@ -2,12 +2,9 @@
 Function: aegism_detect_fnc_antiRadiation
 
 Description:
-    Whether an ammo type is an anti-radiation missile, and its seeker: one
-    whose own sensors (CfgAmmo "Components >> SensorsManagerComponent >>
-    Components") include a passive radar -- componentType
-    PassiveRadarSensorComponent, which homes on a radar while it emits. The
-    vanilla HARM and Kh-58 (ammo_Missile_AntiRadiationBase) carry one: 60
-    degrees wide, 16 km. Cached per ammo type ("AEGISM_cacheAntiRadiation").
+    Whether an ammo type is an anti-radiation missile (one of its own
+    sensors is a passive radar), and its seeker.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _ammo - CfgAmmo class <STRING>

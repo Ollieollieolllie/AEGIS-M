@@ -3,21 +3,9 @@ Function: aegism_intercept_fnc_targetHitRadius
 
 Description:
     A target's physical half-size: half the diagonal of its model's bounding
-    box (aegism_intercept_fnc_targetBody), a sphere that holds the whole body.
-
-    Optionally, as seen along a line of fire: the radius of a disc with the
-    box's area as seen from that direction (its projected area: each pair of
-    faces' area times how squarely the line meets them). A munition's body
-    is its box (aegism_intercept_fnc_bodyPass), and a round has to come
-    within its own radius of that, not of the sphere -- so this is what a
-    gun's fire gate (aegism_intercept_fnc_aimWeapon) and open-fire range
-    (aegism_intercept_fnc_openFireRange) work with against a munition. Side
-    on, vanilla's 230 mm rocket (2.29 x 11.96 x 2.29 m) is a 2.95 m disc; nose
-    on, 1.29 m; its sphere is 6.19 m.
-
-    The sphere still sizes an aircraft (the engine's own collision decides
-    hits on those) and CIWS spotting's sense of "through the target"
-    (aegism_intercept_fnc_ciwsSpot).
+    box (aegism_intercept_fnc_targetBody), a sphere that holds the whole
+    body.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _target - the target object <OBJECT>

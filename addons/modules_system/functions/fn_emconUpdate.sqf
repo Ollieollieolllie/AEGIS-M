@@ -2,72 +2,9 @@
 Function: aegism_system_fnc_emconUpdate
 
 Description:
-    Emission control for one radar vehicle, once a second on the server
-    (aegism_system_fnc_moduleInit's detection loop, before its sensors are
-    read): whether its active radar emits, from its Radar Emission setting
-    ("emcon": the Site's, or the vehicle's own override). An active radar
-    only sees while it emits, aircraft and munitions alike; while it emits,
-    enemy radar-warning receivers and anti-radiation missiles can find it.
-    Set with setVehicleRadar (0 the AI decides, 1 on, 2 off) when what it
-    wants changes -- and again whenever the radar isn't doing what it was
-    set to, two seconds running: something else changed it (POOK's SA-8,
-    SA-11 and Patriot launch scripts turn their radar on at every launch and
-    hand it back to the AI when the missile's gone), logged once per
-    vehicle (RADAR-OVERRIDE).
-
-        auto - Automatic (the default): while the Site is quiet, short
-            search bursts as intermittent's below -- the Site's radars in
-            turn, giving little away; emitting continuously while there's
-            reason to ("alert"): a contact anywhere in the Site's picture,
-            the Site engaging or firing (within its Warning Lasts After
-            Last Shot), a munition inbound on it, or another of its radars
-            shut down for an anti-radiation missile (the others take over
-            its sector) -- and for at least AEGISM_AUTO_HOLD s after. Lit
-            for a contact it covers and for fire control as cued is.
-        ai - the AI decides, as without AEGIS-M. A radar AEGIS-M had set is
-            handed back once; one it never set isn't touched.
-        on - always emitting.
-        cued - silent until a threat it covers turns up (aegism_system_fnc_
-            radarCovers): any contact in its Site's picture -- its whole
-            linked group's (aegism_network_fnc_linkSites) -- found by
-            another sensor: heard by passive radar, seen by IR or visual
-            sensors, by datalink where that's allowed (aegism_detect_fnc_
-            confidenceLoop), or by another radar. It stays lit while any
-            contact is in its coverage, while a launcher's missiles are in
-            flight at a target it covers (fire control: the Site's track
-            must not drop while they guide), and for emconHold s after the
-            last, then goes silent.
-        intermittent - as cued, but searching meanwhile, in bursts:
-            turning radars (aegism_system_fnc_turningRadar) - the relay scan
-                (aegism_system_fnc_radarRelay): one radar lit at a time, each
-                on the next arc round, emconBurstOn s an arc, a pause of
-                emconBurstOff s after each lap of the circle;
-            any other radar - emconBurstOn s on every emconBurstOn +
-                emconBurstOff s, a linked group's taking turns, their bursts
-                spread evenly over the cycle (three radars at 5 s on, 15 s
-                off: one on every 6.7 s, silent gaps of 1.7 s between them).
-
-    Anti-radiation missiles, in every mode (armShutdown on, the default): a
-    radar an inbound one is homing on, or has in its seeker's view, shuts
-    down whether or not that saves it (aegism_detect_fnc_armInbound marks
-    it), until the missile is gone or past when it would have arrived. Its
-    Site's other radars that cover the missile are cued by it, to keep the
-    track (in cued and intermittent modes); in auto they all emit.
-
-    A narrow radar on a turret with no AEGIS-M weapon on it (the vanilla
-    radar truck's 120 degrees) is pointed by AEGIS-M in every mode, AI
-    decides included -- fire control, tracking and searching in turn
-    (aegism_system_fnc_radarSchedule) -- rather than left facing wherever
-    its crew looked; in the relay scan, onto its arc, swinging there while
-    silent.
-
-    Records on the vehicle ("AEGISM_emcon", for the debug overlays, aegism_
-    fnc_emconText): mode, applied (the last setVehicleRadar value, -1
-    none), desired, reason ("ai", "on", "arm", "guiding", "cued", "alert",
-    "holding", "burst", "pause", "silent"), detail, since.
-
-    Logged: EMCON (its mode; going silent, or back to searching), CUE (lit
-    by a contact, with what found it), ARM-SHUTDOWN (shut down, and back).
+    Emission control for one radar vehicle, once a second on the server:
+    whether its active radar emits, from its Radar Emission setting.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the radar vehicle <OBJECT>
@@ -206,7 +143,7 @@ if (_arm isEqualTo [] && {_mode in ["on", "cued", "intermittent", "auto"]}) then
     } forEach _members;
 };
 
-// --- Automatic: a reason for the Site's radars to emit (see the header) ---
+// --- Automatic: a reason for the Site's radars to emit (see the notes) ---
 private _alert = "";
 if (_mode == "auto" && {_arm isEqualTo []}) then {
     private _pool = ([_network, _vehicle] select (isNull _network)) getVariable ["AEGISM_pooledContacts", createHashMap];
@@ -353,7 +290,7 @@ if (_desired != _applied && {_desired != 0 || {_applied > 0}}) then {
     _state set ["overridden", 0];
 } else {
     // Set on or off, but not doing it: something else changed it (see
-    // header). Two seconds running -- not the moment after it was set --
+    // notes). Two seconds running -- not the moment after it was set --
     // and it's set again.
     // (Not a radar with no live crew to run it: that can't come on at all.)
     if (_applied in [1, 2] && {(isVehicleRadarOn _vehicle) isNotEqualTo (_applied == 1)} && {((crew _vehicle) findIf { alive _x }) != -1}) then {

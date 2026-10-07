@@ -4,29 +4,7 @@ Function: aegism_detect_fnc_munitionSeen
 Description:
     Which of a vehicle's sensors see one tracked munition right now, against
     the vehicle's sensor view for this read (aegism_detect_fnc_sensorView).
-    A sensor sees it if all of these hold, cheapest first:
-        - it's within the sensor's reach, and its speed and height above the
-          terrain are within what the sensor can track at all;
-        - it's inside the sensor's horizontal and vertical arcs, measured
-          from where the sensor looks;
-        - against the sky (seen from below: it's above the sensor) it's
-          within the sensor's AirTarget range. Seen from above, the line
-          from the sensor through it is carried on to the ground or the sea
-          behind it: with ground there it has to be within the GroundTarget
-          range, and clear of ground clutter -- farther from that ground
-          than groundNoiseDistanceCoef x the sensor-to-ground distance (at
-          most maxGroundNoiseDistance), unless it's fast: at or above
-          maxSpeedThreshold it always shows, and between the two thresholds
-          the clutter shrinks in proportion. (Munitions fly at hundreds of
-          m/s; the vanilla radar's thresholds are 21 and 28 m/s.) Ground
-          behind a munition that's above the sensor (a mountainside) isn't
-          looked for;
-        - the vehicle has a line of sight to it: no terrain between them, and
-          nothing else in the first AEGISM_LOS_OBJECT_REACH m (the line
-          command's own limit). One ray per vehicle, not per sensor, and a
-          clear one isn't traced again for AEGISM_LOS_REUSE s (sensing.hpp).
-    A munition is hot for its whole flight (its motor, the air it pushes
-    through), so IR sees it as radar does.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _view - the vehicle's sensor view (aegism_detect_fnc_sensorView) <ARRAY>

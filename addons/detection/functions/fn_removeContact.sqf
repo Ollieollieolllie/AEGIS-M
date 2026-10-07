@@ -3,10 +3,8 @@ Function: aegism_detect_fnc_removeContact
 
 Description:
     Removes a contact from a System's or Network's tracked-contact pool
-    (e.g. once a tracked munition is destroyed or lands). Companion to
-    aegism_detect_fnc_addContact. Takes the contact's key (aegism_fnc_
-    contactKey) or the object: a munition is usually already deleted when
-    this is called, and a deleted object no longer tells you its key.
+    (e.g. once a tracked munition is destroyed or lands).
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _poolOwner - the System vehicle or Network logic holding the pool <OBJECT>

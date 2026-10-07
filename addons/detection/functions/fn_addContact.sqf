@@ -4,26 +4,8 @@ Function: aegism_detect_fnc_addContact
 Description:
     Adds a candidate contact to a System's or Network's tracked-contact
     list, gated by that object's resolved Doctrine target-class allowlist
-    (aegism_system_fnc_resolveEngagementSettings). A contact whose class is
-    not on the allowlist is never added.
-
-    Contacts are stored as a HashMap keyed by the contact's key (aegism_fnc_
-    contactKey: a munition's own tracker id, an aircraft's netId), with value
-    ["confidence" -> Number, "class" -> String, "object" -> Object,
-    "firstSeen" -> Number (time), "lastSeen" -> Number, "isMunition" ->
-    Boolean]. Stored on the pool owner (System or Network) as
-    "AEGISM_pooledContacts". "confidence" is always 1 (the engine's own
-    sensors decide detected-or-not); the field is kept for the entry's shape.
-
-    Re-adding an already-pooled contact updates it in place, so "firstSeen"
-    stays accurate across refreshes. Every add/refresh stamps "lastSeen",
-    and "sources" (HashMap: which sensor kinds saw it -- "activeradar",
-    "ir", "visual", "passiveradar", "datalink" ... -> when each last did;
-    the debug overlays show the recent ones).
-    Pools are pruned by EXPIRY (aegism_detect_fnc_pruneStaleContacts), not by
-    any single sensor deciding it can no longer see something -- one radar
-    losing sight of a contact another radar still holds must not delete it.
-    "isMunition" marks Fired-pipeline contacts.
+    (aegism_system_fnc_resolveEngagementSettings).
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _poolOwner - the System vehicle or Network logic holding the pool <OBJECT>

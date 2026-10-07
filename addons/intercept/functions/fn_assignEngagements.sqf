@@ -4,192 +4,8 @@ Function: aegism_intercept_fnc_assignEngagements
 Description:
     Site-level engagement coordinator, run once per Site every 0.5s on the
     server -- at once for a munition close to impact that has just come into
-    the picture (aegism_network_fnc_moduleInit). Decides, for every pooled contact, which member System's weapon
-    engages it; member engagement loops only execute these assignments.
-    Sites linked through a shared vehicle (aegism_network_fnc_linkSites) are
-    coordinated once, by their lead, across every vehicle of the group
-    ("AEGISM_groupMembers"), from the pool and ledger they share.
-
-    1. Prune the Site pool by expiry (aegism_detect_fnc_pruneStaleContacts).
-       Sensors never delete from the shared pool directly any more -- they
-       used to, which deleted assignments every second and restarted the
-       crew reaction timer so launchers never fired.
-
-    2. Review existing assignments (AEGISM_claims) and keep each unless:
-         - its System is dead, or the contact left the pool
-         - the weapon can no longer usefully engage it (aegism_intercept_
-           fnc_canEngage: envelope, and a feasible intercept -- a gun is
-           released from a jet flying away that its rounds can't catch).
-           Not asked of a launcher whose salvo is away: its missiles are
-           flying, and another launcher shouldn't fire on top of them
-         - launcher MISSED: salvo spent, AEGISM_INTERCEPTOR_SETTLE seconds
-           since the last shot, and none of its interceptors are still in
-           flight. This is judged from the real missiles (captured by
-           aegism_intercept_fnc_onSystemFired), not a fixed timer -- the old
-           8s timer called a long-range shot "failed" while its missile was
-           still flying and fired a second one at the same target. Only
-           once a missile has actually left: a fire command that fired
-           nothing (FIRE-FAILED) is taken back and the launcher holds; if
-           none ever leaves, it's released after AEGISM_NO_LAUNCH_TIMEOUT s
-         - CIWS idle: hasn't fired for AEGISM_CIWS_IDLE_GRACE seconds
-         - launcher crew failed to fire (reliability roll, flagged by
-           aegism_intercept_fnc_engagementLoop): the contact is re-tasked,
-           and that launcher can't take it back until its lost fire cycle
-           is over (the contact's "avoid" list), so another weapon tries
-         - launcher out of missiles before firing at it
-         - never fired within AEGISM_NEVER_FIRED_TIMEOUT seconds of being
-           assigned (turret can't bear, LOS never clears) -- frees the
-           contact for a better-placed weapon instead of holding it forever.
-           A launcher's claim counts from when it reached the front of the
-           launcher's queue ("frontSince", aegism_intercept_fnc_
-           engagementLoop), not from when it was queued: a deep queue
-           released claims as "never fired" while they waited their turn,
-           and they were handed straight back with the crew's reaction
-           restarted (17 times in one POOK test, 2026-10-06). Nor does it
-           count while the launcher itself isn't ready (between missiles, a
-           lost fire cycle, its weapon loading): the clock restarts until it
-           is
-
-    3. Assign free roles, contacts in Target Priority order -- except a
-       contact only passive radar hears (aegism_fnc_hasTrack), which only
-       cues the Site's radars. For each
-       contact, a launcher and a CIWS weapon are chosen independently (CIWS
-       runs in parallel with a launcher unless that gun's "CIWS last
-       resort" is set). A candidate weapon must:
-         - have live ammo
-         - engage that target class (its vehicle's own settings)
-         - have the contact inside its envelope
-         - not be on a TURRET already committed to a DIFFERENT contact
-           (two weapons sharing a turret, e.g. the Cheetah's gun and
-           missiles, used to be assigned to different targets and fight
-           over the turret's aim forever)
-         - for a launcher: a missile left for it once the claims ahead of
-           it in that launcher's queue are served (a launcher is never
-           queued past its last missile)
-         - not be held in LAYERED RESERVE (below)
-       Best fit: see _fnPickWeapon. A launcher is only given a munition it
-       can kill in time (LATE otherwise). For one that isn't ready yet --
-       cooling down, or with claims ahead on its queue -- that's judged
-       from when it will be (_fnPlanShot, the reserve plan's own question):
-       a shot from then on that meets the munition inside its envelope
-       before impact. Not its wait plus the flight of a shot fired now (far
-       longer than the flight will be once the munition has closed), and
-       not where the munition is now (inside its minimum range, or too
-       steep, by the time it can fire). So a slow launcher's place goes to
-       the first munition due that it can actually kill. A queued one that
-       falls later than AEGISM_LATE_MARGIN is handed to a launcher that can
-       make it (HANDOFF) or released. A launcher's queue is soonest impact first,
-       except that the claim its turret is already working keeps its place
-       unless one AEGISM_WORKING_LEAD s more urgent comes (_fnQueuePlace).
-       A gun is only given a munition it has its Minimum Firing Window on
-       (CIWS setting; aegism_intercept_fnc_canEngage): after its crew's
-       reaction, its barrel's swing and the rounds' flight, that long left
-       to fire before impact, with the barrel still able to follow it. One
-       it has less on is a last-ditch shot: a gun still free once every
-       contact has been served takes the one it has the longest window on
-       (the last-ditch pass), and drops it as soon as a contact it has its
-       full window on comes. Given rockets 2-5 s from impact one after
-       another, a Cheetah hit 2 of 21 and swung away from the rest of the
-       volley.
-
-    Layered reserve (munitions only): every cycle the coordinator plays
-    forward each launcher tier, shortest reach first -- each launcher's own
-    queue, cooldown, measured shot spacing and missiles left, and the moment
-    each incoming munition will enter its envelope (projected on its
-    ballistic path) -- to see which munitions the cheaper tiers will kill in
-    time. A longer-reach launcher (e.g. a Patriot next to RAM launchers)
-    holds its missiles for those, and steps in only for the munitions the
-    cheaper tiers can't take in time: when the volume saturates them -- they
-    have no missile or no time left for it. It stops holding for one the
-    cheaper tier was planned to fire at AEGISM_RESERVE_GRACE s ago (by the
-    plan's latest estimate) that none of its launchers has, or whose shot
-    missed (RESERVE-MISSED): a plan the tier can't carry out -- a rocket
-    coming down too steep for the RAMs -- held every Patriot back until it
-    was too late. And it doesn't hold for one that even a free launcher of
-    the cheaper tier could only kill too late for the longer-reach launchers
-    to have a second shot (RESERVE-RELEASED); a kill that's only that late
-    because of the cheaper tier's queue stays with it.
-
-    Threat re-assessment: after AEGISM_RETRY_THREAT_ASSESSMENT_THRESHOLD
-    launcher attempts on a still-living contact, further launcher shots only
-    go to it if no unassigned contact outranks it (aegism_intercept_fnc_
-    threatValue).
-
-    Per-vehicle settings: everything decided per WEAPON -- envelope, which
-    target classes it engages, missiles per target, CIWS last resort -- uses
-    that weapon's own vehicle's resolved settings ("AEGISM_resolved
-    EngagementSettings": the Site's, plus any per-vehicle overrides, see
-    aegism_system_fnc_applyOverrides). The Site's own doctrine decides the
-    rest: engagement ORDER (Target Priority -- contacts are served
-    highest-priority first, so when threats outnumber free weapons the
-    priority rule decides who gets them; it used to be HashMap order, and
-    the setting did nothing for a Site) and which classes the Site pool
-    holds at all (the Site's allowlist plus any class a member vehicle's
-    override adds, "AEGISM_contactAllowlist", read by aegism_detect_fnc_
-    addContact).
-
-    Writes AEGISM_claims: contact key (aegism_fnc_contactKey) -> array of
-    assignment records (HashMap: target, system, role, weaponInfo,
-    assignedAt, lastShotAt, roundsFired, interceptors), and
-    AEGISM_withheldCiws (diagnostic, for debugDraw). Publishes each member's
-    own records on the member itself ("AEGISM_assigned", role -> records,
-    soonest impact first), so its engagement loop never scans or sorts the
-    Site's claims. Consumers use the record's own "target" object.
-
-    Cost (it runs in one frame, so it's what shows as a server spike under a
-    salvo):
-        - the layered-reserve plan's per-munition, per-launcher question
-          (when can this launcher first make a shot that lands in time) is
-          worked out step by step only as far as the first shot, each step
-          cached ("AEGISM_planCache") while the munition keeps to its
-          predicted path, and skipped while every munition already has a
-          launcher (solving the whole path up front was the ~100 ms frame
-          when a salvo came into view)
-        - claims are indexed per turret, so the conflict and queue checks
-          read one turret's claims (they scanned the whole Site's for every
-          candidate weapon of every contact)
-        - each launcher's timing is worked out once per run
-        - a launcher whose salvo is away isn't re-judged (its missiles are
-          flying; it's released once they're gone)
-        - a launcher a contact is plainly beyond is skipped before the full
-          engageability check; a gun's own check rules out far contacts on
-          its flight time to its reach (aegism_intercept_fnc_canEngage)
-        - so is a launcher whose queue and reaction alone run past a
-          munition's impact (it can't be in time): the full check (its
-          intercept solves) was most of the 18-27 ms runs under a rocket
-          ripple, re-run for every launcher on every unassigned rocket
-        - a question already answered isn't worked out again: the plan
-          remembers the stretch of each munition's path with no shot in it
-          (_fnPlanShot); a launcher's claim waiting its turn is judged by its
-          planned shot, not also by a shot fired now; a gun too far to reach
-          a contact is ruled out on one distance (_fnGunBeyond). Fitted to
-          two tests' PERF lines (2026-10-06), re-reading cached plans was
-          about half the coordinator's time under a salvo, the full
-          engageability checks about a third, and rebuilding plans the rest
-        - a munition further than AEGISM_URGENT_TTI s from impact isn't
-          looked at for launchers on every run (_asleep): its next look is
-          shortly before the reserve plan has a launcher firing at it, or
-          AEGISM_FAR_INTERVAL s on, whichever is sooner -- at once if it
-          loses its launcher -- and meanwhile it keeps the launcher slot
-          the reserve plan last gave it. A long-range salvo's rockets were
-          in the air for 65 s and given to a short-range launcher 26 s from
-          impact; planning every one against every launcher on every run
-          until then was 20 ms a run with 48 rockets and 11 launchers
-          (2026-10-06)
-        - a run that has worked out AEGISM_PLAN_STEPS new steps of launcher
-          shots puts off the looks that can wait (_mustLook has those that
-          can't): the munition keeps its slot for this run as if asleep,
-          and its shots are worked out in the frames before the next
-          (aegism_intercept_fnc_planAhead), which then finds them ready. A
-          munition is looked at whole or not at all: nothing is ever decided
-          on a shot half worked out. (The first way of spreading the work
-          cut a run's questions short and decided nothing for those
-          munitions, nor for any later to impact, until they were answered:
-          under a salvo the newest rockets waited 15-20 s for their first
-          look, and four Patriots stepped in 10 s later than they had,
-          2026-10-06.)
-    Each run's time, and its parts', is counted for the PERF line
-    (aegism_fnc_perfLog).
+    the picture (aegism_network_fnc_moduleInit).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _logic - the Site logic <OBJECT>
@@ -814,6 +630,141 @@ private _planKeys = (keys _ttiByKey) select {
     private _planEntry = _pool get _x;
     (_planEntry getOrDefault ["isMunition", false]) && {(_ttiByKey get _x) < 1e9} && {(_planEntry get "class") in _allowlist}
 };
+// --- Guns with munitions of their own -----------------------------------------
+// A gun whose Engagement Mode is "planned" is the cheapest layer of all: the
+// munitions it's planned for are left to it by every launcher, and it takes
+// none a launcher has. Played forward like a launcher tier, soonest impact
+// first: a munition is a gun's when the gun is free for it as it comes into
+// reach (within a plan step) -- so it has the whole of its pass to fire at
+// it -- and is then counted as busy with it for its Minimum Firing Window,
+// and no less than one longest burst and its pause (my figure for a gun's
+// time on one target: nothing measures it yet). The munitions between go to
+// the launchers. A gun still on one when the next it was planned for comes
+// into reach loses that one: it's the launchers' again (GUN-PLAN-RELEASED).
+// Only reach and time are planned: a munition it then can't bear on is a
+// leaker.
+//
+// Munition key -> the gun it's planned for.
+private _gunPlanned = createHashMap;
+// [system, weaponInfo, settings, free at (game time), eye, reach m, its
+// rounds' flight to that s, time on one munition s]
+private _plannedGuns = [];
+{
+    _x params ["_candSystem", "_candRole", "_candInfo"];
+    if (_candRole == "ciws") then {
+        private _candSettings = _candSystem call _fnSettings;
+        if ((_candSettings getOrDefault ["ciwsMode", "overlap"]) == "planned") then {
+            private _reach = ([_candSettings, _candInfo, "ciws"] call aegism_intercept_fnc_envelopeBounds) select 1;
+            ([_candInfo select 1, _candInfo select 2] call aegism_intercept_fnc_weaponKinematics) params ["", "_v0", "_k", "", "", "", "", "_lifetime"];
+            if (_reach > 0 && {_v0 > 0}) then {
+                private _flight = if (_k > 0) then { ((exp ((_k * _reach) min 30)) - 1) / (_k * _v0) } else { _reach / _v0 };
+                if (_lifetime > 0) then { _flight = _flight min _lifetime; };
+                private _need = (_candSettings getOrDefault ["ciwsMinWindow", 3]) max ((_candSettings getOrDefault ["ciwsBurstMax", 5]) + (_candSettings getOrDefault ["ciwsBurstPause", 1]));
+                _plannedGuns pushBack [_candSystem, _candInfo, _candSettings, CBA_missionTime, eyePos _candSystem, _reach, _flight, _need];
+            };
+        };
+    };
+} forEach _allWeapons;
+if (_plannedGuns isNotEqualTo []) then {
+    // When a gun's rounds can first meet a munition inside its reach (game
+    // time; 1e12: not before it comes down): its projected path stepped
+    // until it's inside, less the rounds' flight there. Kept on the contact
+    // for AEGISM_PLAN_CACHE_MAX_AGE s.
+    private _fnGunOpens = {
+        params ["_gun", "_entry", "_tti"];
+        _gun params ["_candSystem", "_candInfo", "", "", "_eye", "_reach", "_flight"];
+        private _opens = _entry get "gunOpens";
+        if (isNil "_opens") then { _opens = createHashMap; _entry set ["gunOpens", _opens]; };
+        private _gunKey = [netId _candSystem, _candInfo select 0, _candInfo select 1];
+        (_opens getOrDefault [_gunKey, [-1e9, 0]]) params ["_workedAt", "_opensAt"];
+        if (CBA_missionTime - _workedAt <= AEGISM_PLAN_CACHE_MAX_AGE) exitWith { _opensAt };
+        private _object = _entry get "object";
+        private _p0 = getPosASL _object;
+        private _v = velocity _object;
+        private _drop = [0, 0.5 * AEGISM_GRAVITY] select ((_entry get "class") in ["artilleryShell", "rocket", "bomb"]);
+        _opensAt = 1e12;
+        private _t = 0;
+        while {_t <= _tti} do {
+            if ((_eye distance ((_p0 vectorAdd (_v vectorMultiply _t)) vectorDiff [0, 0, _drop * _t * _t])) <= _reach) exitWith {
+                _opensAt = CBA_missionTime + ((_t - _flight) max 0);
+            };
+            _t = _t + AEGISM_RESERVE_PLAN_STEP;
+        };
+        _opens set [_gunKey, [CBA_missionTime, _opensAt]];
+        _opensAt
+    };
+    private _gunKeys = _planKeys apply { [_ttiByKey get _x, _x] };
+    _gunKeys sort true;
+    {
+        _x params ["_tti", "_key"];
+        private _planEntry = _pool get _key;
+        private _records = _claims getOrDefault [_key, []];
+        // A launcher's already: never a planned gun's.
+        if ((_records findIf { (_x get "role") == "launcher" }) == -1) then {
+            // A planned gun on it already: it's that gun's, which is busy
+            // with it for its time from when it could first fire at it.
+            private _mine = -1;
+            private _since = 0;
+            {
+                private _record = _x;
+                if ((_record get "role") == "ciws") then {
+                    private _index = _plannedGuns findIf { (_x select 0) == (_record get "system") && {((_x select 1) select 0) isEqualTo ((_record get "weaponInfo") select 0)} };
+                    if (_index != -1) then { _mine = _index; _since = _record get "assignedAt"; };
+                };
+            } forEach _records;
+            if (_mine != -1) then {
+                private _gun = _plannedGuns select _mine;
+                private _opensAt = ([_gun, _planEntry, _tti] call _fnGunOpens) min (CBA_missionTime + _tti);
+                _gun set [3, (_gun select 3) max ((_since max _opensAt) + (_gun select 7))];
+                _gunPlanned set [_key, _gun select 0];
+            } else {
+                private _class = _planEntry get "class";
+                private _best = -1;
+                private _bestOpens = 1e12;
+                {
+                    _x params ["", "", "_candSettings", "_freeAt", "", "", "", "_need"];
+                    if (_class in (_candSettings getOrDefault ["targetClassAllowlist", []])) then {
+                        private _opensAt = [_x, _planEntry, _tti] call _fnGunOpens;
+                        if (_freeAt <= _opensAt + AEGISM_RESERVE_PLAN_STEP && {(CBA_missionTime + _tti) - (_opensAt max _freeAt) >= _need} && {_opensAt < _bestOpens}) then {
+                            _best = _forEachIndex;
+                            _bestOpens = _opensAt;
+                        };
+                    };
+                } forEach _plannedGuns;
+                if (_best != -1) then {
+                    private _gun = _plannedGuns select _best;
+                    _gun set [3, (_bestOpens max (_gun select 3)) + (_gun select 7)];
+                    _gunPlanned set [_key, _gun select 0];
+                };
+            };
+        };
+        if (_key in _gunPlanned) then {
+            // No launcher's: its place in the launchers' plan goes.
+            _planEntry deleteAt "reserveSlot";
+            _planEntry deleteAt "reserveFireAt";
+            if ((_planEntry getOrDefault ["gunPlannedFor", objNull]) != (_gunPlanned get _key)) then {
+                _planEntry set ["gunPlannedFor", _gunPlanned get _key];
+                if (AEGISM_RPT_VERBOSE) then {
+                    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " GUN-PLAN: %1 (%2, impact in %3s) -- planned for %4's gun (Engagement Mode: Planned); the launchers leave it to it.",
+                        _planEntry get "object", _planEntry get "class", round _tti, _gunPlanned get _key];
+                };
+            };
+        } else {
+            if ("gunPlannedFor" in _planEntry) then {
+                diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " GUN-PLAN-RELEASED: %1 (%2, impact in %3s) -- %4's gun isn't free for it as planned; open to the launchers.",
+                    _planEntry get "object", _planEntry get "class", round _tti, _planEntry get "gunPlannedFor"];
+                _planEntry deleteAt "gunPlannedFor";
+                // Its launchers are looked at in this run.
+                _planEntry set ["launcherLookAt", 0];
+                _planEntry set ["launcherLookBy", 0];
+                _asleep deleteAt _key;
+                _mustLook set [_key, true];
+            };
+        };
+    } forEach _gunKeys;
+    _planKeys = _planKeys select { !(_x in _gunPlanned) };
+};
+
 // The plan only decides which launchers may take a FREE munition: with none
 // free that's looked at in this run (_asleep), there's nothing to plan.
 private _anyFree = (_planKeys findIf { !(_x in _asleep) && {((_claims getOrDefault [_x, []]) findIf { (_x get "role") == "launcher" }) == -1} }) != -1;
@@ -1089,6 +1040,8 @@ PERF_COORD_RESERVE_MS call _fnPerfPart;
             // (_asleep -- not due, or its look put off by the reserve plan):
             // no launcher is decided for it in this one. Its guns are.
             if (_role == "launcher" && {_asleepNow}) then { _covered = true; };
+            // Nor for one planned for a gun (_gunPlanned): it's the gun's.
+            if (_role == "launcher" && {_contactKey in _gunPlanned}) then { _covered = true; };
 
             if (!_covered) then {
                 // [index in _allWeapons, flight time] of every weapon that can
@@ -1256,14 +1209,19 @@ PERF_COORD_RESERVE_MS call _fnPerfPart;
                     };
                 };
 
-                // CIWS last resort (each gun's own setting): while a launcher
-                // covers the contact, a last-resort gun holds unless the
-                // contact is already deep inside its own reach.
+                // A gun beside the launchers (each gun's own Engagement
+                // Mode): while a launcher has the contact, a last-resort gun
+                // holds unless the contact is already deep inside its own
+                // reach, and a planned gun holds whatever -- it has munitions
+                // of its own (_gunPlanned).
                 if (_role == "ciws" && {_hasLauncher} && {_eligible isNotEqualTo []}) then {
                     private _free = _eligible select {
                         (_allWeapons select (_x select 0)) params ["_candSystem", "", "_candInfo"];
-                        !((_candSystem call _fnSettings) getOrDefault ["ciwsLastResort", false])
-                            || {((getPosASL _candSystem) distance _targetPos) <= (_candInfo select 5) * AEGISM_CIWS_OVERRIDE_RANGE_FRACTION}
+                        switch ((_candSystem call _fnSettings) getOrDefault ["ciwsMode", "overlap"]) do {
+                            case "planned": { false };
+                            case "lastResort": { ((getPosASL _candSystem) distance _targetPos) <= (_candInfo select 5) * AEGISM_CIWS_OVERRIDE_RANGE_FRACTION };
+                            default { true };
+                        }
                     };
                     if (_free isEqualTo []) then { _withheldCiws pushBack [_contactKey, (_allWeapons select ((_eligible select 0) select 0)) select 0]; };
                     _eligible = _free;
@@ -1416,6 +1374,7 @@ PERF_COORD_RESERVE_MS call _fnPerfPart;
                 private _candSettings = _candSystem call _fnSettings;
                 format ["%1 %2: %3", _candSystem, ["missile", "gun"] select (_candRole == "ciws"), switch (true) do {
                     case !(_class in (_candSettings getOrDefault ["targetClassAllowlist", []])): { "not a class it engages" };
+                    case (_candRole == "launcher" && {_contactKey in _gunPlanned}): { format ["left to %1's gun (planned for it)", _gunPlanned get _contactKey] };
                     case (_candRole == "launcher" && {_cover > 0} && {(_candInfo select 5) > _cover}): { format ["held in reserve for the %1m tier", round _cover] };
                     default {
                         private _engage = [_candSystem, _candRole, _candInfo, _object, _candSettings] call aegism_intercept_fnc_canEngage;

@@ -3,29 +3,8 @@ Function: aegism_system_fnc_guardSystems
 
 Description:
     Keeps what AEGIS-M has set on its vehicles set, against other mods'
-    scripts and the game itself. Every machine, every couple of seconds
-    (this addon's XEH_postInit, with the discovery scan):
-
-    The crew's own targeting and firing on every AEGIS-M weapon turret (off
-    since AEGIS-M took it, aegism_fnc_setWeaponAiSuppressed): a gunner here
-    -- where it's simulated -- with AUTOTARGET or FIREWEAPON back on is set
-    off again. Another mod's AI script can turn them on (enableAI), and a
-    crewman new to the seat (a replacement, a Zeus swap) never had them
-    off: either way the crew would pick its own targets and fire them,
-    outside AEGIS-M (UNCOMMANDED-FIRE). "TARGET" is left alone: AEGIS-M
-    turns it on itself while a gunner holds a lock (aegism_intercept_fnc_
-    gunnerLock). Logged once per gunner (AI-RESTORED). A player gunner is
-    never touched.
-
-    On the server, each armed vehicle's Fired handler (aegism_intercept_fnc_
-    firedHandler): there from its first look, before AEGIS-M has fired it, so
-    a shot it fires by itself is seen (UNCOMMANDED-FIRE); and AEGIS-M's
-    mission-wide catch for munitions nothing reported fired (aegism_detect_
-    fnc_projectileCreated). Either is re-added if something removed it
-    (logged, EH-RESTORED).
-
-    The list is the vehicles this machine set up ("AEGISM_guardedSystems",
-    aegism_system_fnc_moduleInit); gone ones are dropped.
+    scripts and the game itself.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     None

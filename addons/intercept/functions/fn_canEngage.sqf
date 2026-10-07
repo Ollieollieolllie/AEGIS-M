@@ -2,68 +2,9 @@
 Function: aegism_intercept_fnc_canEngage
 
 Description:
-    Whether one weapon can usefully engage one target right now -- the one
-    rule the Site coordinator (assign AND release, aegism_intercept_fnc_
-    assignEngagements) and standalone target selection (aegism_intercept_
-    fnc_selectTarget) share.
-
-        launcher - a missile can be put onto it (aegism_intercept_fnc_
-            launchSolution): it can catch it on its simulated flight,
-            launched along the closest direction the turret can reach --
-            straight, or off-bore within the missile's post-launch cone and
-            turn (a vertical launch cell, a turret at its limit) -- and the
-            point where it MEETS the target is inside the missile's envelope
-            (lock range, doctrine limits: aegism_intercept_fnc_inEnvelope's
-            rule). Not the target's current position: an incoming munition
-            is launched at while still beyond the missile's reach, so the
-            missile meets it out near the edge of it instead of well inside
-            -- and there's time left for a second shot. Against an incoming
-            munition, the turret's swing plus the missile's flight must
-            beat its impact -- or, only when that's too late, a launch now,
-            before the turret is round.
-        ciws - a feasible intercept exists, and the INTERCEPT point (where
-            the rounds would meet the target) is inside the gun's envelope
-            -- its range, the target's height THERE, and the minimum
-            elevation of the barrel aimed there -- within the turret's own
-            elevation limits, and reachable in time: the barrel's swing onto
-            it (aegism_intercept_fnc_turretSlewTime) or the crew's reaction,
-            whichever is longer, plus the rounds' flight before the target
-            comes down. Like a missile, it's judged where the rounds MEET
-            the target: a gun opens fire so its rounds arrive just as the
-            target comes into reach (aegism_intercept_fnc_computeLeadPoint).
-            Against an incoming munition it also reports its FIRING WINDOW
-            -- how long it can fire before the last rounds that still arrive
-            before impact -- and whether that's short of the CIWS setting
-            "Minimum Firing Window" (3 s by default), or the barrel can't
-            follow the target that long (past a turret limit, or out of
-            reach). A gun assigned rockets 2-5 s from impact hit 2 of 21;
-            6-9 s, 14 of 19. The Site coordinator only gives a gun such a
-            last-ditch shot when it has nothing better (aegism_intercept_
-            fnc_assignEngagements).
-
-    Judging a gun at the intercept point is what stops it spending ammunition
-    on a jet flying away from it: the jet may be 2000m away "inside" a 2500m
-    gun, but the rounds would only catch it far beyond 2500m (or never), so
-    it is released instead of claimed forever.
-
-    A gun is also CUED onto a target that isn't in its reach yet but will
-    be within its "Cue Before In Range" time (CIWS setting, 5 s by default):
-    the same checks for a burst opened that many seconds from now, on the
-    target projected to then. Assigned that early, its crew has reacted and
-    its barrel is on the target by the time it can fire (it holds fire,
-    "cued", until then).
-
-    Both first rule out, without solving anything, a target too far to
-    reach at all: the intercept has to be within the weapon's range, and the
-    target can't cover more than speed x t + g t^2 / 2 in the round's or
-    missile's flight time t to that range (or its lifetime, CfgAmmo
-    timeToLive, if shorter; aegism_intercept_fnc_missileFlightTime for a
-    missile). The coordinator checks every free contact against every
-    weapon, most of them far out of reach.
-
-    No acceleration sampling, so calling this has no side effects: the
-    intercept is estimated from velocity -- plus gravity for a gun against
-    an unguided round, whose path that is.
+    Whether one weapon can usefully engage one target right now: the one
+    rule the Site coordinator and standalone target selection share.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the System vehicle <OBJECT>
@@ -109,7 +50,7 @@ private _fnEnvelopeReason = {
 
 if (!_isCiws) then {
     ([_settings, _weaponInfo, _role] call aegism_intercept_fnc_envelopeBounds) params ["_minRange", "_maxRange", "_minAltitude", "_maxAltitude"];
-    // Too far to meet inside its reach at all (see header), before solving
+    // Too far to meet inside its reach at all (see notes), before solving
     // anything: the coordinator checks every free contact against every
     // launcher, most of them far out of reach.
     private _span = if (_maxRange > 0) then { [_weaponInfo, _maxRange] call aegism_intercept_fnc_missileFlightTime } else { -1 };
@@ -132,7 +73,14 @@ if (!_isCiws) then {
         [_target, _targetClass, [getPosASL _system]] call aegism_intercept_fnc_timeToImpact
     } else { 1e10 };
     private _muzzle = ([_system, _weaponInfo select 0, _role] call aegism_intercept_fnc_turretPoints) select 0;
-    ([_system, _weaponInfo, _target, _muzzle, true, true, false, 0, false, _timeToImpact] call aegism_intercept_fnc_launchSolution)
+    // An unguided round falls: projected on gravity, as the reserve plan
+    // projects it (aegism_intercept_fnc_planShot). On its velocity alone a
+    // rocket coming down from 5 km was met, on paper, about 450 m further
+    // out than it really was, and a free RAM launcher wasn't given it until
+    // about 3.5 s after it could have fired for the edge of its reach
+    // (2026-10-06: first kills at 4.5 km of 5).
+    private _ballistic = _targetClass in ["artilleryShell", "rocket", "bomb"];
+    ([_system, _weaponInfo, _target, _muzzle, true, true, false, 0, _ballistic, _timeToImpact] call aegism_intercept_fnc_launchSolution)
         params ["_launchable", "_reason", "", "", "_flightTime", "_slewTime", "", "", "", "_interceptPoint", "_interceptDistance"];
     if (!_launchable) exitWith { [false, _reason] };
     // Where the missile meets it has to be inside the envelope (aegism_
@@ -161,7 +109,7 @@ if (!_isCiws) then {
     // target projected to then, aegism_intercept_fnc_computeLeadPoint).
     private _fnSolve = {
         params ["_delay"];
-        // Too far to reach at all (see header). The longest a round can fly
+        // Too far to reach at all (see notes). The longest a round can fly
         // and still meet it inside the gun's reach is its flight time TO that
         // reach (or its lifetime, if shorter) -- not its lifetime alone: the
         // Cheetah's 35mm round lives 30s, so that bound ruled out almost
@@ -221,7 +169,7 @@ if (!_isCiws) then {
             [false, format ["can't get on it in time (%1 %2s + round flight %3s vs impact in %4s)", ["barrel swing", "crew reaction"] select (_reaction > (_slewTime max _delay)),
                 round (_openAt * 10) / 10, round (_flightTime * 10) / 10, round (_timeToImpact * 10) / 10]]
         };
-        // Its firing window (see header): from then until the last burst
+        // Its firing window (see notes): from then until the last burst
         // whose rounds still arrive before impact.
         private _window = if (_timeToImpact < 1e9) then { _timeToImpact - _openAt - (_flightTime max 0) } else { 1e10 };
         private _short = "";

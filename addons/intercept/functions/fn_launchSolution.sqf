@@ -3,64 +3,8 @@ Function: aegism_intercept_fnc_launchSolution
 
 Description:
     How one launcher gets a missile onto one target, from what the launcher
-    and the missile can actually do. A missile doesn't have to leave
-    pointing at its target: a vertical launch cell can't point at all, a
-    turret stops at its limits, and one still swinging round could, as a
-    last resort, fire now and let the missile turn.
-
-    Straight solution first (aegism_intercept_fnc_computeLeadPoint): the
-    intercept, and the direction a missile flying straight would leave on.
-    Then the ways to launch:
-        "slew" - swing the turret to the closest direction it can reach
-            (aegism_intercept_fnc_turretCanPoint -- its elevation and
-            traverse limits) and launch there: its swing time (aegism_
-            intercept_fnc_turretSlewTime) plus the flight. On the intercept
-            direction itself it's a straight launch ("onBore").
-        "now" (_considerNow) - launch along the barrel as it points now,
-            before the turret is round -- ONLY to make an intercept it
-            otherwise couldn't: swinging first has no solution, or its swing
-            plus the flight lands after the target does (_timeToImpact). At
-            the start of an engagement, with time in hand, the turret always
-            swings fully first.
-        "fixed" - a mount that can't move at all (a vertical launch cell,
-            a hull-fixed launcher): along its barrel, whatever it's pointed
-            at.
-    On an axis the mount can't move, the barrel's own direction is used,
-    not the config limits.
-    A launch off the intercept direction by more than AEGISM_LAUNCH_ON_BORE
-    (the aim's own on-target tolerance, aegism_intercept_fnc_aimWeapon) is
-    off-bore, and needs the missile (aegism_intercept_fnc_missileAgility):
-        - the target within its post-launch cone -- and, on a launcher that
-          can move, within the doctrine's limit for the way it launches:
-          Max Off-Bore Launch While Swinging (20 deg by default) firing
-          "now", before the turret is round -- it never fires wildly off the
-          target when it could swing round instead -- and Max Off-Bore
-          Launch At Turret Limit (30 deg by default) for "slew", the turret
-          as close as it can get: at its elevation or traverse limit (a
-          Spartan's RAM turret stops at 40 deg, and high-arc rockets come
-          down steeper than that), or a mount that can't move on one axis.
-          A fixed mount (a vertical launch cell) is only limited by the
-          missile: off-bore is the only way it fires.
-        - with its turn rate known: the turn flown (computeLeadPoint's
-          off-bore solve -- flight time, and a minimum range inside which it
-          can't turn in time)
-        - its turn rate NOT known yet (a missile the game guides, before
-          one of AEGIS-M's has been seen turning): flown as if straight.
-          Only accepted where there's no better choice -- the turret has to
-          get as close as it can first, and firing "now" isn't considered
-          -- as before the turn was modelled; the missile's first turning
-          flight calibrates it (MISSILE-TURN).
-    Swinging first is the way, unless only "now" makes the intercept; a
-    fixed mount only has one. (The straight solution is taken at the moment
-    of launch for "now"; for "slew" the target keeps moving during the
-    swing, which the off-bore solve accounts for and a straight launch
-    approximates.)
-
-    Modes: with _considerNow, the firing decision (per engagement tick) and
-    the coordinator's check -- both need to know a late target can still be
-    reached by firing now; with _withSlew false, the coordinator's reserve
-    plan, for a shot at a future moment (_delay s from now: the turret will
-    have had time).
+    and the missile can actually do.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the launcher vehicle <OBJECT>
@@ -126,7 +70,12 @@ private _fnWay = {
     if (_turnRate <= 0) exitWith {
         [true, "", _way, _dir, _tof, _slew, _offBore, 0, false, _interceptPoint, _interceptDistance, _origin]
     };
-    ([_system, _origin, _target, _weaponInfo, "launcher", false, _delay + _slew, _ballistic, 0, _dir, _turnRate] call aegism_intercept_fnc_computeLeadPoint)
+    // The target projected as the straight solve projected it: with its
+    // acceleration where that sampled it (a second solve in the same tick
+    // reuses the sample). Without, a falling rocket's off-bore meeting came
+    // out up to 1 s of flight later than the missile then took, and beyond
+    // the launcher's reach when it was inside.
+    ([_system, _origin, _target, _weaponInfo, "launcher", _useAcceleration, _delay + _slew, _ballistic, 0, _dir, _turnRate] call aegism_intercept_fnc_computeLeadPoint)
         params ["", "_turnFeasible", "_turnTof", "_turnDistance", "", "_turnIntercept", "_turn"];
     if (!_turnFeasible) exitWith {
         [false, format ["too close to turn onto: %1 deg off the launch direction at %2 deg/s (%3)", round _offBore, _turnRate, _rateSource], _way, _dir, -1, _slew, _offBore, 0, true, _interceptPoint, _interceptDistance, _origin]
@@ -142,7 +91,7 @@ private _mount = ([_system, _turretPath] call aegism_intercept_fnc_turretConfig)
 
 // How far off-bore it may launch, one way: [degrees, what limits it]. The
 // missile's own post-launch cone, and, for a launcher that can move, the
-// doctrine limit for the way it launches (see header): "slew" -- the turret
+// doctrine limit for the way it launches (see notes): "slew" -- the turret
 // as close as it can get, at its limit -- Max Off-Bore Launch At Turret
 // Limit; firing "now", while it swings, or with it trailing a target it's
 // still swinging after ("onBore"), Max Off-Bore Launch While Swinging. A
@@ -180,7 +129,7 @@ private _best = [["slew", "fixed"] select (_mount == "fixed"), _reach, _slewTime
 // make an intercept it otherwise couldn't: swinging first has no solution,
 // or would get the missile there after the target comes down. With time in
 // hand (the start of an engagement) the turret swings fully first. Needs
-// the missile's turn known (see header).
+// the missile's turn known (see notes).
 if (_considerNow && {_slewTime > 0} && {_turnRate > 0} && {!(_best select 0) || {(_best select 5) + (_best select 4) >= _timeToImpact}}) then {
     private _barrel = [_system, _turretPath, _weaponClass] call aegism_intercept_fnc_barrelDirection;
     if (_barrel isNotEqualTo [0, 0, 0]) then {

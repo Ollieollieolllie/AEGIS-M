@@ -3,27 +3,9 @@ Function: aegism_intercept_fnc_selectTarget
 
 Description:
     Target selection for one turret of a STANDALONE System (no Site synced
-    -- a networked System gets its assignment from aegism_intercept_fnc_
-    assignEngagements instead). Filters the candidates to those on the
-    doctrine allowlist that at least one of the turret's ready weapons can
-    engage (aegism_intercept_fnc_canEngage), picks the best per the
-    doctrine's targetPriority rule, and returns the weapon for it.
-
-    A gun keeps its current target while it can still engage it, its own
-    aim has a solution, and that aim is inside its open-fire range (aegism_
-    intercept_fnc_openFireRange) -- as a Site's claim does -- instead of
-    re-picking every tick: under Soonest Impact the shells of one salvo
-    trade places constantly, and a standalone Praetorian swung 40-127
-    degrees between six of them in 12s without firing. That check comes
-    FIRST and alone: only if the current target has to go are the other
-    candidates evaluated (each one is a full intercept solve). Launchers
-    always re-pick (the engagement loop reuses a launcher's pick for a
-    moment and excludes targets its missiles are already flying at).
-
-    A gun prefers targets it could open fire on now (intercept inside its
-    open-fire range) over any it could only track, then the priority rule
-    decides -- so it doesn't sit holding fire on a far shell while a nearer
-    one passes through its reach.
+    -- a networked System gets its assignment from
+    aegism_intercept_fnc_assignEngagements instead).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _weaponPos - ASL position ranges are measured from <ARRAY>
@@ -54,7 +36,7 @@ params ["_weaponPos", "_candidates", "_engagementSettings", "_weapons", "_role",
 private _allowlist = _engagementSettings getOrDefault ["targetClassAllowlist", []];
 private _priority = _engagementSettings getOrDefault ["targetPriority", "soonestImpact"];
 
-// --- A gun on a target keeps it while it can (see header) ---------------------
+// --- A gun on a target keeps it while it can (see notes) ---------------------
 private _kept = [];
 if (_role == "ciws" && {!isNull _current} && {alive _current} && {(_candidates findIf { (_x select 0) == _current }) != -1}) then {
     // ...unless the gun's own latest aim at it found no solution, or has it

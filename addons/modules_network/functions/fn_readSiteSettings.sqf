@@ -5,6 +5,7 @@ Description:
     The doctrine and personality a Site hands its members, read from the
     Site logic's own attribute variables (set by its Eden attributes, or in
     Zeus by aegism_network_fnc_zeusApplySite).
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
     _logic - the Site logic <OBJECT>
@@ -54,7 +55,8 @@ private _allowlist = [];
         ["friendlyThreatRadius", _logic getVariable ["friendlyThreatRadius", 0]],
         ["protectRadius", _logic getVariable ["protectRadius", 750]],
         ["targetClassAllowlist", _allowlist],
-        ["ciwsLastResort", _logic getVariable ["ciwsLastResort", false]],
+        // (A mission saved with the old Last Resort Only checkbox.)
+        ["ciwsMode", _logic getVariable ["ciwsMode", ["overlap", "lastResort"] select (_logic getVariable ["ciwsLastResort", false])]],
         ["ciwsSelfDestruct", _logic getVariable ["ciwsSelfDestruct", false]],
         ["emcon", _logic getVariable ["emcon", "auto"]],
         ["emconHold", _logic getVariable ["emconHold", 10]],

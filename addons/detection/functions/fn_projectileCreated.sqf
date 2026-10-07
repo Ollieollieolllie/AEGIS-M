@@ -4,24 +4,8 @@ Function: aegism_detect_fnc_projectileCreated
 Description:
     AEGIS-M's catch for munitions nothing reported fired: the server's
     "ProjectileCreated" mission event (Arma 3 2.18), which comes for every
-    projectile however it was made. Munitions are otherwise found through
-    each shooter's "Fired" event (aegism_detect_fnc_firedEventHandler),
-    which misses two kinds:
-        - a shell spawned by script (createVehicle: Zeus ordnance, a
-          mission's artillery effects), which nobody fired;
-        - one from a shooter whose Fired event handlers another mod removed
-          (removeAllEventHandlers).
-    A threat-class munition (aegism_detect_fnc_ammoThreatInfo; a bullet
-    returns after that one cached lookup) is looked at the next frame: one
-    the Fired path has handled by then is marked ("AEGISM_seen", aegism_
-    detect_fnc_watchProjectile), and anything else is tracked here, from
-    its shot parents -- a shell with none has no side (sideUnknown): never
-    hostile by IFF, so it's engaged as a friendly round would be, only if
-    it threatens a Site (doctrine: Engage Friendly Threats). Logged once
-    per ammo type (MUNITION-UNREPORTED).
-
-    The event handler is put back if something removes it (aegism_system_
-    fnc_guardSystems).
+    projectile however it was made.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _projectile - the new projectile <OBJECT>

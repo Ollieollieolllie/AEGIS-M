@@ -4,49 +4,7 @@ Function: aegism_intercept_fnc_missileProfile
 Description:
     A launcher's missile's flight from launch: how far it has flown and how
     fast it's going every AEGISM_PROFILE_STEP s, to the end of its lifetime.
-    Every missile flight AEGIS-M predicts is read from it (aegism_intercept_
-    fnc_missileProfileAt): the lead solver, the coordinator's in-time checks.
-    Per weapon + magazine.
-
-    LEARNED once its own flights have shown it (aegism_intercept_fnc_
-    recordMissileSpeed): every second after launch that at least AEGISM_
-    SPEED_MIN_SAMPLES flights have reached, its speed is the median of their
-    real speeds then (the last AEGISM_SPEED_SAMPLES of them). Between those
-    seconds, and from launch to the first, the config simulation's own curve
-    is scaled to them; past the last, scaled as at the last. So it flies
-    whatever the missile really does -- a missile that stops at its maxSpeed
-    (POOK's PAC-2 and PAC-3, at 1750 m/s) and one that doesn't (the
-    MIM-145, ~1390 m/s past its 850; the 9M317 and 9M331), one a mod flies by
-    script -- which no single rule from config got right. Rebuilt when a
-    flight adds to it ("AEGISM_cacheMissileLearned"). Learned per flight
-    config (its launch speed, motor, drag, lifetime and maxSpeed), not per
-    weapon: missiles that fly alike learn together -- POOK's SA-8 has six
-    one-missile launchers, each its own weapon, magazine and ammo, which
-    would otherwise never see a second flight.
-
-    SIMULATED from its config until then, once and cached ("AEGISM_cache
-    MissileProfile"). The engine's rules for a missile (BI wiki, CfgAmmo
-    Config Reference; values from aegism_intercept_fnc_weaponKinematics):
-        launch - its initSpeed
-        motor - lights initTime s after launch; thrust is an acceleration
-            (m/s^2), at full for the first 75% of thrustTime, then fading
-            linearly to nothing at thrustTime
-        drag - along its nose, a = AEGISM_MISSILE_DRAG x airFriction x v^2:
-            airFriction is each missile's own; the multiplier is the
-            engine's, in no config. A community fit to recorded NLAW, Titan,
-            RPG, DAGR and ASRAAM flights (BI forums, 2016) put it at 0.002;
-            AEGIS-M's own missiles' speed every second in flight (2026-10-06
-            tests, MISSILE-SPEED) fit 0.0022 (RIM-162), 0.00224 (Stinger)
-            and 0.00228 (RIM-116) -- and 0.0025 for the MIM-145, whose
-            real speed levels off near 1390 m/s. 13 missile types, POOK's
-            among them, then flew within 5% of the simulation's times
-        maxSpeed - NOT applied, though the wiki calls it the top speed
-            (AEGISM_PROFILE_SPEED_CAP): some missiles stop at it and some
-            don't (above); the learned curve settles which
-    Not simulated: gravity on a climb, speed lost turning (sideAirFriction).
-    Midpoint steps: within a metre of a 0.5 ms step over 30 s of the
-    RIM-116's and MIM-145's flights. Logged once per missile
-    (MISSILE-PROFILE, Verbose).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _weaponClass - CfgWeapons class <STRING>
@@ -70,20 +28,20 @@ Author:
 #include "..\..\main\rpt.hpp"
 #include "..\calibration.hpp"
 
-// Simulation step, s (see header).
+// Simulation step, s (see notes).
 #define AEGISM_PROFILE_STEP 0.1
 // How long a missile with no timeToLive is simulated, s.
 #define AEGISM_PROFILE_MAX_TIME 60
-// Drag along the nose per unit of a missile's airFriction (see header).
+// Drag along the nose per unit of a missile's airFriction (see notes).
 #define AEGISM_MISSILE_DRAG 0.00225
-// Top speed as a multiple of CfgAmmo maxSpeed; 0 = none (see header).
+// Top speed as a multiple of CfgAmmo maxSpeed; 0 = none (see notes).
 #define AEGISM_PROFILE_SPEED_CAP 0
 
 params ["_weaponClass", "_magazineClass", ["_raw", false]];
 
 private _key = _weaponClass + "|" + _magazineClass;
 
-// --- The config simulation (see header), once ---------------------------------
+// --- The config simulation (see notes), once ---------------------------------
 private _cache = missionNamespace getVariable "AEGISM_cacheMissileProfile";
 if (isNil "_cache") then {
     _cache = createHashMap;
@@ -142,7 +100,7 @@ if (isNil "_sim") then {
 _cache set [_key, _sim];
 if (_raw || {_sim isEqualTo []}) exitWith { _sim };
 
-// --- The learned curve (see header) ------------------------------------------
+// --- The learned curve (see notes) ------------------------------------------
 private _learnedCache = missionNamespace getVariable "AEGISM_cacheMissileLearned";
 if (isNil "_learnedCache") then {
     _learnedCache = createHashMap;

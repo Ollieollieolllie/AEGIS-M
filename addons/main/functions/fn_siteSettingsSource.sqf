@@ -4,9 +4,8 @@ Function: aegism_fnc_siteSettingsSource
 Description:
     The Site whose settings apply to a Site's vehicles: the Site itself --
     or, while it's linked with others (aegism_network_fnc_linkSites) and one
-    of them is ticked "Shared Site Coordinator", that one. Its doctrine,
-    crew and alarm settings then take precedence over every other Site of
-    the group (each vehicle's own overrides still apply on top).
+    of them is ticked "Shared Site Coordinator", that one.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _site - the Site logic <OBJECT>

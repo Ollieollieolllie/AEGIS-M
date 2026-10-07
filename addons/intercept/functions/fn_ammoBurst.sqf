@@ -3,23 +3,8 @@ Function: aegism_intercept_fnc_ammoBurst
 
 Description:
     How long a gun round really flies, and how it ends, from its config --
-    for any mod's ammo:
-
-    A round that is a submunition carrier (CfgAmmo simulation
-    "shotSubmunitions", like vanilla's SubmunitionBullet) turns into its
-    submunition triggerTime s after it's fired. If that submunition explodes
-    at once (CfgAmmo explosionTime set), the round is an airburst: its
-    flight ends there, in a blast of the submunition's radius (its
-    indirectHitRange -- the smallest, when it's one of several). POOK's
-    20, 23 and 30 mm AA rounds become 8-12 m airbursts 1 s after firing, so
-    their guns reached ~1 km while AEGIS-M took their timeToLive (4-11 s)
-    as their flight. If the submunition flies on instead (vanilla's minigun
-    rounds swap to another bullet after 0.1 s), the round's flight goes on
-    for the submunition's own lifetime.
-
-    The round's own timeToLive still ends it first if it's shorter.
-
-    Cached per ammo class ("AEGISM_cacheAmmoBurst").
+    for any mod's ammo.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _ammoClass - a CfgAmmo class <STRING>

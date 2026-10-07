@@ -74,6 +74,11 @@
     1
 ] call CBA_fnc_addSetting;
 
+// The mission clock's frame: when this one began on it, and how long the
+// last took on it (kept by XEH_postInit).
+AEGISM_frameTime = 0;
+AEGISM_frameDelta = 0;
+
 // Counters behind the PERF line (perf.hpp). Created everywhere so an
 // increment on any machine never hits nil; only the server logs them.
 AEGISM_perfCounts = [];

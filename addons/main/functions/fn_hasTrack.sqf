@@ -3,15 +3,8 @@ Function: aegism_fnc_hasTrack
 
 Description:
     Whether a pooled contact is held by a sensor that tracks it: anything
-    but passive radar alone. Passive radar only hears an emitter's radar,
-    which gives a bearing but no range. A contact that only passive radar
-    has heard in the last 3 s (the pools' own contact expiry, aegism_detect_
-    fnc_pruneStaleContacts) cues the Site's radars (Radar Emission, aegism_
-    system_fnc_emconUpdate), but no weapon is assigned to it until a radar,
-    IR or visual sensor holds it.
-
-    A contact with no sensor kinds recorded, or none in the last 3 s, counts
-    as tracked.
+    but passive radar alone.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _entry - a pool entry (aegism_detect_fnc_addContact) <HASHMAP>

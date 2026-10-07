@@ -2,21 +2,10 @@
 Function: aegism_detect_fnc_munitionTracker
 
 Description:
-    One frame of the munition tracker: works through every tracked munition
-    ("AEGISM_trackedMunitions", aegism_detect_fnc_trackMunition), checking
-    each one that's due (aegism_detect_fnc_munitionCheck) and then again
-    AEGISM_TRACK_INTERVAL s later. Munitions come in at their own fire
-    times, so a barrage's checks are spread over frames rather than all
-    landing on one.
-
-    A munition that's gone (impact, intercept, leaves simulation) is
-    removed from every pool it was added to, by its own key -- it used to be
-    looked up by netId after it was already deleted, which never matched.
-    One that never came into any Site's picture is logged (UNSEEN): whether
-    any sensor saw it, and how near and how low it came. An anti-radiation missile's end is logged
-    (ARM-END): what it was homing on at its last check, how far it then was
-    from the nearest AEGIS-M radar and whether that radar was emitting, and
-    whether any AEGIS-M sensor saw it.
+    One frame of the munition tracker: works through every tracked munition,
+    checking each one that's due and then again AEGISM_TRACK_INTERVAL s
+    later.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     None

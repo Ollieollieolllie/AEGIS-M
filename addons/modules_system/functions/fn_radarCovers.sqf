@@ -2,21 +2,9 @@
 Function: aegism_system_fnc_radarCovers
 
 Description:
-    Whether one of a vehicle's active radars (aegism_system_fnc_
-    discoverCapabilities "sensors") can see a position: within its reach,
-    and
-        fixed to the hull - inside its horizontal arc either side of the
-            vehicle's forward, and its vertical arc either side of its
-            boresight (level, or tilted down by its aimDown);
-        turning with a turret - inside what the turret can bring into its
-            arcs: its traverse limits widened by half the horizontal arc,
-            its elevation limits by half the vertical arc (aegism_intercept_
-            fnc_turretConfig) -- the vanilla radar truck's 120 x 120 degree
-            radar, on a turret that turns all the way round and elevates
-            -10 to 75, covers 70 degrees below the horizon to straight up;
-        all round (360 degrees) - anywhere in reach, inside its vertical arc.
-    The vehicle's own tilt is ignored. Used by Radar Emission (aegism_
-    system_fnc_emconUpdate) to light the radars covering a threat.
+    Whether one of a vehicle's active radars can see a position: within its
+    reach and inside its arc.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the vehicle <OBJECT>

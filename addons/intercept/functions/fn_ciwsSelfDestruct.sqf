@@ -2,31 +2,9 @@
 Function: aegism_intercept_fnc_ciwsSelfDestruct
 
 Description:
-    Self-destructs a CIWS round that hits nothing (the "Self-Destruct
-    Rounds" setting), as a C-RAM round's self-destruct fuze does: once it
-    has passed the gun's reach -- its CIWS Max Range, or the gun's own config
-    reach (aegism_intercept_fnc_envelopeBounds) -- so a round that misses
-    bursts out there instead of flying on. Never later than
-    AEGISM_SELF_DESTRUCT_MARGIN before its own lifetime (CfgAmmo
-    timeToLive), when the engine removes it.
-
-    The fuze time is the round's flight to the gun's reach under its drag
-    (CfgAmmo airFriction, the same model as aegism_intercept_fnc_
-    openFireRange), from the speed it actually left the muzzle at. Each
-    ammo's lifetime and drag are read once per ammo type and cached
-    ("AEGISM_cacheLifetime"): they differ from one weapon system to the
-    next, and mods change them (the vanilla 35mm lives 6 s, from BulletBase;
-    ACE makes it 30 s). The fuze time is worked out per gun, refreshed every
-    AEGISM_SELF_DESTRUCT_REFRESH s (so a Zeus edit of CIWS Max Range takes
-    effect), and logged when it changes (SELF-DESTRUCT-FUZE).
-
-    One queue per gun turret (turret state "selfDestruct"): a gun's rounds
-    share one fuze time and leave in order, so they come due in order, and
-    each frame only looks at the due rounds at its head. A round that has
-    already hit something, or was fuzed on its target (aegism_intercept_fnc_
-    interceptHit), is gone by then and skipped. When the queue empties, how
-    many rounds self-destructed and how many were already gone is logged
-    (SELF-DESTRUCT).
+    Self-destructs a CIWS round that hits nothing once it has passed the
+    gun's reach (the Self-Destruct Rounds setting).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the CIWS vehicle <OBJECT>

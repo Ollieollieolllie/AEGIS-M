@@ -2,14 +2,13 @@
 Function: aegism_network_fnc_terminalRequest
 
 Description:
-    Server side of a Site's status terminal (aegism_network_fnc_
-    terminalOpen): builds the Site's status board -- that Site alone, every
-    contact it tracks (aegism_fnc_statusBoard) -- and sends it back to the
-    machine that asked (aegism_network_fnc_terminalShow). Run once a second
-    per open terminal screen.
+    Server side of a terminal's Status tab: builds the status board of a
+    Site, or of a vehicle's Site, and sends it back to the machine that
+    asked.
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
-    _site - the Site <OBJECT>
+    _node - the Site, or one of its vehicles <OBJECT>
 
 Returns:
     Nothing
@@ -21,11 +20,14 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-params [["_site", objNull]];
+params [["_node", objNull]];
 
 if (!isServer) exitWith {};
 
-private _text = [_site, false, 1e6] call aegism_fnc_statusBoard;
+private _site = if (_node isKindOf "AEGISM_Module_Site") then { _node } else { _node getVariable ["AEGISM_network", objNull] };
+// A vehicle with no Site: the whole board, which lists standalone vehicles.
+private _text = if (isNull _site) then { [objNull, true, 1e6] call aegism_fnc_statusBoard } else { [_site, false, 1e6] call aegism_fnc_statusBoard };
+
 // Asked from this machine (singleplayer, or a hosted game's host): shown
 // here.
 private _owner = remoteExecutedOwner;

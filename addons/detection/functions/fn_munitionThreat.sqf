@@ -3,47 +3,9 @@ Function: aegism_detect_fnc_munitionThreat
 
 Description:
     Whether a munition is a threat to what a pool owner protects: every live
-    member of its Site (of every Site linked with it, aegism_network_fnc_
-    linkSites), or just itself if standalone. Asked of a friendly or
-    neutral munition (engaged only if so), and of any hostile munition when
-    the Site only engages threats (aegism_detect_fnc_munitionCheck).
-
-        missile - its own seeker target (missileTarget) is one of the
-            protected vehicles ("guided"), or its current line of flight
-            passes within the threat radius of one, closing ("heading"), or,
-            its target not readable (ACE guidance, a laser spot), one is
-            inside its seeker's view: within its seeker cone (aegism_detect_
-            fnc_seekerCone) of its line of flight, closing, and its angle off
-            that line no wider than at the last check ("seeker"). An
-            unguided one (a shotMissile that can't steer, like the vanilla
-            Rocket_04_HE_F) is judged like a rocket, its fall included.
-        bomb - its line of flight passes within the threat radius, or its
-            predicted fall lands within it
-        artillery round, rocket - its predicted impact falls within the
-            threat radius of one of them ("ballistic"). Prediction is a
-            drag-free ballistic fall from the current position and velocity
-            to each protected vehicle's own height. Vanilla artillery really
-            is drag-free (Sh_155mm_AMOS and the MLRS R_230mm_fly have
-            airFriction 0, mortar rounds ~-0.0003), so this is accurate for
-            the rounds that matter; a still-burning rocket is under-predicted
-            until burnout, and re-evaluated every tracker tick anyway.
-
-    Protected areas (a hostile munition's verdict only, _useAreas): each
-    Site of the group also protects a circle round its own module, of the
-    Site's Protected Area Radius (protectRadius; the Shared Site
-    Coordinator's when there is one; 0 = none). A munition is a threat
-    ("area") if it's guided at anything inside one (an ammo truck, a
-    building), its descending line of flight comes down inside one (a
-    missile or bomb), or its predicted fall lands inside one (a round,
-    rocket, bomb or unguided missile) -- each to the area centre's height.
-    The protected vehicles' own tests above come first.
-
-    Threat radius: the doctrine friendlyThreatRadius if > 0, else the
-    munition's own CfgAmmo dangerRadiusHit (the radius the game's AI keeps
-    friendlies out of, e.g. 750m for 155mm, 1250m for the MLRS rocket,
-    1000m for bombs), else its blast radius (indirectHitRange) when
-    dangerRadiusHit is unset (-1). A carrier round uses its payload's
-    radius (see below).
+    member of its Site (of every Site linked with it,
+    aegism_network_fnc_linkSites), or just itself if standalone.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _projectile - the munition <OBJECT>

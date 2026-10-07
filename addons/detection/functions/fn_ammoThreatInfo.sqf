@@ -2,15 +2,10 @@
 Function: aegism_detect_fnc_ammoThreatInfo
 
 Description:
-    What a fired ammo class means to AEGIS-M, cached per class
-    ("AEGISM_cacheAmmoThreat"): its threat class (aegism_detect_fnc_
-    classifyAmmoClass), whether it's a carrier (CfgAmmo simulation
-    "shotSubmunitions") whose released projectiles must be followed, and for
-    a carrier how many it releases: the count in its submunitionConeType
-    (R_230mm_Cluster {"randomcenter", 50}, Cluster_155mm_AMOS 35), else its
-    submunitionCount, else 1 (R_230mm_HE releases its one R_230mm_fly). The
-    server's Fired handler runs this for every round fired in the mission;
-    for a bullet it's one lookup.
+    What a fired ammo class means to AEGIS-M, cached per class: its threat
+    class, whether it's a carrier whose submunitions must be followed, and
+    how many it releases.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _ammoClass - CfgAmmo class <STRING>

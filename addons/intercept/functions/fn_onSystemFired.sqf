@@ -3,37 +3,8 @@ Function: aegism_intercept_fnc_onSystemFired
 
 Description:
     Body of the single persistent "Fired" event handler every AEGIS-M System
-    vehicle gets (aegism_intercept_fnc_firedHandler). It must
-    live on the VEHICLE: a unit's own "Fired" event never triggers for a
-    vehicle-mounted weapon.
-
-    aegism_intercept_fnc_fireWeapon writes a capture context on the firing
-    TURRET ("capture" in aegism_intercept_fnc_turretState: [target, role,
-    interceptors, expiresAt, targetIsMunition, turretPath, weapon, launch
-    plan [off-bore deg, predicted flight s, fired at]]) and this
-    handler consumes it for the rounds that turret actually produces. The
-    turret is found from the Fired event's gunner; if that doesn't lead to a
-    context for this weapon, the turret whose context names this weapon.
-    (Contexts used to be keyed by weapon class alone, so two turrets with
-    the same weapon took each other's rounds.)
-        launcher - exactly one round per fire command: the missile is given
-            its target (setMissileTarget -- without it a missile fired by
-            script has no lock and flies unguided or seeks whatever its
-            seeker finds), recorded in the assignment's interceptors list
-            (so aegism_intercept_fnc_assignEngagements can tell "still in
-            flight" from "missed"), and handed to its proximity fuse
-            (aegism_intercept_fnc_interceptorPFH), with its launch plan for
-            the turn measurement. Context cleared after.
-        ciws - every round of the burst, until the context expires, goes to
-            the gun's round tracker (aegism_intercept_fnc_ciwsRounds): fuzed
-            against a MUNITION target, and every AEGISM_SPOT_EVERY-th round
-            measured for spotting against the track it was aimed with. A
-            round against an aircraft that isn't spotted isn't tracked at all
-            (the engine's own collision handles the hit). With Self-Destruct
-            Rounds on, every round also goes to its gun's self-destruct
-            queue (aegism_intercept_fnc_ciwsSelfDestruct).
-
-    Rounds from other weapons, or after the context expired, are ignored.
+    vehicle gets (aegism_intercept_fnc_firedHandler).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _vehicle - the firing System vehicle <OBJECT>

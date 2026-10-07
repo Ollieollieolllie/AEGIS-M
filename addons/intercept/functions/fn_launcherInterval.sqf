@@ -4,17 +4,7 @@ Function: aegism_intercept_fnc_launcherInterval
 Description:
     Seconds between two missiles from one launcher turret, before crew
     temperament scaling.
-
-    A positive "Seconds Between Missiles" (Site setting, or the vehicle's own
-    override) is used as given. 0, the default, is Auto: the launcher's own
-    rate of fire, the reloadTime of the fire mode it is in (aegism_intercept_
-    fnc_fireModeStats). That is the weapon's own authored fire rate and it
-    already scales with the missile it carries -- vanilla MIM-145 Defender
-    4s, Mk49 Spartan (RIM-116) 2s, Mk21 Centurion (RIM-162) 1s -- and it
-    covers mod launchers without a table here.
-
-    Logs the interval (and where it came from) whenever it changes for a
-    turret (FIRE-RATE).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the launcher System vehicle <OBJECT>

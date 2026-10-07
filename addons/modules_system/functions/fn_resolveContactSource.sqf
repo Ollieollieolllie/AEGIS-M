@@ -2,28 +2,9 @@
 Function: aegism_system_fnc_resolveContactSource
 
 Description:
-    Resolves where a Launcher/CIWS-capable System draws tracked contacts
-    from: its own sensors (self-contained case: a radar, IR or visual
-    sensor of its own -- a Tigris/ZSU-style vehicle, or a Spartan with its
-    launcher-mounted IR), its Network's pooled contact list (networked
-    case), both together, or neither -- logging a diag_log warning for
-    either dead end, since that System would otherwise silently never
-    engage anything. A synced Network only counts as a real contact source
-    if at least one of its current members (per the live
-    "AEGISM_networkMembers" list, see aegism_network_fnc_moduleInit) has a
-    sensor of its own -- a Network with none anywhere in it can never
-    populate its own pool, so a Launcher relying solely on it would
-    otherwise pass this check yet still never see a single contact.
-
-    Called periodically (not just once at init, see aegism_system_fnc_
-    moduleInit's re-resolution poll) so a Network gaining or losing its
-    only sensor-equipped member is reflected without a mission restart; the
-    warning message is only re-logged when it actually changes, so a
-    persisting problem doesn't spam the RPT log every poll.
-
-    Reads "AEGISM_system" (HashMap, key "hasSensor", aegism_system_fnc_
-    discoverCapabilities) and "AEGISM_network" (Object or objNull) from the
-    system object.
+    Resolves where a launcher/CIWS System draws tracked contacts from: its
+    own sensors, or its Site's pool.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _systemObject - the vehicle to resolve a contact source for <OBJECT>

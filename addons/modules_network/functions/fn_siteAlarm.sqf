@@ -2,36 +2,9 @@
 Function: aegism_network_fnc_siteAlarm
 
 Description:
-    A Site's alarm, one of three states, updated with the Site's
-    coordinator (every 0.5s, server only):
-        incoming - a munition threatening the Site was seen within the last
-            AEGISM_INCOMING_HOLD s ("AEGISM_incomingAt", written by aegism_
-            detect_fnc_munitionCheck)
-        warning - the Site has a weapon assigned to a target (going live:
-            before its first shot), or fired within the last "alarmHold" s
-            ("AEGISM_lastShotAt", written by aegism_intercept_fnc_
-            onSystemFired)
-        off - neither
-    Incoming replaces warning; a state whose tone is "off" falls through to
-    the next. Going quiet (to off from either) plays the All Clear tone once,
-    if the Site has one.
-
-    Each state's tone is a sound source class (this addon's CfgVehicles
-    AEGISM_Alarm_*, heard to the Site's Alarm Range -- or the Site's custom
-    class, at its own range), played at every speaker -- each non-vehicle
-    object synced to the Site, or the Site logic itself if there is none.
-    (A laptop synced to the Site is its status terminal, aegism_network_fnc_
-    isTerminal, not a speaker.)
-
-    The server only decides the state: a change is published on the Site
-    ("AEGISM_alarmNow", JIP-safe), and every player's machine plays it for
-    itself (aegism_network_fnc_alarmPlayer). A looping sound source created
-    here and left to the engine wasn't heard after the camera had been away
-    (Zeus, spectator, a teleport), and sometimes not from its start. The
-    network still only carries a change of state, never the repeats.
-    Nothing happens between changes but a few variable reads.
-
-    Logged as ALARM on each change.
+    A Site's alarm, one of three states, updated with the Site's coordinator
+    (every 0.5 s, server only).
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
     _logic - the Site logic <OBJECT>

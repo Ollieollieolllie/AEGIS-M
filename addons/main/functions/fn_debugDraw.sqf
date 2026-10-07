@@ -2,85 +2,9 @@
 Function: aegism_fnc_debugDraw
 
 Description:
-    Per-frame 3D debug overlay of AEGIS-M's live detection/engagement
-    state, drawn straight from the variables the pipeline itself reads and
-    writes -- what's on screen is what the mod is doing, not a separate
-    simulation of it. CBA setting "aegism_main_debugDraw" (client-side, no
-    gameplay effect). Only has data where the engagement pipeline runs
-    (singleplayer, Eden Preview, a hosted game's host).
-
-    Built to be read at a glance: one colour scheme, one label per thing,
-    labels stacked (at a spacing that scales with distance, so they stay
-    apart at any range) rather than drawn on top of each other.
-
-        Colour = an engagement's state (aegism_fnc_statusStyle): queued
-            blue, assigned green, reacting / slewing amber, reloading
-            orange, range hold teal, firing red, in flight gold, no LOS /
-            no solution purple, crew failed / fire held / no ammo grey.
-
-        Contact - one icon per contact, however many pools hold it: a
-            plane, a helicopter, or a target mark for a munition or drone.
-            White while nothing is on it, otherwise the colour of the most
-            urgent engagement on it. One short label: its class, for an
-            incoming munition seconds to impact (the coordinator's own
-            figure, aegism_intercept_fnc_assignEngagements), and the sensor
-            kinds that saw it in the last 3 s ([RDR IR], aegism_fnc_
-            sensorTags).
-
-        Engagement - a line from the weapon to its target in the state's
-            colour. Waiting ones (queued behind the launcher's current
-            target, missiles already in flight, held) are faint, so a
-            launcher's queue doesn't drown out what it's actually doing. A
-            CIWS held back by Last Resort Only is a dashed orange line.
-
-        System - a shield over each AEGIS-M vehicle (a radar mark for a
-            radar-only one), and stacked labels:
-            1. its name
-            2. network and sensor status (light blue): its own sensors, the
-               longest of each kind -- reach, arc, "turret" if it turns with
-               one, and for a radar its emission (Radar Emission, aegism_fnc_
-               emconText: EMITTING, SILENT, SHUT DOWN, AI: ..., and why; a
-               silent radar sees nothing, aircraft or munitions), how many
-               contacts its own sensors see now ("sees 2", "hears 1" for
-               passive radar alone) -- and its Site's sensor vehicles and
-               tracks, or STANDALONE with its own tracks. NO SENSOR ON SITE
-               in orange when networked but no member of its Site has a
-               sensor of its own (aegism_system_fnc_resolveContactSource).
-            3. each weapon role with rounds left and what it's doing ("MSL
-               4: firing +3 queued", "GUN 680: slewing"), or NO AMMO (red)
-            Name and weapons in its most urgent engagement's colour; grey
-            while idle.
-
-        Sight - a faint light-blue line from each sensor vehicle to each
-            contact its own sensors saw in the last 3 s (a lighter violet
-            one if only its passive radar hears it). A Site's contacts are
-            every member's together; this shows which vehicle sees which.
-
-        Radar - a faint ring at each radar's own detection range: blue while
-            the AI decides its emission, amber while AEGIS-M has it emitting,
-            grey while it keeps it silent, red while it's shut down for an
-            anti-radiation missile.
-
-        A contact only passive radar hears is tagged CUE ONLY: it cues the
-        Site's radars, but nothing engages it (aegism_fnc_hasTrack).
-        Linked Sites (aegism_network_fnc_linkSites) - a vehicle's Site status
-            reads "(LINKED, n Sites by n links, coordinating / coordinated by
-            ...)"; a vehicle forming a link is tagged LINK; a vehicle-to-
-            vehicle link, or two modules synced to each other, is a dashed
-            cyan line between them. Sensor codes: RDR radar, PAS passive, IR,
-            VIS visual; DL a vehicle with none, fed by its Site.
-
-        Not active - a vehicle AEGIS-M found capable but hasn't activated
-            (deferred until synced, AEGISM_deferredSystems): grey, with
-            "NOT ACTIVE:" and why -- e.g. a launcher with no sensor of its
-            own placed without a Site.
-
-    Reads only published state (AEGISM_allPoolOwners, AEGISM_allSystems,
-    AEGISM_system, AEGISM_pooledContacts, AEGISM_seenMunitions, AEGISM_
-    claims, AEGISM_withheldCiws, each System's AEGISM_turrets
-    "standalone_<role>" states)
-    and calls no function of the addons that publish it: this lives in
-    aegism_main, which they all depend on.
+    Per-frame 3D debug overlay of AEGIS-M's live detection and engagement
+    state.
+    Full notes: docs/functions/main.md
 
 Parameters:
     None
@@ -247,31 +171,75 @@ private _seesCount = createHashMap;  // vehicle netId -> [seen, heard only]
     _seesCount set [netId _sensorVehicle, [_sees, _hears]];
 } forEach _sightings;
 
-// --- Links between Sites (aegism_network_fnc_linkSites): a vehicle of one
-// synced to a vehicle of the other, or the two modules synced to each other
-// -- a dashed cyan line between them, "LINK" at its middle. (A vehicle synced
-// to both is tagged LINK on its own label.) Each group's links once.
-private _linkGroupsDrawn = [];
+// --- Sites (aegism_network_fnc_linkSites) -----------------------------------------
+// Each Site module is labelled with its name, what it is to its linked group
+// and whose settings its vehicles use, in the Site's own colour, with a
+// faint line of that colour to each of its vehicles. Each link between two
+// Sites is a dashed white line between their modules, captioned with what
+// forms it; a link made by two vehicles synced to each other is also drawn
+// between those two.
+private _siteColours = [[0.3, 0.9, 1], [1, 0.8, 0.3], [0.65, 1, 0.45], [1, 0.55, 0.8], [0.65, 0.7, 1], [1, 0.6, 0.35]];
+private _allSites = (missionNamespace getVariable ["AEGISM_allPoolOwners", []]) select { !isNull _x && {!isNil { _x getVariable "AEGISM_networkMembers" }} };
+private _fnSitePoint = { (ASLToAGL getPosASLVisual _this) vectorAdd [0, 0, 3] };
+private _fnDashed = {
+    params ["_from", "_to", "_colour", "_dashes"];
+    private _span = _to vectorDiff _from;
+    for "_i" from 0 to (2 * _dashes - 1) step 2 do {
+        drawLine3D [_from vectorAdd (_span vectorMultiply (_i / (2 * _dashes))), _from vectorAdd (_span vectorMultiply ((_i + 1) / (2 * _dashes))), _colour];
+    };
+};
 {
     private _site = _x;
-    if (!isNull _site && {!isNil {_site getVariable "AEGISM_networkMembers"}}) then {
-        private _lead = _site getVariable ["AEGISM_linkLead", _site];
-        if !(_lead in _linkGroupsDrawn) then {
-            _linkGroupsDrawn pushBack _lead;
-            {
-                _x params ["_type", "_a", "_b"];
-                if (_type in ["pair", "modules"] && {!isNull _a} && {!isNull _b}) then {
-                    private _from = (ASLToAGL getPosASLVisual _a) vectorAdd [0, 0, 2];
-                    private _span = ((ASLToAGL getPosASLVisual _b) vectorAdd [0, 0, 2]) vectorDiff _from;
-                    for "_i" from 0 to 9 step 2 do {
-                        drawLine3D [_from vectorAdd (_span vectorMultiply (_i / 10)), _from vectorAdd (_span vectorMultiply ((_i + 1) / 10)), [0.3, 0.9, 1, 0.8]];
-                    };
-                    [_from vectorAdd (_span vectorMultiply 0.5), ["LINK (modules)", "LINK"] select (_type == "pair"), [0.3, 0.9, 1, 0.9], AEGISM_SMALL_TEXT] call _fnText;
-                };
-            } forEach (_site getVariable ["AEGISM_links", []]);
-        };
+    private _rgb = _siteColours select (_forEachIndex mod (count _siteColours));
+    private _at = _site call _fnSitePoint;
+    private _linked = (_site getVariable ["AEGISM_linkSites", [_site]]) - [_site];
+    private _lead = _site getVariable ["AEGISM_linkLead", _site];
+    private _source = [_site] call aegism_fnc_siteSettingsSource;
+    private _members = (_site getVariable ["AEGISM_networkMembers", []]) select { !isNull _x && {alive _x} };
+    private _second = format ["%1 vehicle(s)", count _members];
+    if (_linked isNotEqualTo []) then {
+        _second = _second + format [", linked with %1; %2", (_linked apply { [_x] call aegism_fnc_siteName }) joinString " + ",
+            ["its own settings", format ["settings from %1", [_source] call aegism_fnc_siteName]] select (_source != _site)];
     };
-} forEach (missionNamespace getVariable ["AEGISM_allPoolOwners", []]);
+    [[_at, 1] call _fnStacked, format ["%1%2", toUpper ([_site] call aegism_fnc_siteName), ["", "  -  COORDINATOR"] select (_linked isNotEqualTo [] && {_lead == _site})], _rgb + [1], AEGISM_TEXT_SIZE] call _fnText;
+    [_at, _second, _rgb + [0.9], AEGISM_SMALL_TEXT] call _fnText;
+    { drawLine3D [_at, (ASLToAGL getPosASLVisual _x) vectorAdd [0, 0, 2], _rgb + [0.35]]; } forEach _members;
+} forEach _allSites;
+
+// Each group's links once. Several between the same two Sites stack their
+// captions.
+private _linkGroupsDrawn = [];
+private _captions = createHashMap;
+{
+    private _site = _x;
+    private _lead = _site getVariable ["AEGISM_linkLead", _site];
+    if !(_lead in _linkGroupsDrawn) then {
+        _linkGroupsDrawn pushBack _lead;
+        {
+            _x params ["_type", "_a", "_b", ["_siteA", objNull], ["_siteB", objNull]];
+            if (!isNull _siteA && {!isNull _siteB}) then {
+                private _from = _siteA call _fnSitePoint;
+                private _to = _siteB call _fnSitePoint;
+                [_from, _to, [1, 1, 1, 0.85], 8] call _fnDashed;
+                private _pairKey = [netId _siteA, netId _siteB];
+                private _row = _captions getOrDefault [_pairKey, 0];
+                _captions set [_pairKey, _row + 1];
+                private _fnVehicleName = { private _name = getText (configOf _this >> "displayName"); [_name, typeOf _this] select (_name == "") };
+                [[_from vectorAdd ((_to vectorDiff _from) vectorMultiply 0.5), _row] call _fnStacked,
+                    format ["LINK  %1 + %2  by %3", [_siteA] call aegism_fnc_siteName, [_siteB] call aegism_fnc_siteName,
+                        switch (_type) do {
+                            case "shared": { format ["%1 (in both)", _a call _fnVehicleName] };
+                            case "pair": { format ["%1 synced to %2", _a call _fnVehicleName, _b call _fnVehicleName] };
+                            default { "their modules" };
+                        }],
+                    [1, 1, 1, 0.95], AEGISM_SMALL_TEXT] call _fnText;
+                if (_type == "pair" && {!isNull _a} && {!isNull _b}) then {
+                    [(ASLToAGL getPosASLVisual _a) vectorAdd [0, 0, 2], (ASLToAGL getPosASLVisual _b) vectorAdd [0, 0, 2], [1, 1, 1, 0.6], 5] call _fnDashed;
+                };
+            };
+        } forEach (_site getVariable ["AEGISM_links", []]);
+    };
+} forEach _allSites;
 
 // --- Engagement lines; per target and per system role, the most urgent ---
 // (Keyed by contact key and vehicle netId: a HashMap can't key on objects.)
@@ -293,7 +261,7 @@ private _byRole = createHashMap;    // [system netId, role] -> [urgency, label, 
     _byRole set [_roleKey, [_best, _bestLabel, _queued, _bestColor]];
 } forEach _engagements;
 
-// Last Resort Only: dashed orange.
+// Held back by its Engagement Mode: dashed orange.
 {
     _x params ["_system", "_target"];
     private _from = ASLToAGL eyePos _system;
@@ -400,15 +368,13 @@ private _fnSiteStats = {
             _statusParts pushBack format ["STANDALONE, %1 tracks", count (_vehicle getVariable ["AEGISM_pooledContacts", createHashMap])];
         } else {
             ([_network] call _fnSiteStats) params ["_siteRadars", "_siteOthers", "_siteTracks"];
-            private _siteName = vehicleVarName _network;
-            private _siteTag = ["SITE " + _siteName, "SITE"] select (_siteName == "");
+            private _siteTag = toUpper ([_network] call aegism_fnc_siteName);
             private _linkedSites = count (_network getVariable ["AEGISM_linkSites", [_network]]);
             if (_linkedSites > 1) then {
                 private _lead = _network getVariable ["AEGISM_linkLead", _network];
-                private _leadName = vehicleVarName _lead;
                 private _links = _network getVariable ["AEGISM_links", []];
                 _siteTag = _siteTag + format [" (LINKED, %1 Sites by %2 link%3, %4)", _linkedSites, count _links, ["s", ""] select (count _links == 1),
-                    if (_lead == _network) then { "coordinating" } else { format ["coordinated by %1", ["another Site", "SITE " + _leadName] select (_leadName != "")] }];
+                    if (_lead == _network) then { "coordinating" } else { format ["coordinated by %1", toUpper ([_lead] call aegism_fnc_siteName)] }];
                 // This vehicle forms one of the links.
                 if ((_links findIf { (_x select 0) in ["shared", "pair"] && {(_x select 1) == _vehicle || {(_x select 2) == _vehicle}} }) != -1) then {
                     _siteTag = "LINK  " + _siteTag;

@@ -3,33 +3,8 @@ Function: aegism_intercept_fnc_turretConfig
 
 Description:
     One turret's config, resolved once per vehicle type + turret path and
-    cached ("AEGISM_cacheTurrets"). CBA_fnc_getTurret walks the turret tree
-    in SQF, and turretPoints/turretCanPoint/barrelDirection each did that on
-    every call -- every frame for a CIWS.
-
-        muzzleGun / muzzleLauncher - the memory point rounds/missiles leave
-            from: gunBeg then missileBeg for a gun, the reverse for a
-            launcher -- the first that exists in the model ("" if neither)
-        camera - the aiming camera lockCameraTo points: uavCameraGunnerPos
-            (unmanned turret) or memoryPointGunnerOptics ("" if neither)
-        minElev / maxElev - elevation limits, degrees
-        barrelPairs - [beginning, end] memory point names of the barrel
-            (gunBeg/gunEnd, missileBeg/missileEnd) that both exist
-        traverseRate / elevateRate - how fast it turns, degrees per second:
-            maxHorizontalRotSpeed / maxVerticalRotSpeed, in the config's own
-            unit of 45 degrees per second (0 if not set). Logged once per
-            vehicle type and turret (TURRET-RATE).
-        minTurn / maxTurn - traverse limits, degrees from the vehicle's
-            forward, POSITIVE TO THE LEFT: the Ghost Hawk's left door gun
-            is minTurn 15, maxTurn 160, initTurn 90, its right one -160,
-            -15, -90 (vanilla Heli_Transport_01 config). A span of 360 or
-            more turns all the way round.
-        mount - what the turret can do at all: "trainable" (traverses and
-            elevates), "elevating" (fixed bearing), "traversing" (fixed
-            elevation) or "fixed" (neither -- a vertical launch cell, a
-            hull-fixed launcher). An axis moves if its limits span more
-            than zero and its rate is set. A weapon on the driver's path
-            ([-1]) reads the vehicle's own config, which has neither.
+    cached ("AEGISM_cacheTurrets").
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _vehicle - the vehicle <OBJECT>

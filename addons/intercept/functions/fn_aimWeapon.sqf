@@ -3,82 +3,9 @@ Function: aegism_intercept_fnc_aimWeapon
 
 Description:
     Full aim solve for one System weapon: slews its turret toward the
-    intercept point (lockCameraTo on that turret, see aegism_intercept_fnc_
-    lockTurret) and reports whether the barrel is aligned closely enough to
-    fire. Each lock stamps the turret's "lockAt" (aegism_intercept_fnc_
-    turretState); aegism_intercept_fnc_engagementLoop hands the turret back
-    to its crew once that goes stale.
-
-    Launchers are solved here every engagement tick from the moment a target
-    is assigned (including the crew reaction window). A CIWS gun is solved
-    here by its per-frame tracker (aegism_intercept_fnc_ciwsTrack) every
-    AEGISM_CIWS_SOLVE_INTERVAL s and steered in between from the "solve" this
-    stores.
-
-    Aim point:
-        ciws - where the unguided round meets the target, raised for drop
-            (aegism_intercept_fnc_computeLeadPoint)
-        launcher - the closest direction the turret can reach to where the
-            missile (on its flight simulated from config) meets the target
-            (aegism_intercept_fnc_launchSolution): the intercept itself, so
-            it doesn't leave the rail and turn hard, or the turret's limit
-    When there is no feasible intercept (the target is receding faster than
-    the round can close, or the meeting point is beyond the weapon's reach)
-    the turret tracks the target itself and the weapon is not aligned.
-
-    Alignment:
-        ciws - aegism_intercept_fnc_ciwsGate: the intercept inside the gun's
-            open-fire range (aegism_intercept_fnc_openFireRange: where one
-            burst still hits with doctrine ciwsOpenFireChance, from the gun's
-            measured accuracy, the round's flight and reach, and the hit
-            radius), and the barrel's error at the intercept
-            within the target's size to the gun (aegism_intercept_fnc_
-            targetHitRadius: an aircraft's half-size; a munition's body as
-            seen along the line of fire, plus the round's own blast or
-            proximity radius) plus the gun's own spread there (the current
-            fire mode's CfgWeapons dispersion), with the last-ditch rule.
-            An unguided munition's path is projected on gravity alone --
-            exact for artillery (no drag), and the same projection aegism_
-            intercept_fnc_canEngage judges reach with.
-        launcher - by the way to launch that kills soonest (aegism_
-            intercept_fnc_launchSolution):
-            "now" / "fixed" - at once, along the barrel as it points (a
-                vertical launch cell; a turret still swinging round, only
-                when waiting for it would be too late to intercept)
-            "onBore" / "slew" - barrel within AEGISM_AIM_ON_TARGET degrees
-                of the launch direction, OR the turret has stopped closing
-                on it (the angle hasn't shrunk for AEGISM_AIM_SETTLE_TICKS
-                checks in a row: trailing a fast-moving lead point, or
-                stopped at its limit), with the barrel's own angle off the
-                intercept still inside the off-bore limit for the way it
-                launches (the missile's post-launch cone, and Max Off-Bore
-                Launch While Swinging or At Turret Limit: aegism_intercept_
-                fnc_launchSolution)
-            An off-bore launch also needs its first leg clear -- to where
-            the missile's turn ends, or (its turn not known yet) its own
-            arming distance (CfgAmmo fuseDistance) straight along the
-            barrel -- traced at most every AEGISM_LAUNCH_PATH_REUSE s
-            (LAUNCH-PATH-BLOCKED). The plan is kept as the turret's
-            "launchPlan" for the FIRE log.
-    Barrel direction: aegism_intercept_fnc_barrelDirection.
-
-    CIWS aim carries the gun's own spotting correction for this target class
-    (turret state "corrections", [lead time s, elevation rad], aegism_
-    intercept_fnc_ciwsSpot). The prediction each solve uses is recorded as
-    the turret's "track" [time, position, velocity, acceleration] (and its
-    flight time, "trackTof") for aegism_intercept_fnc_onSystemFired to hand
-    each round.
-
-    Shared turrets: a vehicle whose launcher and gun sit on the same turret
-    (e.g. the Cheetah) would have both engagement loops issuing competing
-    aim orders. The CIWS loop owns the turret while it is actively aiming; a
-    launcher on the same turret skips its own lock for AEGISM_CIWS_AIM_
-    OWNERSHIP seconds and only checks alignment.
-
-    Records [angle, tolerance, time, target, feasible, aligned, aimPoint] as
-    the turret's "aim_<role>" -- per turret, so two guns on one vehicle each
-    gate their own bursts (one record per role used to be shared by every
-    turret: a second gun read the first's alignment and never fired).
+    intercept point and reports whether the barrel is aligned closely enough
+    to fire.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the firing System vehicle <OBJECT>
@@ -128,7 +55,7 @@ private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 ([_system, _turretPath, _role] call aegism_intercept_fnc_turretPoints) params ["_origin", "_camera"];
 private _cameraOffset = _camera vectorDiff _origin;
 
-// --- Launcher (see header) ---
+// --- Launcher (see notes) ---
 if (!_isCiws) exitWith {
     // An incoming munition's impact: firing before the turret is round is
     // only for one it would otherwise miss.
@@ -136,7 +63,13 @@ if (!_isCiws) exitWith {
     private _timeToImpact = if (_launcherTargetClass in ["missile", "rocket", "bomb", "artilleryShell"]) then {
         [_target, _launcherTargetClass, [getPosASL _system]] call aegism_intercept_fnc_timeToImpact
     } else { 1e10 };
-    ([_system, _weaponInfo, _target, _origin, true, true, true, 0, false, _timeToImpact] call aegism_intercept_fnc_launchSolution)
+    // An unguided round is projected on gravity, as the coordinator's check
+    // and its plan project it (aegism_intercept_fnc_canEngage, aegism_
+    // intercept_fnc_planShot): the three then agree on when a shot is on.
+    // On its sampled acceleration the first tick on each new rocket had
+    // none yet, and saw its meeting point out of reach (NO-SOLUTION).
+    private _ballistic = _launcherTargetClass in ["artilleryShell", "rocket", "bomb"];
+    ([_system, _weaponInfo, _target, _origin, true, true, !_ballistic, 0, _ballistic, _timeToImpact] call aegism_intercept_fnc_launchSolution)
         params ["_feasible", "_reason", "_way", "_launchDir", "_tof", "_slewTime", "", "_turnTime", "_calibrated", "", "_interceptDistance", "_turnEnd", "_leadDir", "_cone", "_reachDir"];
     // The turret keeps swinging to the closest direction it can reach
     // whichever way wins now: "now" is decided again every tick, and waiting
@@ -162,7 +95,7 @@ if (!_isCiws) exitWith {
         (_way in ["now", "fixed"]) || {_angle <= AEGISM_AIM_ON_TARGET} || {_notClosing >= AEGISM_AIM_SETTLE_TICKS && {_barrelOffBore <= _cone}}
     };
 
-    // Off-bore: the first leg of its flight has to be clear (see header).
+    // Off-bore: the first leg of its flight has to be clear (see notes).
     if (_aligned && {_barrelOffBore > AEGISM_AIM_ON_TARGET}) then {
         (_ts getOrDefault ["launchPath", [-1e9, objNull, true]]) params ["_checkedAt", "_checkedTarget", "_clear"];
         if (CBA_missionTime - _checkedAt > AEGISM_LAUNCH_PATH_REUSE || {_checkedTarget != _target}) then {
@@ -220,7 +153,7 @@ if (_elevationCorrection != 0) then {
     };
 };
 
-// The gun owns its turret while it aims (see header).
+// The gun owns its turret while it aims (see notes).
 _ts set ["ciwsAimAt", CBA_missionTime];
 if ((_system turretLocal _turretPath) || {CBA_missionTime - (_ts getOrDefault ["lockAt", -1e9]) >= AEGISM_REMOTE_LOCK_INTERVAL}) then {
     [_system, _turretPath, _aimPoint vectorAdd _cameraOffset] call aegism_intercept_fnc_lockTurret;

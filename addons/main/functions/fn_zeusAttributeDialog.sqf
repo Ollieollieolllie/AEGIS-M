@@ -2,31 +2,9 @@
 Function: aegism_fnc_zeusAttributeDialog
 
 Description:
-    Opens a Zeus dialog (Zeus Enhanced, zen_dialog_fnc_create) for one set of
-    AEGIS-M Eden attributes on one object -- the Site module's own settings,
-    or a vehicle's AEGIS-M overrides -- built straight from that attribute
-    config, so Zeus shows exactly what Eden does: every attribute's display
-    name, tooltip and choices, with the object's CURRENT values filled in
-    (every row forces its value: ZEN would otherwise show whatever was last
-    confirmed in a dialog of the same title, i.e. another Site's values).
-
-        Combo - a list of its Values (a value set by the attribute's own
-            expression as true/false shows as its "on"/"off" entry)
-        Checkbox - a checkbox
-        Edit - a text box (a number, or blank)
-
-    ZEN dialogs have no headings, so Eden's section headings (SubCategory)
-    go into each row's tooltip, and a name used in two sections ("Max Range
-    (m)" for launchers and for CIWS) is prefixed with its section.
-
-    On confirm the chosen values go, as [property, value] pairs, to
-    _applyFunction on every machine, and to anyone joining later (one JIP
-    entry per object and function, replaced by each edit): it runs each
-    attribute's own Eden expression, so Zeus and Eden set exactly the same
-    variables, and every machine's copy (what this dialog reads) stays
-    current.
-
-    Without Zeus Enhanced there's no dialog to open: a hint says so.
+    Opens a Zeus Enhanced dialog for one set of AEGIS-M Eden attributes on
+    one object, built from that attribute config.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _target - the object being edited <OBJECT>

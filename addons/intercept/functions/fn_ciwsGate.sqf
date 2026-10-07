@@ -3,30 +3,8 @@ Function: aegism_intercept_fnc_ciwsGate
 
 Description:
     A CIWS gun's fire gate for one aim: whether a round fired now would pass
-    close enough to hit, recorded as the turret's "aim_ciws" [angle,
-    tolerance, time, target, feasible, aligned, aimPoint, inRange] -- what
-    its burst (aegism_intercept_fnc_ciwsBurst) checks every frame. Run on
-    every full solve (aegism_intercept_fnc_aimWeapon) and every steered
-    frame in between (aegism_intercept_fnc_ciwsTrack).
-
-        in range - the intercept inside the gun's open-fire range, and not
-            inside the round's arming distance against a munition (aegism_
-            intercept_fnc_openFireRange). Outside it the gun keeps tracking
-            but never fires, last-ditch or not.
-        aligned - in range, a feasible intercept and the barrel within
-            tolerance: the target's half-size plus the gun's dispersion, as
-            an angle at the intercept distance
-        LAST-DITCH - once the target is due to impact within the gun's own
-            longest burst (doctrine ciwsBurstMax), it also fires as soon as
-            the turret has settled -- stopped closing on the aim point for
-            AEGISM_AIM_SETTLE_TICKS engagement ticks -- wherever that is,
-            as long as it's within AEGISM_LAST_DITCH_MAX_GATES times the
-            gate: there's no later, better shot, and holding fire guarantees
-            the round lands. A Praetorian followed a shell to the ground 0.3
-            degrees off a 0.28-degree gate (1.1x); the cap stops what came
-            after -- the last shell of a salvo took 113 rounds at 6.3
-            degrees (22x the gate), with no chance of a hit. Logged once per
-            target either way (LAST-DITCH / LAST-DITCH-HOLD).
+    close enough to hit, recorded as the turret's "aim_ciws".
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the CIWS vehicle <OBJECT>

@@ -2,32 +2,9 @@
 Function: aegism_fnc_debugCheckSite
 
 Description:
-    On-demand sync/capability sanity check, meant to be run from the Arma
-    debug console (or any script) while testing a mission, rather than
-    reading RPT log output after the fact -- answers "is my radar/launcher
-    actually linked to this Site, and did AEGIS-M even recognize it as
-    something it can use" directly and immediately.
-
-    With no argument, reports on every Site currently registered
-    (AEGISM_allPoolOwners' Network-type entries, i.e. every placed and
-    activated AEGISM_Module_Site). With a specific Site logic object, reports
-    on just that one.
-
-    For each Site: member count, and per member -- its class, whether
-    AEGISM_network actually points back at this Site (catches a vehicle that
-    LOOKS synced in Eden's sync-line view but whose module init never ran or
-    targeted a different Site, e.g. from a stale isGlobal netId issue), and
-    its discovered capability (its sensors with reach and arc, launcher
-    weapon count, CIWS weapon count) -- or "NOT AN AEGIS-M SYSTEM" if
-    aegism_system_fnc_moduleInit never found it to have any qualifying
-    capability at all (the single most common reason "nothing happens": a
-    vehicle synced to the Site that AEGIS-M itself never recognized, e.g.
-    wrong vehicle, no real sensor/missile/CIWS loadout).
-
-    Prints to hint (visible in-game immediately) AND diag_log (so it's also
-    captured in the RPT for later reference) -- deliberately not gated
-    behind the "aegism_main_debugDraw" CBA setting, since this is a one-shot
-    manual check a mission tester runs on demand, not a continuous overlay.
+    On-demand sync and capability check of a Site or vehicle, run from the
+    debug console.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _site - a specific Site logic object to check, or nothing/objNull to

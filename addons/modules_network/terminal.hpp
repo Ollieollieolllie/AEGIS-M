@@ -1,0 +1,23 @@
+// Control ids of a terminal's screen (aegism_network_fnc_terminalOpen).
+#define AEGISM_TERMINAL_GROUP_IDC 77801
+#define AEGISM_TERMINAL_BOARD_IDC 77802
+#define AEGISM_TERMINAL_LIST_IDC 77803
+#define AEGISM_TERMINAL_FORM_IDC 77804
+#define AEGISM_TERMINAL_TAB_STATUS_IDC 77805
+#define AEGISM_TERMINAL_TAB_SETTINGS_IDC 77806
+#define AEGISM_TERMINAL_APPLY_IDC 77807
+#define AEGISM_TERMINAL_REVERT_IDC 77808
+#define AEGISM_TERMINAL_NOTE_IDC 77809
+#define AEGISM_TERMINAL_HEADING_IDC 77810
+#define AEGISM_TERMINAL_BADGE_IDC 77811
+
+// The screen's colours.
+#define AEGISM_TERMINAL_ACCENT [0.31, 0.76, 0.97, 1]
+#define AEGISM_TERMINAL_DIM [0.56, 0.64, 0.68, 1]
+#define AEGISM_TERMINAL_ACCENT_HEX "#4FC3F7"
+#define AEGISM_TERMINAL_DIM_HEX "#90A4AE"
+#define AEGISM_TERMINAL_WARN_HEX "#FFA726"
+
+// A player has to be this close to a terminal for the server to take a
+// change from it, m.
+#define AEGISM_TERMINAL_REACH 10

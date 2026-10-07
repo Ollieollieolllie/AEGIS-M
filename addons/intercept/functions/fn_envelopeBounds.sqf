@@ -4,9 +4,8 @@ Function: aegism_intercept_fnc_envelopeBounds
 Description:
     The range and height limits of one weapon under the resolved doctrine --
     the intersection aegism_intercept_fnc_inEnvelope tests against (see its
-    header for the rules). Split out so a caller testing many positions for
-    one weapon (the Site coordinator's layered-reserve plan) resolves them
-    once.
+    header for the rules).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _engagementSettings - resolved doctrine <HASHMAP>

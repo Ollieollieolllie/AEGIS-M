@@ -4,6 +4,7 @@ Function: aegism_intercept_fnc_elevationAngle
 Description:
     Elevation of one ASL position as seen from another, in degrees above
     (positive) or below (negative) the horizontal.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _from - observer position, ASL <ARRAY>

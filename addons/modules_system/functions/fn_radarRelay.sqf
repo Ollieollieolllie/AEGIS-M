@@ -2,34 +2,10 @@
 Function: aegism_system_fnc_radarRelay
 
 Description:
-    The relay scan. While its Site is quiet, the turning radars searching in
-    bursts (aegism_system_fnc_turningRadar; Radar Emission Intermittent, or
-    Automatic with nothing going on) work as one radar whose beam is handed
-    from vehicle to vehicle:
-
-        - a lap steps round the whole circle one arc at a time -- as many
-          arcs as it takes, each a little under the narrowest radar's arc
-          (AEGISM_RELAY_ARC_SHARE), spread evenly (four of 90 degrees for
-          120-degree radars);
-        - each arc is lit by one radar for Search Burst Seconds On, and after
-          a lap they're all silent for Search Burst Seconds Off;
-        - each arc goes to whichever radar can swing onto it soonest, other
-          than the one lit before it (unless it's the only one), picked a
-          step ahead -- so it swings there while silent, and lights on it.
-
-    Every bearing is scanned once a lap and no arc twice, one radar emits at
-    a time, and the emitter keeps moving from vehicle to vehicle. (Bursting
-    each on its own timer while turning, a radar lit up wherever its turn
-    had got to -- often an arc another had just scanned, while one nobody
-    had waited.)
-
-    The timing is the mission clock, the same for every radar. The picks are
-    shared on the Site's link group lead ("AEGISM_radarRelay": [lap, step] ->
-    radar netId), made by whichever radar asks first. A radar that's cued,
-    guiding, on alert, holding or shut down for an anti-radiation missile is
-    out of the relay -- it's emitting anyway, or mustn't.
-
-    Called by aegism_system_fnc_emconUpdate for a quiet radar in those modes.
+    The relay scan: while their Site is quiet, its turning radars searching
+    in bursts work as one radar whose beam is handed from vehicle to
+    vehicle.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the radar vehicle <OBJECT>

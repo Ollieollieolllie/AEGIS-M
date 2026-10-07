@@ -4,40 +4,8 @@ Function: aegism_fnc_perfLog
 Description:
     Writes one PERF line to the RPT summarising what AEGIS-M did on this
     machine since the last one (the counters in AEGISM_perfCounts, see
-    perf.hpp), then resets them. Registered on the server every
-    AEGISM_PERF_INTERVAL seconds (main XEH_postInit) while the CBA setting
-    "RPT Performance Summary" is on. Silent when nothing happened, so an
-    idle mission logs nothing.
-
-    Columns (per interval):
-        coord - Site coordinator runs, total and worst single run (ms);
-            the total by part -- reviewing the claims it has, listing
-            weapons and timing contacts with the layered-reserve plan,
-            assigning; then, apart from the runs, the time spent in the
-            frames between them working out launcher shots ahead, how many
-            such frames, and how many looks at a munition the runs put off
-            for that
-        ticks - engagement loop ticks that had work to do
-        aim - full CIWS/launcher aim solves / CIWS per-frame steers
-        rounds - CIWS rounds tracked, per-frame checks near the target,
-            frames skipped while still in flight, total ms in the round
-            manager
-        canEngage - engageability checks (coordinator + standalone)
-        select - standalone full target re-evaluations
-        fired - Fired events seen / threats among them / ignored as landing
-            clear of every Site
-        tracker - munition tracker checks, total ms
-        sensors - vehicles' sensor reads (aegism_detect_fnc_confidenceLoop):
-            munitions seen across them (aegism_detect_fnc_munitionSeen), the
-            line-of-sight rays traced for that, total ms
-        plan - reserve plan cache hits / rebuilds / intercept solves it ran
-            (aegism_intercept_fnc_assignEngagements' _fnPlanShot)
-        openFire - CIWS open-fire range recalculations (aegism_intercept_
-            fnc_openFireRange; at most one a second per gun and target type)
-        fps - the server's frames over the whole interval, timed every
-            frame (main XEH_postInit): average fps, the worst frame (ms),
-            and how many frames took longer than PERF_SLOW_FRAME_MS (below
-            20 fps)
+    perf.hpp), then resets them.
+    Full notes: docs/functions/main.md
 
 Parameters:
     None
@@ -57,16 +25,20 @@ Author:
 private _c = +AEGISM_perfCounts;
 private _active = ((_c select [0, PERF_WORK_COUNT]) findIf { _x > 0 }) != -1;
 private _span = diag_tickTime - (missionNamespace getVariable ["AEGISM_perfWindowStart", diag_tickTime - 10]);
+private _missionSpan = CBA_missionTime - (missionNamespace getVariable ["AEGISM_perfWindowMission", CBA_missionTime]);
+private _gameSpan = time - (missionNamespace getVariable ["AEGISM_perfWindowGame", time]);
 
 AEGISM_perfCounts = [];
 AEGISM_perfCounts resize [PERF_COUNT, 0];
 missionNamespace setVariable ["AEGISM_perfWindowStart", diag_tickTime];
+missionNamespace setVariable ["AEGISM_perfWindowMission", CBA_missionTime];
+missionNamespace setVariable ["AEGISM_perfWindowGame", time];
 
 if (!_active) exitWith {};
 
 private _ms = { (round (_this * 10)) / 10 };
 
-diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms; review %28 / reserve %29 / assign %30ms) + %32ms in %31 frames between, %33 looks put off | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %27 rays, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames",
+diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coord %1 runs %2ms (max %3ms; review %28 / reserve %29 / assign %30ms) + %32ms in %31 frames between, %33 looks put off | ticks %4 | aim %5 solves / %6 steers | rounds %7 tracked, %8 checks, %9 waits, %10ms | canEngage %11 | select %12 | fired %13 / threats %14 / ignored %15 | tracker %16 checks, %18ms | sensors %17 munitions seen, %27 rays, %24ms | plan %19 hit / %20 built / %26 solves | openFire %23 built | fps %21 avg, worst frame %22ms, %25 slow frames | clock %34s mission / %35s game in %36s real",
     _c select PERF_COORD_RUNS, (_c select PERF_COORD_MS) call _ms, (_c select PERF_COORD_MAX_MS) call _ms,
     _c select PERF_ENGAGE_TICKS,
     _c select PERF_AIM_SOLVES, _c select PERF_STEER_FRAMES,
@@ -79,4 +51,5 @@ diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " PERF: coo
     round ((_c select PERF_FRAMES) / (_span max 0.001)), round (_c select PERF_FRAME_MAX_MS),
     _c select PERF_OPEN_FIRE_BUILDS, (_c select PERF_SENSOR_MS) call _ms,
     _c select PERF_SLOW_FRAMES, _c select PERF_PLAN_SOLVES, _c select PERF_LOS_RAYS,
-    (_c select PERF_COORD_REVIEW_MS) call _ms, (_c select PERF_COORD_RESERVE_MS) call _ms, (_c select PERF_COORD_ASSIGN_MS) call _ms, _c select PERF_COORD_CARRIED, (_c select PERF_COORD_AHEAD_MS) call _ms, _c select PERF_COORD_PUT_OFF];
+    (_c select PERF_COORD_REVIEW_MS) call _ms, (_c select PERF_COORD_RESERVE_MS) call _ms, (_c select PERF_COORD_ASSIGN_MS) call _ms, _c select PERF_COORD_CARRIED, (_c select PERF_COORD_AHEAD_MS) call _ms, _c select PERF_COORD_PUT_OFF,
+    _missionSpan call _ms, _gameSpan call _ms, _span call _ms];

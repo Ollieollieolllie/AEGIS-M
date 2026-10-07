@@ -3,11 +3,8 @@ Function: aegism_intercept_fnc_fireModeStats
 
 Description:
     The config numbers of the fire mode a turret's weapon is in right now:
-    its CfgWeapons dispersion and reloadTime. The mode comes from weaponState
-    each call (it can change); the numbers are cached per weapon + mode
-    ("AEGISM_cacheModes"). weaponState reports a weapon with no modes[] of
-    its own under its own class name, which isn't a sub-class -- the weapon
-    class itself is then the mode.
+    its CfgWeapons dispersion and reloadTime.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the vehicle <OBJECT>

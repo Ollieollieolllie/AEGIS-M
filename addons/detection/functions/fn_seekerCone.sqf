@@ -4,18 +4,8 @@ Function: aegism_detect_fnc_seekerCone
 Description:
     How far off its line of flight an incoming missile's guidance can be on
     a target -- what it could be homing on when its target can't be read
-    (aegism_detect_fnc_munitionThreat). From its config, cached per ammo
-    type ("AEGISM_cacheSeekerCone"):
-
-        ACE-guided (the ammo declares its own ace_missileguidance class,
-            enabled = 1) - its ACE seekerAngle, a half-angle
-        engine-guided (CfgAmmo simulation shotMissile, maneuvrability > 0) -
-            missileKeepLockedCone, else missileLockCone (the same reading as
-            aegism_intercept_fnc_missileAgility): vanilla M_Scalpel_AT 60,
-            Missile_AGM_01_F 20, Missile_AGM_02_F 30
-        unguided - a shotMissile that can't steer (maneuvrability 0 and no
-            ACE guidance: vanilla Rocket_03_HE_F, Rocket_04_HE_F), or any
-            other simulation
+    (aegism_detect_fnc_munitionThreat).
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _ammo - CfgAmmo class <STRING>

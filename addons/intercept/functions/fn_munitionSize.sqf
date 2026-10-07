@@ -2,21 +2,9 @@
 Function: aegism_intercept_fnc_munitionSize
 
 Description:
-    Reads a CfgAmmo entry's indirectHitRange (blast radius, metres) as a
-    real-config proxy for a munition's physical size/destructive class --
-    used both to size an incoming contact's own munition (how big is the
-    missile bearing down on us) and an interceptor's loaded ammo (how big
-    a warhead does this launcher's weapon carry), so aegism_intercept_fnc_
-    assignEngagements can match one against the other without a mission
-    designer hand-tuning a "small/medium/large" tier per class.
-
-    indirectHitRange is what the engine uses for splash damage, so it's set
-    consistently across vanilla and modded explosive ammo, and scales with
-    warhead size. hit (direct-hit damage) is NOT used here -- it's noisy
-    across ammo roles. Plain (non-explosive) gun ammo returns 0.
-
-    Cached per ammo class ("AEGISM_cacheMunitionSize"): the coordinator
-    sizes every contact every cycle.
+    A CfgAmmo entry's indirectHitRange (blast radius, m), used as a
+    munition's size class.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _ammoClassName - a CfgAmmo classname <STRING>

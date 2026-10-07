@@ -2,54 +2,9 @@
 Function: aegism_network_fnc_linkSites
 
 Description:
-    Links Sites into one, and splits them again once every link between
-    them is gone. Two Sites are linked by any of these, as many as there are:
-        shared - a live AEGIS-M System synced to both (e.g. a radar both
-            connect to)
-        pair - a live System of one synced to a live System of the other
-            (a vehicle-to-vehicle sync line; to a crewman counts as to his
-            vehicle) -- held while both are alive
-        modules - the two Site modules synced to each other
-    Links chain: A linked to B and B to C make one group of three. Losing one
-    of several links keeps the group (logged, LINK-CHANGE); losing the last
-    splits it (UNLINK).
-
-    A linked group works as one Site:
-        - one contact pool and one assignment ledger: every Site in it holds
-          the same "AEGISM_pooledContacts" and "AEGISM_claims" HashMaps, so
-          each Site's sensors feed the group and each Site's vehicles see
-          the group's assignments
-        - one coordinator, its lead: the Site ticked "Shared Site
-          Coordinator", or, if none is, the first of them set up. It assigns
-          every target across all the group's vehicles ("AEGISM_
-          groupMembers", aegism_intercept_fnc_assignEngagements), so two of
-          its weapons are never put on one target unless that's the plan (a
-          CIWS alongside a launcher). The other Sites' coordinators stand by.
-          Its Target Priority orders the group's targets.
-        - settings: with a Shared Site Coordinator, its settings apply to
-          every vehicle of the group (aegism_fnc_siteSettingsSource); without
-          one, each vehicle keeps its own Site's. Every vehicle of a group
-          that changes is re-resolved at once.
-        - it protects all its vehicles: a munition threatening any of them
-          is a threat to the group (aegism_detect_fnc_munitionThreat), and
-          its Sites' alarms sound together (incoming, going live).
-    More than one Site of a group ticked as coordinator (Eden and Zeus untick
-    the others, so only a link made later can do that): the first set up
-    leads, logged (LINK).
-
-    When the group splits, each part gets its own copy of the contacts and
-    keeps its own vehicles' assignments (a missile already in flight is
-    still followed), and its own settings again. Logged: LINK, LINK-CHANGE,
-    UNLINK.
-
-    Run from every Site's coordinator tick (server, every 0.5 s); works out
-    every Site's group once a frame. Each Site logic carries:
-        AEGISM_linkLead - its group's lead (itself while not linked)
-        AEGISM_linkSites - its group's Sites ([itself])
-        AEGISM_groupMembers - every vehicle of its group (its own members)
-        AEGISM_links - every link holding its group together: [type, a, b]
-            -- ["shared", vehicle, objNull], ["pair", vehicle, vehicle] (one
-            on each Site), ["modules", Site, Site]
+    Links Sites into one, and splits them again once every link between them
+    is gone.
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
     None
@@ -93,7 +48,10 @@ private _old = _sites apply {
     [_x getVariable ["AEGISM_linkLead", _x], _x getVariable ["AEGISM_linkSites", [_x]], _x getVariable ["AEGISM_pooledContacts", createHashMap], _x getVariable ["AEGISM_claims", createHashMap], _x getVariable ["AEGISM_links", []]]
 };
 
-// The links between every two Sites: [i, j, [link, ...]].
+// The links between every two Sites: [i, j, [link, ...]]. A link is [kind,
+// a, b, the one Site, the other]: "shared", a vehicle of both (a); "pair",
+// a vehicle of the one (a) synced to a vehicle of the other (b); "modules",
+// the two Site modules synced to each other (a, b).
 private _edges = [];
 for "_i" from 0 to _count - 2 do {
     for "_j" from _i + 1 to _count - 1 do {
@@ -101,21 +59,21 @@ for "_i" from 0 to _count - 2 do {
         private _siteB = _sites select _j;
         private _linkersA = _linkersOf select _i;
         private _linkersB = _linkersOf select _j;
-        private _links = (_linkersA arrayIntersect _linkersB) apply { ["shared", _x, objNull] };
+        private _links = (_linkersA arrayIntersect _linkersB) apply { ["shared", _x, objNull, _siteA, _siteB] };
         {
             _x params ["_vehicle", "_synced"];
             if !(_vehicle in _linkersB) then {
-                { if (_x in _linkersB && {!(_x in _linkersA)}) then { _links pushBackUnique ["pair", _vehicle, _x]; }; } forEach _synced;
+                { if (_x in _linkersB && {!(_x in _linkersA)}) then { _links pushBackUnique ["pair", _vehicle, _x, _siteA, _siteB]; }; } forEach _synced;
             };
         } forEach (_vehicleSyncsOf select _i);
         // A sync line seen from the other end only.
         {
             _x params ["_vehicle", "_synced"];
             if !(_vehicle in _linkersA) then {
-                { if (_x in _linkersA && {!(_x in _linkersB)}) then { _links pushBackUnique ["pair", _x, _vehicle]; }; } forEach _synced;
+                { if (_x in _linkersA && {!(_x in _linkersB)}) then { _links pushBackUnique ["pair", _x, _vehicle, _siteA, _siteB]; }; } forEach _synced;
             };
         } forEach (_vehicleSyncsOf select _j);
-        if (_siteB in (_syncedOf select _i) || {_siteA in (_syncedOf select _j)}) then { _links pushBack ["modules", _siteA, _siteB]; };
+        if (_siteB in (_syncedOf select _i) || {_siteA in (_syncedOf select _j)}) then { _links pushBack ["modules", _siteA, _siteB, _siteA, _siteB]; };
         if (_links isNotEqualTo []) then { _edges pushBack [_i, _j, _links]; };
     };
 };
@@ -152,13 +110,16 @@ for "_i" from 0 to _count - 1 do {
 
 // A link, readable: "AN/MPQ-105 Radar (synced to both)".
 private _fnLinkText = {
-    params ["_type", "_a", "_b"];
+    params ["_type", "_a", "_b", ["_siteA", objNull], ["_siteB", objNull]];
+    private _between = format ["%1 <-> %2", [_siteA] call aegism_fnc_siteName, [_siteB] call aegism_fnc_siteName];
     switch (_type) do {
-        case "shared": { format ["%1 %2 (synced to both)", _a, typeOf _a] };
-        case "pair": { format ["%1 %2 -- %3 %4", _a, typeOf _a, _b, typeOf _b] };
-        default { format ["%1 and %2 synced to each other", _a, _b] };
+        case "shared": { format ["%1 by %2 %3, a vehicle of both", _between, _a, typeOf _a] };
+        case "pair": { format ["%1 by %2 %3 synced to %4 %5", _between, _a, typeOf _a, _b, typeOf _b] };
+        default { format ["%1 by their modules, synced to each other", _between] };
     }
 };
+// A group's Sites, readable: "Site 1 (grid 045123), Site 3 (grid 046121)".
+private _fnSiteNames = { (_this apply { [_x, true] call aegism_fnc_siteName }) joinString ", " };
 
 {
     _x params ["_indices", "_links"];
@@ -223,11 +184,11 @@ private _fnLinkText = {
 
         if (count _groupSites > 1) then {
             diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LINK: Sites %1 now work as one, linked by %2 link(s): %3 -- %4 coordinates every target across all %5 vehicle(s); %6; contacts and assignments are shared, and their alarms sound together.%7",
-                _groupSites, count _links, (_links apply { _x call _fnLinkText }) joinString "; ", _lead, count _groupMembers,
-                ["each vehicle keeps its own Site's settings (no Shared Site Coordinator)", format ["%1 is the Shared Site Coordinator: its settings apply to every vehicle of the group", _lead]] select (_lead getVariable ["sharedCoordinator", false]),
-                ["", format [" WARNING: %1 are all ticked Shared Site Coordinator -- %2, set up first, leads.", _coordinators, _lead]] select (count _coordinators > 1)];
+                _groupSites call _fnSiteNames, count _links, (_links apply { _x call _fnLinkText }) joinString "; ", [_lead] call aegism_fnc_siteName, count _groupMembers,
+                ["each vehicle keeps its own Site's settings (no Shared Site Coordinator)", format ["%1 is the Shared Site Coordinator: its settings apply to every vehicle of the group", [_lead] call aegism_fnc_siteName]] select (_lead getVariable ["sharedCoordinator", false]),
+                ["", format [" WARNING: %1 are all ticked Shared Site Coordinator -- %2, set up first, leads.", _coordinators call _fnSiteNames, [_lead] call aegism_fnc_siteName]] select (count _coordinators > 1)];
         } else {
-            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " UNLINK: Site %1 works on its own again, with its own settings -- %2. It keeps its own vehicles' assignments and a copy of the contacts.", _lead,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " UNLINK: %1 works on its own again, with its own settings -- %2. It keeps its own vehicles' assignments and a copy of the contacts.", [_lead, true] call aegism_fnc_siteName,
                 if (_lost isEqualTo []) then { "its last link is gone" } else { "lost " + ((_lost apply { _x call _fnLostText }) joinString "; ") }];
         };
 
@@ -238,7 +199,7 @@ private _fnLinkText = {
         // The same group, its links changed: one of several lost (still
         // linked by the rest), or a new one.
         if (count _groupSites > 1 && {_lost isNotEqualTo [] || {_gained isNotEqualTo []}}) then {
-            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LINK-CHANGE: Sites %1 still work as one, linked by %2 link(s)%3%4.", _groupSites, count _links,
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " LINK-CHANGE: Sites %1 still work as one, linked by %2 link(s)%3%4.", _groupSites call _fnSiteNames, count _links,
                 ["", " -- lost " + ((_lost apply { _x call _fnLostText }) joinString "; ")] select (_lost isNotEqualTo []),
                 ["", " -- new " + ((_gained apply { _x call _fnLinkText }) joinString "; ")] select (_gained isNotEqualTo [])];
         };

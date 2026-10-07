@@ -2,38 +2,9 @@
 Function: aegism_intercept_fnc_weaponKinematics
 
 Description:
-    Everything AEGIS-M reads from config about what a weapon fires, read once
-    per weapon + magazine and cached ("AEGISM_cacheKinematics"): the lead
-    solver, aim, fuse and burst all used to re-read these on every call --
-    ten or more config lookups per aim, every frame.
-
-        v0 - launch speed: CfgMagazines initSpeed, overridden per engine
-            rules by CfgWeapons initSpeed (> 0 replaces, < 0 multiplies)
-        drag - |CfgAmmo airFriction| (guns; the lead solver's drag model)
-        thrust, thrustTime, initTime - a missile's motor: CfgAmmo thrust
-            (m/s^2), how long it burns, and how long after launch it lights
-        missileFriction - a missile's CfgAmmo airFriction, which is positive
-            (a bullet's is negative); 0 with artilleryLock, which the engine
-            says ignores it
-        timeToLive - how long the round flies (0 = unset): CfgAmmo
-            timeToLive, or, for a round that turns into an airburst or
-            another round first, until then (aegism_intercept_fnc_ammoBurst)
-        lockCone - CfgAmmo missileLockCone (180 if unset)
-        fuseDistance - CfgAmmo fuseDistance (arming distance)
-        guided - CfgAmmo simulation is shotMissile
-        blastRadius - CfgAmmo indirectHitRange
-        maxSpeed - CfgAmmo maxSpeed (logged; aegism_intercept_fnc_
-            missileProfile doesn't apply it)
-        proximity - CfgAmmo proximityExplosionDistance: the round's own
-            proximity fuse, m (0 = none)
-        burstAt, burstRadius - an airburst round: when it bursts, s, and its
-            blast, m (0 = none; aegism_intercept_fnc_ammoBurst)
-
-    A missile's flight is simulated from these by aegism_intercept_fnc_
-    missileProfile.
-
-    Each new entry is logged once (KINEMATICS), so the values the solver
-    works with are in the RPT.
+    Everything AEGIS-M reads from config about what a weapon fires, read
+    once per weapon + magazine and cached.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _weaponClass - CfgWeapons class <STRING>

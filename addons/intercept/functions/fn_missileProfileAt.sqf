@@ -2,16 +2,9 @@
 Function: aegism_intercept_fnc_missileProfileAt
 
 Description:
-    One reading off a missile's simulated flight (aegism_intercept_fnc_
-    missileProfile), interpolated between its steps:
-
-        "distance" - metres it has flown _value s after launch
-        "time" - seconds it takes to fly _value metres
-        "speed" - m/s it's going _value s after launch
-
-    Past the end of its simulated life it carries on at its last speed: a
-    caller that cares compares the time with the missile's lifetime itself
-    (the lead solver's feasibility, aegism_intercept_fnc_missileFlightTime).
+    One reading off a missile's simulated flight
+    (aegism_intercept_fnc_missileProfile), interpolated between its steps.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _profile - [step, distances, speeds] from aegism_intercept_fnc_

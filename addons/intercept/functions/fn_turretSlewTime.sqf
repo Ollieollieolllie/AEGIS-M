@@ -3,20 +3,8 @@ Function: aegism_intercept_fnc_turretSlewTime
 
 Description:
     Seconds a turret needs to swing its barrel from where it points now to a
-    world direction: the traverse and elevation it has to cover (in the
-    vehicle's own frame), each at the turret's own config rate (aegism_
-    intercept_fnc_turretConfig), whichever takes longer -- the two axes
-    turn together. The elevation to cover is clamped to the turret's own
-    limits (a barrel stopped at its limit is as close as it gets). A turret
-    that doesn't turn all the way round (minTurn / maxTurn span under 360)
-    can't swing across the gap: its traverse goes the way round inside its
-    limits, which may be the long way.
-
-    Used to judge whether a gun can get onto a target before it lands
-    (aegism_intercept_fnc_canEngage): a Cheetah handed MLRS warheads 0.7s
-    from impact with its barrel 30-112 degrees away chased each in turn,
-    holding fire (LAST-DITCH-HOLD), while carriers it still had time for
-    came down unengaged.
+    world direction.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the vehicle <OBJECT>

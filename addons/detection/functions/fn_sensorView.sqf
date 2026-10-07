@@ -5,35 +5,7 @@ Description:
     What one vehicle's sensors can see of a munition right now: worked out
     once per sensor read (aegism_detect_fnc_confidenceLoop), then every
     tracked munition is judged against it (aegism_detect_fnc_munitionSeen).
-
-    The game's sensors can't target a projectile at all (CfgAmmo has no
-    radar/IR/visual target properties), so AEGIS-M judges munitions itself,
-    by the rules the engine's sensors work to and from the same config (BI's
-    Sensors config reference; aegism_system_fnc_discoverCapabilities reads
-    it). Each munition used to carry an invisible vehicle for the game's
-    sensors to find instead, which they weren't built for: radars reported
-    nothing for ~2.5 s after coming on, the vehicle didn't always stay with
-    its munition, showed no speed while attached (so low munitions vanished
-    in ground clutter), and could be shot. For each sensor that finds
-    things in the air -- radar, IR, visual:
-        on - a radar only while the vehicle's radar emits (isVehicleRadarOn:
-            Radar Emission, aegism_system_fnc_emconUpdate); none through fog
-            thicker than its maxFogSeeThrough
-        where it looks - along the hull, or where its turret points
-            (aegism_detect_fnc_sensorAxis), tilted down by its aimDown; its
-            horizontal and vertical arcs either side of that
-        how far - against the sky its AirTarget range, against the ground
-            its GroundTarget range: the smallest of maxRange, the object
-            view distance x objectDistanceLimitCoef and the view distance x
-            viewDistanceLimitCoef (where those are set), never less than
-            minRange; scaled by its nightRangeCoef toward night (sunOrMoon:
-            1 by day, 0 at night) and by the munition's signature
-            (AEGISM_MUNITION_SIGNATURE, sensing.hpp)
-        ground clutter and limits - passed on for each munition: its
-            groundNoiseDistanceCoef / maxGroundNoiseDistance and
-            min/maxSpeedThreshold, min/maxTrackableSpeed and min/max
-            TrackableATL
-    On a dedicated server the view distances are the server's.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _vehicle - the sensor vehicle <OBJECT>

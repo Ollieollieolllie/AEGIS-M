@@ -2,79 +2,10 @@
 Function: aegism_intercept_fnc_ciwsSpot
 
 Description:
-    Closed-loop spotting for a CIWS gun, the way a real Phalanx corrects its
-    own aim: a sample of its rounds is measured as they pass the PREDICTED
-    target -- the track the aim was solved against when the round was fired
-    (aegism_intercept_fnc_ciwsRounds) -- and what each round says the gun
-    NEEDED is folded into a correction the gun's aim carries (aegism_
-    intercept_fnc_aimWeapon).
-
-    Measured against the prediction, a miss is the gun's own error only:
-    turret lag, the flight-time estimate, drop, zeroing. The target's
-    evasion -- where it went that the prediction didn't foresee -- is kept
-    out of it (it's reported separately, as how far the target strayed from
-    its predicted track). Measured against the real target, a jinking
-    helicopter's escape looked like a gun error and was fed back into the
-    aim.
-
-    The miss is split on two axes square to the gun's line of sight and to
-    each other:
-        ahead - along the predicted target's crossing motion (+ ahead of it,
-            - behind). A lead error of dt seconds misses by crossing speed x
-            dt, so the round's needed lead correction is (its correction at
-            firing) - ahead / crossing speed. Only measurable when the target
-            crossed further than its own size during the round's flight (one
-            coming straight down the barrel needs no lead).
-        high - the part of "up" square to that crossing motion (+ high).
-            Needed elevation correction = (its correction at firing) - high /
-            range; aegism_intercept_fnc_aimWeapon applies it on the same
-            axis. A target whose crossing motion is itself up/down leaves no
-            separate "high" to measure (its weight goes to 0): any error on
-            that axis is the lead's.
-
-    Estimate: a weighted mean of each round's needed correction, one per
-    TARGET CLASS (a lead learned on falling shells isn't a helicopter's),
-    reset when the gun changes ammunition. Each round is weighted by how
-    precisely it measures: a round's own scatter is the gun's dispersion
-    (an angle), so a lead sample's uncertainty grows with range / crossing
-    speed (weight (crossing speed / range)^2), and "high" only exists in
-    proportion to how much of the vertical its axis carries (weight: the
-    square of that). Older rounds fade by AEGISM_SPOT_DECAY per new round
-    (about the last few hundred count), so the correction follows a change
-    -- the vehicle moving, a different engagement geometry -- instead of
-    being outvoted by the whole mission's history. It used to be recomputed
-    from each burst alone: a few rounds, often close in where a metre of
-    miss is many milliradians, swung it from +1.4 to -12.3 mrad between
-    bursts.
-
-    Safeguards (calibration.hpp): a round that misses where the gun now aims
-    by more than AEGISM_SPOT_OUTLIER times the median of its recent rounds'
-    misses is an outlier, left out of the correction, the gun's measured
-    scatter and the burst's SPOTTING averages (counted there instead); a
-    round that says the gun needs more than AEGISM_SPOT_MAX_LEAD of lead or
-    AEGISM_SPOT_MAX_ELEVATION of elevation isn't believed for that; and how
-    far the real target strayed is only believed up to what it could
-    accelerate away in the round's flight. Rounds fired only by the last-
-    ditch rule, off the gate, are never spotted (aegism_intercept_fnc_
-    ciwsRounds).
-
-    Turret state (aegism_intercept_fnc_turretState):
-        estimate - target class -> [round class, lead weight, weighted lead
-            s, elevation weight, weighted elevation rad]
-        corrections - target class -> [lead s, elevation rad]
-        spotStats - burstId -> [rounds, sum ahead m, sum high m, sum target
-            deviation m, deviation samples, outliers], for aegism_intercept_
-            fnc_ciwsBurst's SPOTTING line
-        spotScale - target class -> [round class, its last AEGISM_SPOT_
-            SCALE_ROUNDS rounds' angular misses about where it aimed then],
-            for the outlier check
-        scatter - target class -> [round class, rounds, sum of squared
-            angular miss square to the line of sight -- each round's miss as
-            it would have been with the correction the gun now carries, so
-            an error the correction has taken out isn't scatter -- sum of
-            squared target deviation m, sum of squared flight time s]
-            (fading like the estimate) -- the gun's measured accuracy, for
-            aegism_intercept_fnc_openFireRange
+    Closed-loop spotting for a CIWS gun: its rounds are measured as they
+    pass the predicted target, and what they say the gun needed is folded
+    into a correction its aim carries.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _spot - [system, turretPath, burstId, correction at firing [lead s,

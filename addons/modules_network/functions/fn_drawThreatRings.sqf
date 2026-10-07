@@ -2,64 +2,9 @@
 Function: aegism_network_fnc_drawThreatRings
 
 Description:
-    Draws a Site's threat rings on the map (its "Threat Rings" setting): a
-    ring for each weapon and sensor of every member System, at the reach
-    AEGIS-M itself works to:
-        launcher (red) - its engagement range: the missile's own reach, or
-            the Site's or vehicle's Max Range where that's shorter (aegism_
-            intercept_fnc_envelopeBounds, the limit every engagement is
-            checked against)
-        CIWS (orange) - the gun's own reach, or CIWS Max Range where that's
-            shorter. It opens fire inside that, once a burst is likely
-            enough to hit (aegism_intercept_fnc_openFireRange).
-        sensor (blue) - its config reach against an aircraft (aegism_system_
-            fnc_discoverCapabilities), capped at the view distance where its
-            config caps it (IR, visual). One fixed to the hull with less than
-            360 degrees is drawn as its sector, the way the vehicle faces
-            now; one that turns with a turret as a full ring.
-        protected area (green) - the Site's Protected Area Radius round its
-            module (the area a hostile munition landing in, or guided at
-            anything inside, is a threat to: aegism_detect_fnc_
-            munitionThreat), "Protected area: 750 m".
-    A vehicle's sensors with the same reach and arc share a ring (a radar
-    and its passive receiver), as do its launchers of one weapon. Each ring
-    is a line with a labelled dot on its edge: a sector's in the middle of
-    its arc, a full ring's at north-east -- or, if another label is already
-    there (a radar's and a launcher's ring the same size round the same
-    place), the next clear diagonal (AEGISM_RING_LABEL_BEARINGS).
-
-    A Site linked with others (aegism_network_fnc_linkSites) is drawn with
-    its whole group, as one set, by the group's lead -- so the same weapons
-    and sensors on different Sites merge (below), and a vehicle linking them
-    is drawn once. With a Shared Site Coordinator its Threat Rings setting
-    decides for the whole group; otherwise each Site's own decides whether
-    its vehicles are in it.
-
-    Full rings of one kind with similar reaches on vehicles close together
-    are drawn as one, whatever the weapon or vehicle: every pair's reaches
-    within AEGISM_RING_MERGE_FRACTION of each other, and the vehicles within
-    that fraction of the larger reach of each other (1.6 km for a 16 km
-    Patriot). The ring is centred on their middle and reaches as far as the
-    furthest-reaching of them (each one's reach plus its distance from the
-    middle), so it covers every ring it replaces; its label lists every
-    system on it ("4x MIM-145 Defender: MIM-145 16.0 km | Mk49 Spartan:
-    RIM-116 15.5 km"). A sector is always drawn on its own.
-
-    They're made the way cTab makes a player's markers: "_USER_DEFINED"
-    names, in the side channel, created by one of the Site's crew -- so
-    they're in that side's channel, and players can delete them like their
-    own. Each is built locally and sent once (its last property set with the
-    global command, which broadcasts the whole marker).
-
-    Drawn once -- on the Site's first coordinator tick, when its links are
-    known (aegism_network_fnc_moduleInit) -- they don't follow the vehicles,
-    or go when one is destroyed. Logged (THREAT-RINGS). Their names are kept
-    on the group's lead ("AEGISM_threatRings"): drawing again replaces every
-    ring the group's Sites had, so a Zeus edit of the setting (aegism_
-    network_fnc_zeusApplySite) redraws the group, or just deletes them if
-    none of it draws rings any more.
-
-    Server only.
+    Draws a Site's threat rings on the map (its Threat Rings setting): a
+    ring for each weapon and sensor of every member System.
+    Full notes: docs/functions/modules_network.md
 
 Parameters:
     _logic - the Site logic (any Site of a linked group) <OBJECT>

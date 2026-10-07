@@ -2,32 +2,9 @@
 Function: aegism_intercept_fnc_applyCrewModulation
 
 Description:
-    Derives engagement timing/reliability modifiers from a resolved
-    Crew/Personality data (skillTier x temperament, from AEGISM_Module_
-    Site's own Attributes), per the AEGIS-M
-    README's description of Crew as modulating "the linked doctrine's
-    timing and reliability rather than owning its own numbers" -- the
-    engagement loop and fire/guidance functions never read skillTier or
-    temperament directly, they call this once and use the returned
-    modifiers.
-
-    skillTier sets the baseline reaction time (seconds of hesitation after
-    a target is first acquired, before the first shot) and baseline
-    reliability (probability the crew gets a clean fire command off on a
-    given cycle at all, see aegism_intercept_fnc_fireWeapon -- the actual
-    hit-or-miss outcome from there is the game's own weapon/AI simulation,
-    not anything AEGIS-M fakes). temperament then scales both, plus how
-    eagerly the crew re-engages within a salvo (shotIntervalMult, applied
-    to the doctrine's minShotInterval): aggressive/nervous crews shoot
-    faster but sloppier, cautious crews are slower but steadier, standard
-    is a neutral 1x baseline.
-
-    Automated systems -- crewed by UAV AI (unitIsUAV: Phalanx, RAM, MIM-145,
-    radar units) -- have no human in the loop, so by default none of this
-    applies to them: no reaction delay, every fire cycle goes out (no
-    FIRE-SKIP), and the interval isn't scaled. The crew setting "Crew Skill
-    on Automated Systems" (crewOnAutomated, off by default) applies the full
-    crew model to them as well.
+    Derives engagement timing and reliability modifiers from a resolved
+    Crew/Personality (skill tier x temperament).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _crew - resolved crew data, from aegism_system_fnc_resolveCrew <HASHMAP>

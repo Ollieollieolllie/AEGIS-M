@@ -2,14 +2,9 @@
 Function: aegism_system_fnc_debugCheckCiws
 
 Description:
-    On-demand capability check for a specific vehicle, run from the debug
-    console: answers "why isn't this vehicle's gun/launcher being used" by
-    running the real aegism_system_fnc_discoverCapabilities and printing
-    every qualifying weapon with its real envelope (and burst time for
-    CIWS), every loaded magazine with its ammo class and airLock (the
-    air-capability gate), and the vehicle's adoption state (synced to a
-    Site / deferred / standalone setting). Also shows the cached
-    AEGISM_system, in case the loadout changed since discovery.
+    Debug console: why a vehicle's gun or launcher isn't being used, from
+    the real capability discovery.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the vehicle to check <OBJECT>

@@ -2,13 +2,8 @@
 Function: aegism_system_fnc_resolveCrew
 
 Description:
-    Resolves which Personality data applies to a given System vehicle --
-    same order as aegism_system_fnc_resolveEngagementSettings: the Site's
-    personality ("AEGISM_crew" on the vehicle or its Site logic) -- or its
-    linked group's Shared Site Coordinator's (aegism_fnc_
-    siteSettingsSource) -- or the defaults when standalone, then the
-    vehicle's own per-vehicle overrides on top (aegism_system_fnc_
-    applyOverrides).
+    Resolves which Personality data applies to a System vehicle.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _systemObject - the vehicle to resolve Personality data for <OBJECT>

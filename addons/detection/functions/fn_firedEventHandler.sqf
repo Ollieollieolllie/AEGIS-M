@@ -3,17 +3,8 @@ Function: aegism_detect_fnc_firedEventHandler
 
 Description:
     CBA_fnc_addClassEventHandler "Fired" callback, registered once on the
-    server for every unit and vehicle (see XEH_preInit.sqf). Hands every
-    threat-class munition (missile/rocket/bomb/artillery shell) or carrier
-    to aegism_detect_fnc_watchProjectile, which starts tracking it.
-
-    This runs for every round fired in the mission, so the first thing it
-    does is the cached ammo lookup (aegism_detect_fnc_ammoThreatInfo): a
-    bullet returns after that one lookup. It also returns straight away in
-    a mission with no AEGIS-M radar or Site at all.
-
-    An AEGIS-M System's own interceptors are tagged "AEGISM_fromSystem"
-    (never friendly threats; a HOSTILE side's radars still track them).
+    server for every unit and vehicle (see XEH_preInit.sqf).
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _unit - the firing unit or vehicle <OBJECT>

@@ -4,20 +4,8 @@ Function: aegism_system_fnc_scanForRoles
 Description:
     One tick of the periodic discovery scan (registered in XEH_postInit.sqf)
     that calls aegism_system_fnc_moduleInit on any vehicle not yet
-    processed. There is no role checkbox to read anymore -- every vehicle
-    in the mission gets exactly one discovery pass (aegism_system_fnc_
-    moduleInit itself decides whether it actually has any AEGIS-M-relevant
-    capability -- real radar, guided missiles, or a high-rate-of-fire gun --
-    and marks it processed either way so it's never re-scanned), which is
-    what makes "just take an existing radar/launcher/CIWS vehicle, no setup
-    needed" actually work.
-
-    Runs on every machine: a machine that simulates a vehicle's crew (a
-    headless client, a player's AI group) has to suppress that crew's own
-    targeting itself (disableAI is local). Everything else in aegism_
-    system_fnc_moduleInit is server only. Off the server, only vehicles
-    local to this machine are scanned -- the rest are nothing to do with it
-    (and are picked up if they become local later).
+    processed.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     None

@@ -491,11 +491,12 @@ follows another incoming munition the Site is tracking if that's what its
 seeker took. Otherwise it self-destructs where it is (`INTERCEPTOR-LOST`).
 Left free, such missiles found
 the next thing in their seeker's view and shot down an aircraft the Site
-wasn't allowed to engage. Between targets a launcher or gun stays pointed at
-the contact it's most likely to get next -- one no weapon of its kind has
-yet, soonest impact first -- rather than going back to its crew, which
-turned it away between the rockets of a salvo; it's handed back once
-there's nothing left to engage.
+wasn't allowed to engage. Between targets, and before its first, a launcher
+or gun stays pointed at the contact it's most likely to get next -- one no
+weapon of its kind has yet, soonest impact first -- rather than going back
+to its crew, which turned it away between the rockets of a salvo and left
+it 40-70 degrees off the first one; it's handed back once there's nothing
+left to engage.
 
 **Layered reserve.** Against incoming munitions, long-range launchers hold
 their missiles while the cheaper, shorter-range layer can cope. Every half
@@ -677,7 +678,7 @@ state (its sound sources) and Zeus edits. On the server:
   coordinator run at once when it's first seen; one further out waits for
   the Site's next half-second turn.
 - It spreads a salvo's work over runs and frames. Once a run has worked out
-  10 new steps of launcher shots, the far munitions still due a look are
+  5 new steps of launcher shots, the far munitions still due a look are
   put off to a later run: each keeps its place in the plan meanwhile, and
   its shots are worked out in the frames before the next run, 5 ms a frame,
   so that run finds them ready. A munition is looked at whole or not at
@@ -687,6 +688,13 @@ state (its sound sources) and Zeus edits. On the server:
   none planned for it. A munition new to the Site gets its first look within
   2 s.
 - Config values are read once per class and cached.
+- Everything runs on the mission clock (`CBA_missionTime`), which follows
+  time acceleration in singleplayer: each weapon's 0.1 s engagement tick and
+  the sensor reads are run every frame and due by that clock, and whatever
+  moves by the frame (a round's or a missile's stretch of path, a gun's
+  firing time) is measured on it. Fast-forwarded 4x, a weapon still looks
+  every 0.1 s of game time -- or every frame, where a frame is longer than
+  that.
 
 The `PERF` line (below) shows all of this. An AA crew that another machine
 simulates (a headless client, a player's AI group) is moved to the server
@@ -723,7 +731,8 @@ thing, labels stacked rather than drawn over each other:
 - **Engagements**: a line from weapon to target in its state's colour.
   Waiting ones (queued behind the launcher's current target, missiles in
   flight, held) are faint, so a launcher's queue doesn't drown out what
-  it's actually doing. A CIWS held back by Last Resort Only is dashed orange.
+  it's actually doing. A CIWS held back by its Engagement Mode (Last Resort,
+  Planned) is dashed orange.
 - **Sight**: a faint light-blue line from each sensor vehicle to each
   contact its own sensors saw in the last 3 s (lighter violet if only its
   passive radar hears it). A Site's contacts are all its members' together;
@@ -832,7 +841,8 @@ Verbose adds the step-by-step detail:
 - per-weapon calibration: `KINEMATICS`, `MISSILE-PROFILE`, `AGILITY`, `TURRET-RATE`,
   `TARGET-SIZE`, `OPEN-FIRE-RANGE`, `FIRE-RATE`, `RELOAD-TIME`, and measurements thrown
   away as glitches (`LEAD-SAMPLE-REJECT`; see **Learning in play**);
-- layered reserve: `RESERVE`, `SATURATION`;
+- layered reserve: `RESERVE`, `SATURATION`; a planned gun's munitions:
+  `GUN-PLAN`;
 - every enemy shot fired (`MUNITION`);
 - rejected detections (`DETECT-REJECT`) and per-weapon `DISCOVERY` lines;
 - each turning radar's task and search dwells (`RADAR-TASK`);
@@ -862,26 +872,64 @@ and which weapons are on each (coloured the same way) -- the longest
 section, so it's the one a full hint box cuts off. It shows data wherever AEGIS-M runs its engagement
 logic: singleplayer, Eden Preview, or a hosted game's host.
 
-**Site status terminal.** Sync a laptop (any object with "laptop" in its
-class name -- `Land_Laptop_unfolded_F`, `Land_Laptop_device_F`...) to a
-Site, and players get an **AEGIS-M: Site Status** action on it (within
-3 m): a scrollable screen with that Site's live board -- the same as the
-hint's, for that Site alone, with every contact it tracks -- refreshed once
-a second until closed (Esc). The server builds the board and sends it to
-the player using the terminal, so it works on a dedicated server too. A
-laptop is never an alarm speaker.
+**Site terminal.** Sync a laptop (any object with "laptop" in its class
+name -- `Land_Laptop_unfolded_F`, `Land_Laptop_device_F`...) to a Site or to
+a single air-defence vehicle, and players get an **AEGIS-M: Site Terminal**
+action on it (within 3 m). A laptop is never an alarm speaker.
+
+What a terminal reaches follows what it is synced to:
+
+| Synced to | Reaches |
+|---|---|
+| a vehicle | that vehicle |
+| a Site | that Site and each of its vehicles |
+| the Shared Site Coordinator of linked Sites | every linked Site and each of their vehicles |
+
+What players can do at it is the laptop's own **Terminal Access** (Eden:
+its attributes, under *AEGIS-M: Terminal*; Zeus, with Zeus Enhanced: its
+*AEGIS-M Settings*):
+
+- **Status Only** (default): the screen lists what the terminal reaches on
+  the left, and shows the live status board of the one picked -- the same
+  as the hint's, for that Site alone, with every contact it tracks --
+  refreshed once a second until closed (Esc).
+- **Full Control**: a **Settings** tab as well. On a Site it holds the
+  Site's settings, on a vehicle that vehicle's overrides, under the same
+  headings and with the same choices and tooltips as in Eden, showing the
+  current values. **Apply** sends them to the server; **Revert** puts the
+  form back to the current values.
+
+The server builds the board and applies the changes, so both work on a
+dedicated server. It takes a change only from a Full Control terminal, for
+something within that terminal's reach, from a player within 10 m of it
+(`TERMINAL` in the RPT, applied or refused), and applies it exactly as a
+Zeus edit of the same Site or vehicle. A vehicle with no Site shows the
+whole board, since there is no board for one vehicle.
+
+**Which Sites are linked.** A Site has the same name everywhere in the
+debug -- the RPT, the board, the 3D draw, the terminals: its Eden variable
+name, or `Site 1`, `Site 2`... in the order the Sites were set up.
 
 For a Site linked with others, the board (terminal and hint alike) shows
 the whole group: which Site coordinates it and whether its settings apply
-to every vehicle, every link holding it together, one per line (a vehicle
-synced to both, a vehicle-to-vehicle pair with each one's Site, or the
-modules synced to each other), and each Site's vehicles under its own
-heading -- the coordinator first, the terminal's own Site marked, each
-vehicle forming a link tagged `LINK` and listed once -- then the group's
-shared contacts. Other Sites in the hint's summary say what they're linked
-with. In the 3D draw a linked Site's vehicles read "LINKED, n Sites by n
-links", a vehicle forming a link is tagged `LINK`, and a vehicle-to-vehicle
-or module-to-module link is a dashed cyan line.
+to every vehicle; every link holding it together, one per line, as the two
+Sites it joins and what forms it (`Site 1 <-> Site 3 by Bardelas, a vehicle
+of both`; `... by Spartan synced to Patriot`; `... by their modules, synced
+to each other`); and each Site's vehicles under its own heading, which
+says whether it is the coordinator, whose settings its vehicles use and
+which Sites it is linked to directly. A vehicle forming a link is tagged
+`LINK` and listed once. Then come the group's shared contacts. Other Sites
+in the hint's summary say what they're linked with.
+
+In the 3D draw every Site module is labelled in a colour of its own with
+its name, `COORDINATOR` if it leads a linked group, how many vehicles it
+has, the Sites it is linked with and whose settings its vehicles use, and
+has a faint line of that colour to each of its vehicles. Each link is a
+dashed white line between the two Site modules, captioned with the two
+Sites and what forms it; a link made by two vehicles synced to each other
+is also drawn between those two. A linked Site's vehicles read "LINKED, n
+Sites by n links", and a vehicle forming a link is tagged `LINK`. The RPT's
+`LINK` line lists the same links the same way.
 
 Short codes, everywhere in the debug: `RDR` radar, `IR`, `VIS` visual,
 `PAS` passive radar, `DL` datalink (a contact the game's datalink shared,
@@ -900,7 +948,10 @@ checks, standalone target re-evaluations, Fired events seen / threats among
 them / munitions ignored as landing clear, munition tracker checks / time
 (proxies created and moved included), sensor reads: munitions seen / time, reserve-plan cache hits,
 rebuilds and the intercept solves it ran, and the server's frames over the whole interval: average fps,
-worst frame and frames slower than 50 ms (paused time isn't counted).
+worst frame and frames slower than 50 ms (paused time isn't counted), and
+how far the mission clock and the game's own clock each moved in the real
+time the interval took (fast-forwarded, both outrun real time; if the
+game's falls behind the mission clock's, the engine isn't keeping pace).
 Idle, it writes nothing. The timings come from a 32-bit clock that only
 resolves to about 0.25 ms after an hour of game time, so treat them as
 rough. Each weapon's config values are logged once when first used
@@ -967,7 +1018,7 @@ envelope, and all threat classes are engaged.
 | Minimum Firing Window (s) | 3 | A gun is only given an incoming munition it will have this long to fire at before impact (after its crew's reaction, its barrel's swing and the rounds' flight, with the barrel still able to follow it). One with less is a last-ditch shot, taken only with nothing better and dropped for a munition it has its full window on. 0 = any munition it can reach in time. |
 | Burst Length Min / Max (s) | 3 / 5 | Each burst lasts a random length in this range, at the gun's own rate of fire. |
 | Pause Between Bursts (s) | 1 | Gap after a burst before firing again at the same target. After a kill the gun goes straight on to its next target. |
-| Last Resort Only | Off | Hold while a launcher covers the contact, until it fails or the contact closes inside 40 % of the gun's reach. |
+| Engagement Mode | Overlapping | How a gun works beside the Site's launchers. **Overlapping**: it engages whatever it can reach, including a contact a launcher is already on. **Planned**: it is given incoming munitions of its own, and the launchers leave those to it, so a gun and a missile are never on the same contact. A gun takes a munition it is free for as that munition comes into its reach, then counts as busy for its Minimum Firing Window (and no less than one longest burst and its pause, 6 s by default); the munitions between go to the launchers. If the gun is still on one when the next it was planned for comes into reach, that one goes back to the launchers (`GUN-PLAN-RELEASED`). Only reach and time are planned, and a gun's kill isn't certain: what it misses comes down. **Last Resort**: it holds while a launcher covers the contact, until that fails or the contact closes inside 40 % of the gun's reach. |
 | Self-Destruct Rounds | Off | A round that hits nothing detonates once it has passed the gun's reach (CIWS Max Range, or the gun's own config reach), like a C-RAM round's self-destruct fuze, instead of flying on until its lifetime runs out and disappearing in mid-air -- or just before that lifetime, if it comes first. The fuze time is the round's flight to the gun's reach under its own drag, from its real muzzle speed; each ammo's lifetime (`timeToLive`) and drag are read once per ammo type -- they differ between weapon systems and mods (the vanilla 35 mm lives 6 s, 30 s with ACE). Each gun's fuze time is logged (`SELF-DESTRUCT-FUZE`), and the rounds that went off after each burst (`SELF-DESTRUCT`). |
 
 **Radar Emission** (see **Radar emission** above)
@@ -1044,6 +1095,8 @@ Eden (same names, tooltips and choices, current values filled in):
   recognised): the **AEGIS-M** button in its Zeus attributes window.
 - **Either:** right-click it for **AEGIS-M Settings**, or place the module
   **AEGIS-M > Edit Air Defence** on it (or within 50 m of a Site).
+- **A terminal laptop:** the same right-click or button sets its Terminal
+  Access (Status Only or Full Control; see **Site terminal**).
 
 An edit reaches every machine, including players who join later, and the
 Site's vehicles pick it up at once (`SITE-SETTINGS` / `OVERRIDES` in the
@@ -1056,4 +1109,10 @@ APL-ND (Arma Public License No Derivatives). See `LICENSE`.
 ## Coding convention
 
 Every function begins with a standardized header docblock (see any file
-under `addons/*/functions/`). Author is always Snow(Dryden).
+under `addons/*/functions/`): a short description, its parameters, what it
+returns and an example. Author is always Snow(Dryden).
+
+The long version of each description -- how the function works, why, and
+what was seen in testing -- is kept out of the code, in
+`docs/functions/<addon>.md`, one section per function. That folder is for
+development and isn't packed into the mod.

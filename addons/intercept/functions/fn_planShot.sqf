@@ -3,45 +3,8 @@ Function: aegism_intercept_fnc_planShot
 
 Description:
     The earliest shot one launcher can make at one incoming munition from a
-    given moment on that meets it before a given time (its impact): the Site
-    coordinator's question for a launcher that isn't ready yet, and its
-    layered reserve's for every free munition (aegism_intercept_fnc_
-    assignEngagements).
-
-    Found by stepping along the munition's projected path every AEGISM_
-    RESERVE_PLAN_STEP s from the start -- a feasible intercept, its meeting
-    point inside the envelope (the munition itself may still be beyond it
-    when the missile leaves, aegism_intercept_fnc_canEngage), landing in
-    time -- and only as far as the first shot.
-
-    Each step's answer is kept per munition and launcher, in game time (the
-    plan cache: [scanned at, position, velocity, step -> [fire at, intercept
-    at], or [] for no shot, known stretch]), so a later question from
-    another start re-solves nothing already worked out. The whole path used
-    to be solved up front -- an intercept solve (aegism_intercept_fnc_
-    launchSolution) for every step in the envelope, for every munition and
-    launcher -- and a salvo coming into view together cost ~100 ms in one
-    frame. A ballistic path is fixed, and so is a parked launcher's
-    envelope; the steps are thrown away if the munition strays AEGISM_PLAN_
-    CACHE_TOLERANCE m from the path they were worked out on (a rocket still
-    burning, a missile turning), or after AEGISM_PLAN_CACHE_MAX_AGE s.
-
-    The same question is asked of every free munition and launcher again and
-    again, and for most the answer hasn't changed. So each path also keeps
-    what is known of one unbroken stretch of its steps ([first step, last
-    step, first step in it with a shot at all (-1: none), the soonest any of
-    its shots lands]), and a question goes straight past the part of it with
-    nothing in it. Walking every step again -- up to one for every second to
-    impact, for a munition no launcher could take -- cost about 0.2 ms a
-    question, and under a salvo was the largest share of the coordinator's
-    time (2026-10-06).
-
-    The coordinator's own questions are always answered in full: nothing is
-    decided on a shot half worked out. The new steps worked out are counted
-    for it (_plan), and past AEGISM_PLAN_STEPS of them in a run it puts off
-    whole munitions. Only the work done ahead between its turns (aegism_
-    intercept_fnc_planAhead) is cut short, when its frame's time is up: []
-    is returned and the question kept for the next frame.
+    given moment on that meets it before a given time (its impact).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _candSystem - the launcher's vehicle <OBJECT>

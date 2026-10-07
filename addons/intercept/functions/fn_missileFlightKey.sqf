@@ -1,12 +1,9 @@
 /* ----------------------------------------------------------------------------
 Function: aegism_intercept_fnc_missileFlightKey
 Description:
-    The key a missile's learned speed curve is kept under (aegism_intercept_
-    fnc_recordMissileSpeed, aegism_intercept_fnc_missileProfile): its flight
-    config -- launch speed, thrust, burn time, motor delay, airFriction,
-    lifetime and maxSpeed (aegism_intercept_fnc_weaponKinematics) -- not its
-    weapon. Missiles that fly alike learn together: POOK's SA-8 has six
-    one-missile launchers, each its own weapon, magazine and ammo class.
+    The key a missile's learned speed curve is kept under: its flight
+    config.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _weaponClass - CfgWeapons class <STRING>

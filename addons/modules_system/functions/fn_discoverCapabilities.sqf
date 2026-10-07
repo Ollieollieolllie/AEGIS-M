@@ -2,88 +2,9 @@
 Function: aegism_system_fnc_discoverCapabilities
 
 Description:
-    Reads a vehicle's own native config and current loadout to determine
-    what AEGIS-M capabilities it has, rather than relying on a mission
-    designer to declare a role by hand: if it has a radar, it has a radar;
-    if it has guided missiles, it's a launcher; if it also has a high-rate-
-    of-fire gun (because it's a SHORAD or Tigris-style all-in-one vehicle),
-    it's also a CIWS/CRAM. AEGIS-M never spawns or tracks its own ammo --
-    everything here points back at the vehicle's real turrets/weapons/
-    magazines, used later via BIS_fnc_fire and magazineTurretAmmo.
-
-    Sensors: every sensor component in the vehicle's CfgVehicles config
-    (its own sensor config, and every turret's) whose componentType is one
-    AEGIS-M uses -- whatever the component class itself is called:
-        radar   - ActiveRadarSensorComponent
-        passive - PassiveRadarSensorComponent (hears only what emits: a
-                  radar that's on). What it hears cues the Site's radars
-                  (Radar Emission), but isn't engaged on its own (aegism_
-                  fnc_hasTrack).
-        ir      - IRSensorComponent
-        visual  - VisualSensorComponent
-    This is exactly the config the engine's own getSensorTargets reads. The
-    engine detects aircraft with it; munitions, which its sensors can't
-    target at all, AEGIS-M judges from the same config itself (aegism_
-    detect_fnc_sensorView, aegism_detect_fnc_munitionSeen). What's read here
-    also says what a vehicle has: whether it has a radar, or any sensor of
-    its own (for adoption, aegism_system_fnc_moduleInit), and each sensor's
-    reach and arc for the debug overlays.
-
-    Each sensor's reach is its AirTarget maxRange (the largest maxRange of
-    any target-type sub-class if it has no AirTarget), and its arc its
-    angleRangeHorizontal (360 if undefined) -- both inherited from the
-    vanilla templates where the vehicle doesn't set them: the vanilla
-    Radar_System_01's radar is 120 degrees from SensorTemplateActiveRadar.
-    Where it points: a sensor with an animDirection (e.g. "mainGun") turns
-    with the turret whose gun or body is that selection -- the Spartan's
-    IR sensor looks wherever its launcher points. Without one it's fixed to
-    the hull, or, inside a turret's own config, treated as all-round.
-
-    The sensor component actually lives under "Components >>
-    SensorsManagerComponent >> Components" in every vanilla Arma 3 vehicle
-    checked (this is the real, current nesting per BIS's own Sensors Config
-    Reference and the Arma 3 sensor-overhaul devblog; a bare top-level
-    "Sensors" class was an earlier assumption in this codebase that turned
-    out to be wrong -- confirmed the hard way when B_Radar_System_01_F, the
-    vanilla AA radar unit, never once registered as having radar during
-    testing despite very obviously having one in-game). Both paths are
-    checked (Components-nested first, since that's the real one; the older
-    bare "Sensors" path is kept as a fallback for any mod vehicle that might
-    still use it) rather than assuming either is universal.
-
-    Launcher/CIWS: walks every currently-loaded magazine (magazinesAllTurrets)
-    and resolves which weapon on that turret fires it (CfgWeapons magazines[]
-    plus any CfgMagazineWells listed in magazineWell[]).
-
-    Only AIR-CAPABLE weapons qualify: the loaded ammo's own CfgAmmo airLock
-    must be >= 1 (the engine's own "can engage air targets" flag). Without
-    this, an IFV's ATGM or a tank's coax would count as air defence.
-
-    Launcher: ammo classifying as "missile" (guided). Unguided rockets can't
-    intercept anything and are not launcher weapons.
-
-    CIWS: non-missile ammo whose FIRING WEAPON has a fire mode faster than
-    AEGISM_CIWS_ROF_THRESHOLD. Rate of fire is a CfgWeapons per-mode
-    reloadTime, NOT CfgAmmo reloadTime (an unrelated submunition field that
-    real CIWS rounds like B_35mm_AA don't define at all). Cannons only, not
-    machine guns: a weapon built on CfgWeapons MGunCore (the base of every
-    vanilla machine gun, which mods build on) is left out -- POOK's SAM
-    vehicles' self-defence M2HB and PKT were being run as CIWS against
-    rockets. Its ball rounds don't burst (vanilla .50 ball: hit 30,
-    indirectHit 0; the Phalanx and 20-35 mm AA rounds: hit 60-70,
-    indirectHit 6-25). The vehicle override "Guns Used as CIWS" (AEGISM_
-    ovr_ciwsGuns) changes this per vehicle: "all" every rapid-fire gun,
-    machine guns too; "none" no gun at all.
-
-    Every weapon also carries its own REAL engagement envelope, read from
-    config and never scaled by the AEGIS-M range-scale setting:
-        missile - CfgAmmo missileLockMinDistance/missileLockMaxDistance
-            (falling back to maxControlRange, then the weapon's modes)
-        gun - min/max of CfgWeapons mode minRange/maxRange (the engine's own
-            AI engagement bands, e.g. 0-2500m for autocannon_35mm)
-    and CIWS weapons carry their burst duration (mode reloadTime x burst,
-    longest AI mode) so the engagement loop fires one burst per burst-time
-    rather than on missile salvo rules.
+    Reads a vehicle's own config and loadout to determine what AEGIS-M
+    capabilities it has: sensors, launchers, CIWS guns.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the vehicle to inspect <OBJECT>
@@ -283,7 +204,7 @@ private _hasSensor = (_sensors findIf { (_x select 0) in ["radar", "ir", "visual
 
 private _launcherWeapons = [];
 private _ciwsWeapons = [];
-// Which rapid-fire guns count as CIWS (see header): "auto" cannons only,
+// Which rapid-fire guns count as CIWS (see notes): "auto" cannons only,
 // "all", or "none" -- the vehicle's own override, with its master switch on.
 private _ciwsGuns = if (_vehicle getVariable ["AEGISM_ovr_enabled", false]) then { _vehicle getVariable ["AEGISM_ovr_ciwsGuns", "auto"] } else { "auto" };
 

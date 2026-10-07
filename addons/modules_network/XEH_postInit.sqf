@@ -24,6 +24,14 @@ if (isServer) then {
     }, true, [], true] call CBA_fnc_addClassEventHandler;
 };
 
+// Terminals synced to one vehicle instead of a Site (aegism_network_fnc_
+// terminalScan); a Site looks after its own.
+if (isServer) then {
+    [{
+        [] call aegism_network_fnc_terminalScan;
+    }, 5, []] call CBA_fnc_addPerFrameHandler;
+};
+
 // Editing Site settings and vehicle overrides from Zeus (needs Zeus Enhanced
 // for the dialogs) -- see aegism_network_fnc_zeusInit.
 [] call aegism_network_fnc_zeusInit;

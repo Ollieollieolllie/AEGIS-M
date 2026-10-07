@@ -4,13 +4,8 @@ Function: aegism_fnc_applyAttributeValues
 Description:
     Sets an object's Eden attributes from script, the way Eden itself does:
     each attribute's own "expression" runs with _this = the object and
-    _value = the new value. Used by the Zeus dialogs (aegism_fnc_
-    zeusAttributeDialog), so a Zeus edit sets exactly the same variables an
-    Eden edit would.
-
-    Each attribute's variable is cleared first: an override left on "Site
-    setting" (or blank) has an expression that sets nothing, and has to go
-    back to nil (inheriting from the Site) rather than keep its old value.
+    _value = the new value.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _target - the object <OBJECT>

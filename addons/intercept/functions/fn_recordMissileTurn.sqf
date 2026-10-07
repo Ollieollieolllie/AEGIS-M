@@ -2,28 +2,9 @@
 Function: aegism_intercept_fnc_recordMissileTurn
 
 Description:
-    One AEGIS-M missile's flight, measured (aegism_intercept_fnc_
-    interceptorPFH), folded into its missile's turn rate: the fastest
-    sustained turn seen on a flight that had to turn -- launched more than
-    AEGISM_LAUNCH_ON_BORE degrees off the intercept, so it turned as hard as
-    it could. A flight launched straight at the intercept only makes small
-    corrections, which say little about how hard it can turn; it's counted
-    but doesn't set the rate. The rate only ever rises: each turning flight's
-    fastest turn is something the missile did.
-
-    Safeguards (calibration.hpp), since one bad flight would otherwise set
-    it for the rest of the mission: a flight whose seeker changed target
-    isn't used (its turns weren't all toward one intercept), nor a turn
-    faster than AEGISM_TURN_RATE_MAX (a tumble or a glitch); and once two
-    turning flights are in, the rate is the second fastest -- no single
-    flight sets it beyond what another has confirmed.
-
-    A missile the game guides has no turn rate in config (maneuvrability has
-    no unit), so this is where aegism_intercept_fnc_missileAgility gets it.
-    For an ACE-guided missile it's a check on ACE's own configured rate.
-
-    Logged per flight (MISSILE-TURN), with the predicted flight time against
-    the real one.
+    Folds one AEGIS-M missile's flight into its missile's turn rate
+    (MISSILE-TURN).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _ammoClass - the missile's CfgAmmo class <STRING>

@@ -3,21 +3,9 @@ Function: aegism_intercept_fnc_bodyPass
 
 Description:
     How close a round came to a munition's body over one frame: the least
-    distance between the round's path and the munition's box (aegism_
-    intercept_fnc_targetBody) -- 0 if it went through it. The fuses compare
-    it with the round's own radius (its blast, CfgAmmo indirectHitRange, or
-    its proximity fuse, proximityExplosionDistance): aegism_intercept_fnc_
-    ciwsRounds, aegism_intercept_fnc_interceptorPFH.
-
-    The path is relative: both move (at a 1500 m/s closing speed that's
-    ~25 m a frame), so it's the round's position from the munition's model
-    origin, last frame and this, turned into the munition's own axes as it
-    points now.
-
-    A path that doesn't come within the box's sphere plus the radius is
-    turned away at once (most rounds, most frames); otherwise the distance
-    to the box along it -- a convex function of how far along -- is found by
-    ternary search.
+    distance between the round's path and the munition's box
+    (aegism_intercept_fnc_targetBody) -- 0 if it went through it.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _target - the munition <OBJECT>

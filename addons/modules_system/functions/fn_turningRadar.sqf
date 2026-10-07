@@ -2,11 +2,9 @@
 Function: aegism_system_fnc_turningRadar
 
 Description:
-    A vehicle's turning radar: an active radar that turns with a turret,
-    narrower than all round, on a turret no AEGIS-M weapon uses (the vanilla
-    radar truck's 120 degrees) -- the one AEGIS-M points (aegism_system_fnc_
-    radarSchedule) and hands the relay scan to (aegism_system_fnc_
-    radarRelay).
+    A vehicle's turning radar: an active radar narrower than all round, on a
+    turret no AEGIS-M weapon uses.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the vehicle <OBJECT>

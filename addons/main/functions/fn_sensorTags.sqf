@@ -3,12 +3,8 @@ Function: aegism_fnc_sensorTags
 
 Description:
     Short tags for the sensor kinds that saw a contact recently, for the
-    debug overlays: a pool entry's "sources" (aegism_detect_fnc_addContact
-    -- sensor kind -> when it last saw it), keeping those within the pools'
-    own contact expiry (3 s, aegism_detect_fnc_pruneStaleContacts).
-
-        activeradar RDR, passiveradar PAS, ir IR, visual VIS, datalink DL;
-        any other kind the engine reports, upper case.
+    debug overlays.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _sources - sensor kind -> time last seen <HASHMAP>

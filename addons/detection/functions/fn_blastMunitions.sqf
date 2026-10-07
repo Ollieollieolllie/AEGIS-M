@@ -2,19 +2,9 @@
 Function: aegism_detect_fnc_blastMunitions
 
 Description:
-    Destroys every tracked munition caught in a blast AEGIS-M set off: one
-    whose body (its box, aegism_intercept_fnc_bodyPass) is within the blast's
-    radius of where it went off -- the same rule an interceptor's own fuse
-    kills its target by. An intercept among a salvo takes the rockets flying
-    beside it too: POOK's PAC-3 (a 40 m blast) took five MLRS rockets in one
-    burst. That used to happen through the munitions' sensor proxies, which
-    the blast damaged; with those gone it's judged here.
-
-    Called for an interceptor going off and for the warhead of the munition
-    it destroyed (aegism_intercept_fnc_interceptHit), and for a lost
-    interceptor's self-destruct (aegism_intercept_fnc_interceptorLost). Not
-    carried on from the munitions it destroys in turn, and never an AEGIS-M
-    interceptor ("AEGISM_fromSystem"). Logged as BLAST-KILL.
+    Destroys every tracked munition whose body is within the radius of a
+    blast AEGIS-M set off.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _centre - where the blast went off, ASL <ARRAY>

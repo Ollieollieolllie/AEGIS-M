@@ -2,17 +2,9 @@
 Function: aegism_fnc_debugHint
 
 Description:
-    Live status board in the hint box, refreshed once a second while the
-    CBA setting "AEGIS-M > Debug > Site Status Hint" is on: the Site nearest
-    the camera in detail, and everything else in summary (aegism_fnc_
-    statusBoard, which says what's on it). The hint box cuts a long board,
-    so only the nearest AEGISM_HINT_MAX_CONTACTS contacts are listed.
-
-    Reads the same server-side variables the engagement pipeline runs on,
-    so it only has data where that pipeline runs: singleplayer, Eden
-    Preview, or the host of a hosted game (not a client of a dedicated
-    server -- a Site's status terminal, aegism_network_fnc_terminalOpen,
-    works there).
+    Live status board in the hint box, refreshed once a second while the CBA
+    setting Site Status Hint is on.
+    Full notes: docs/functions/main.md
 
 Parameters:
     None

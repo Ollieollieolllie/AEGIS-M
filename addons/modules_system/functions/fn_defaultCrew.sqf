@@ -2,11 +2,9 @@
 Function: aegism_system_fnc_defaultCrew
 
 Description:
-    Hardcoded fallback personality used by a System (or unmanned Launcher/
-    CIWS) with no directly-set or Site-inherited Personality data (AEGISM_
-    Module_Site's own Attributes), so unmanned/uncrewed point-defense still
-    behaves per a sane baseline rather than having no engagement decision
-    logic at all.
+    Hardcoded fallback personality for a System with no directly-set or
+    Site-inherited one.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     None

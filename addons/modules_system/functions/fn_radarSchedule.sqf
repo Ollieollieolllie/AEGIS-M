@@ -4,60 +4,8 @@ Function: aegism_system_fnc_radarSchedule
 Description:
     Points a narrow radar that turns on a turret no AEGIS-M weapon uses (the
     vanilla radar truck's 120 degrees), whatever its Radar Emission: called
-    once a second by aegism_system_fnc_emconUpdate. It's never left idle
-    facing wherever its crew last looked.
-
-    The Site's turning radars -- its whole linked group's (aegism_network_
-    fnc_linkSites) -- divide the sky between them: 360 degrees in equal home
-    sectors, one each, measured from the middle of them, in a fixed order
-    (by netId), the first centred on north. A sector decides which radar
-    looks after which contacts:
-
-        fire control - while a Site launcher's missiles fly at a target in
-            its sector, it holds as many of them as it can, and doesn't
-            search.
-        track - on the contacts in its sector, centred to hold the most
-            important at once: a threat under engagement, then munitions by
-            time to impact, a contact only passive radar hears (a radar look
-            makes it a track), aircraft. A contact another Site sensor saw in
-            the last AEGISM_HELD_FOR s counts for a quarter: the radar is for
-            what nobody holds. It stays centred where it is while that scores
-            AEGISM_TRACK_KEEP of the best centre, rather than hopping between
-            near-equal ones. Every AEGISM_SEARCH_REVISIT s it takes a look at
-            its search position, if its track doesn't already hold that, and
-            comes back.
-        search - nothing worth tracking: the Site's turning radars rotate
-            round together, evenly spaced -- each starts on its own sector
-            and turns on one step (three quarters of the narrowest arc among
-            them) every period (the slowest turret's swing for a step, then
-            AEGISM_SEARCH_DWELL s), by the mission clock, so all of them are
-            always at the same step. Every radar looks all the way round --
-            radars far apart see past different hills -- and at any moment
-            their beams are spread evenly round the sky (three 120-degree
-            radars keep all round covered as they turn). Silent ones turn too,
-            so each is in its place when it lights. With the Site's Turning
-            Radars Hold Their Sector on, a radar whose arc covers its sector
-            stays on it instead. (Searching on their own, two radars each
-            swung across their own half and never turned round; three ended
-            up facing north, east and south with the west uncovered; four
-            drifted until two pointed the same way.) Pitched up a quarter of
-            its vertical arc (within its elevation limits), covering the
-            horizon and well above it.
-
-    A contact belongs to the radar whose sector it's in. Another of the
-    Site's radars tracks it only if that one can't reach it -- and then only
-    one: each radar posts what it's tracking ("AEGISM_radarTracks": contact
-    key -> [radar netId, until]), and a contact another is tracking counts
-    for a tenth.
-
-    Every dwell starts once the turret has had time to swing there, from its
-    traverse rate (aegism_intercept_fnc_turretConfig). Logged as RADAR-TASK
-    at RPT Detail Verbose when it starts tracking, holds fire control, starts
-    searching, or the rotation changes (a turning radar joins or leaves).
-
-    Records on the vehicle ("AEGISM_radarBeam", for the debug overlays):
-    task, taskUntil, lastSearchAt, bearing (where it points), search (its
-    search position), dwellFrom, fenceCount, text.
+    once a second by aegism_system_fnc_emconUpdate.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the radar vehicle <OBJECT>
@@ -90,7 +38,7 @@ Author:
 #define AEGISM_CLAIM_FOR 2
 // How far out the point a radar turret is aimed at lies, metres.
 #define AEGISM_LOOK_DISTANCE 2000
-// Contact weights (see the header).
+// Contact weights (see the notes).
 #define AEGISM_W_GUIDED 100
 #define AEGISM_W_ENGAGED 10
 #define AEGISM_W_CUE 6

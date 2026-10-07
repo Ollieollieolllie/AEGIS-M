@@ -2,46 +2,10 @@
 Function: aegism_detect_fnc_confidenceLoop
 
 Description:
-    Interval-based (not true per-frame, for performance) scan run once per
-    System with a sensor of its own that finds aircraft -- an active radar,
-    an IR or a visual sensor (aegism_system_fnc_discoverCapabilities
-    "hasSensor": the Spartan's launcher-mounted IR counts) -- that reads
-    the vehicle's OWN native sensor detections via getSensorTargets -- the
-    engine's own radar/IR/visual/passive/datalink simulation, already
-    running against that vehicle's real CfgVehicles sensor config -- rather
-    than AEGIS-M re-implementing its own LOS/distance/confidence estimate
-    on top of it. Detection is binary here (the engine already decided
-    detected-or-not using its own, more complete simulation); every
-    allowlisted, genuinely hostile (IFF, see aegism_detect_fnc_isHostile),
-    non-destroyed sensor target is pooled at full confidence, with the
-    sensor kinds the engine says saw it (getSensorTargets' 4th element,
-    e.g. "activeradar", "ir"). What the game's datalink passes on from
-    other vehicles ("datalink") only counts with the CBA setting Use
-    Datalink Contacts on: off (the default), a target only datalink reports
-    is skipped, aircraft and munitions alike. A target the game lists with
-    no sensor on it at all (lost, or only known of) is skipped too. A contact new to this
-    vehicle's pool is logged once (DETECT) with them. A contact only
-    passive radar hears is pooled, but only cues the Site's radars (aegism_
-    fnc_hasTrack). Contacts no longer refreshed by any
-    sensor expire (aegism_detect_fnc_pruneStaleContacts) rather than being
-    deleted the instant one sensor loses them.
-
-    Munitions are judged here too, on the same read, but by AEGIS-M: a
-    fired projectile is never a getSensorTargets result (CfgAmmo has no
-    radar/IR/visual target properties), so every tracked munition (aegism_
-    detect_fnc_trackMunition) is checked against this vehicle's sensors
-    from their own config (aegism_detect_fnc_sensorView, aegism_detect_fnc_
-    munitionSeen). One that's seen isn't a contact here: it's recorded as
-    seen by this vehicle, with the sensor kinds ("AEGISM_seenMunitions":
-    [read at, munition key -> sensor kinds]), and the munition tracker
-    (aegism_detect_fnc_munitionCheck) takes it from there -- IFF, whether it
-    threatens a Site, which pools it goes in. (The game's datalink carries
-    no munitions: Use Datalink Contacts is about aircraft.)
-
-    A detected contact is added/removed on both the scanning System's own
-    pool AND its Network's pool (if synced), so a Launcher/CIWS-only System
-    with no sensor of its own, relying purely on a Network's shared
-    contacts, still sees everything a sensor-equipped sibling detects.
+    Interval scan for one System with a sensor of its own: reads the
+    vehicle's own engine sensor detections (getSensorTargets) and pools them
+    as contacts.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _poolOwner - the System vehicle (with real native radar/sensor
@@ -169,7 +133,7 @@ private _fnSighted = {
 _poolOwner setVariable ["AEGISM_lastDetectReject", _rejects, false];
 
 // Munitions: every tracked one against this vehicle's sensors as they stand
-// now (see header).
+// now (see notes).
 private _tracked = missionNamespace getVariable ["AEGISM_trackedMunitions", []];
 if (_tracked isNotEqualTo []) then {
     private _view = [_poolOwner, _system] call aegism_detect_fnc_sensorView;

@@ -4,40 +4,8 @@ Function: aegism_intercept_fnc_fireWeapon
 Description:
     Fires a System's own real weapon: one missile for a launcher, or opens
     one sustained burst for a CIWS gun (aegism_intercept_fnc_ciwsBurst, at
-    the gun's own rate of fire). AEGIS-M never spawns projectiles:
-    ballistics, guidance and damage are the game's own.
-
-    The caller (aegism_intercept_fnc_engagementLoop) has already aimed the
-    turret and confirmed alignment; this function only rolls crew
-    reliability and fires, via BIS_fnc_fire (a real single fire command --
-    fireAtTarget hands the decision to AI judgement and was observed firing
-    several missiles per call).
-
-    Crew reliability is rolled here, once per missile or per CIWS burst. A
-    failed roll returns 0, which the engagement loop treats as a lost fire
-    cycle (it waits one shot interval / burst pause before trying again).
-
-    Before firing it writes a capture context on the turret ("capture" in
-    aegism_intercept_fnc_turretState, naming the weapon) and makes sure the
-    vehicle has AEGIS-M's persistent Fired handler (aegism_intercept_fnc_
-    firedHandler); aegism_intercept_fnc_onSystemFired then hands a launched
-    missile its target
-    (setMissileTarget), records it as an in-flight interceptor, and starts
-    its proximity fuse.
-
-    Crew locality: the engagement pipeline runs on the server, and a
-    missile can only be given its target where it's simulated -- where the
-    crew is local. An AI crew simulated on another machine (a headless
-    client, or a player's AI group) is moved to the server (setGroupOwner)
-    and this fire cycle skipped; a PLAYER in the turret can't be, so its
-    missiles fly without AEGIS-M's target. Logged once per turret
-    (NONLOCAL).
-
-    Third-party scripted missile guidance: if that mod is loaded and the
-    ammo declares its guidance class explicitly with enabled=1, the target
-    is written to the variable its own Fired handler reads, on both the
-    turret's gunner and the vehicle. That mod's own AI-guidance setting must
-    still allow AI shots for it to take effect.
+    the gun's own rate of fire).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the firing System vehicle <OBJECT>
@@ -86,7 +54,7 @@ if (isNull _target || {!alive _target}) exitWith { -1 };
 private _ammoBefore = _system magazineTurretAmmo [_magazineClass, _turretPath];
 if (_ammoBefore <= 0) exitWith { -1 };
 
-// Crew simulated elsewhere: bring an AI crew to the server (see header).
+// Crew simulated elsewhere: bring an AI crew to the server (see notes).
 private _gunner = _system turretUnit _turretPath;
 private _crewElsewhere = !isNull _gunner && {!local _gunner};
 private _playerCrew = _crewElsewhere && {((units group _gunner) findIf { isPlayer _x }) != -1};

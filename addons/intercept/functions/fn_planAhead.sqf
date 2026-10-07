@@ -3,26 +3,8 @@ Function: aegism_intercept_fnc_planAhead
 
 Description:
     Works out, between the Site coordinator's turns, the launcher shots of
-    the munitions whose look its last run put off (it had worked out AEGISM_
-    PLAN_STEPS new steps already, aegism_intercept_fnc_assignEngagements):
-    the questions kept on the Site ("AEGISM_planLeft") are asked, soonest
-    impact first, for AEGISM_PLAN_BUDGET s a frame, and what's still
-    unanswered is kept for the next frame. Nothing is decided here -- the
-    answers go into the Site's plan cache, where the coordinator's next turn
-    finds them.
-
-    A salvo coming into view costs several short frames this way instead of
-    one long one. The coordinator's first way of spreading it was to run
-    itself again the next frame: with its whole sweep of every contact and
-    weapon each time, that cost four times what it saved (85 of 121 runs in
-    10 s, 2.4 s of server time, 2026-10-06). Its second was to cut its own
-    questions short and decide nothing for those munitions until this had
-    answered them: under a salvo the newest rockets waited 15-20 s for their
-    first look (2026-10-06). Now a run never waits on this: a munition it
-    looks at, it works out in full, with whatever this has ready.
-
-    A question whose munition is urgent by now (AEGISM_URGENT_TTI) is dropped:
-    the coordinator looks at those on every run.
+    the munitions whose look its last run put off.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _logic - the Site logic (its linked group's lead) <OBJECT>

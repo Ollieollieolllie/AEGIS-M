@@ -2,46 +2,8 @@
 Function: aegism_fnc_statusBoard
 
 Description:
-    The AEGIS-M status board, as structured text:
-
-        - one Site in detail: every member vehicle with its roles ([R]adar
-          [I]R [V]isual sensor, [L]auncher [C]IWS), a colour-coded status,
-          its current target and ammo. A Site linked with others (aegism_
-          network_fnc_linkSites) is shown with its whole group: which Site
-          coordinates it and whose settings apply, what links them, and each
-          Site's vehicles under its own heading (the coordinator first, the
-          one asked about marked "this terminal" or "nearest"; a vehicle
-          linking them shown once, LINK)
-        - with _everything, other Sites one line each, a linked one with
-          what it's linked with and who coordinates
-        - with _everything: every other Site as a one-line summary,
-          standalone (unsynced) Systems one line each, and the vehicles
-          AEGIS-M found capable but hasn't activated (deferred until synced
-          to a Site), with why -- e.g. a launcher with no sensor of its own
-          placed without a Site
-        - under each radar vehicle, its emission (Radar Emission, aegism_
-          fnc_emconText): RDR EMITTING / SILENT / SHUT DOWN and why
-        - last, the detailed Site's tracked contacts, the sensor kinds that
-          saw each ([RDR IR], aegism_fnc_sensorTags; "cue only" for one only
-          passive radar hears, which nothing engages) and the weapons on
-          each (the longest section, so it's the one a hint box cuts)
-
-    Each engagement shows in its own state's colour (aegism_fnc_statusStyle
-    -- the state the engagement loop records on it every tick): blue QUEUED
-    behind another on its launcher, amber REACTING/SLEWING/LOCKING, orange
-    RELOADING, teal RANGE HOLD, red FIRING, gold IN FLIGHT, purple NO LOS /
-    NO SOLUTION, grey CREW FAILED / FIRE HELD / NO AMMO. A vehicle with
-    nothing assigned: green READY, yellow TRACKING (sensor with contacts),
-    grey NO AMMO, dark grey DESTROYED.
-
-    Shown by the Site Status Hint (aegism_fnc_debugHint: the Site nearest
-    the camera, and everything else) and by a Site's status terminal
-    (aegism_network_fnc_terminalRequest: that Site alone).
-
-    Reads the same server-side variables the engagement pipeline runs on,
-    so it only has data where that pipeline runs: singleplayer, Eden
-    Preview, or the server (a terminal's board is built there and sent to
-    the player using it).
+    The AEGIS-M status board, as structured text.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _focus - the Site shown in detail, or objNull for none <OBJECT>
@@ -176,10 +138,8 @@ missionNamespace setVariable ["AEGISM_allSystems", _allSystems, false];
 private _standalone = _allSystems select { isNull (_x getVariable ["AEGISM_network", objNull]) };
 
 private _fnSiteName = {
-    params ["_site", "_index"];
-    private _name = vehicleVarName _site;
-    if (_name == "") then { _name = format ["Site %1", _index + 1]; };
-    format ["%1 (grid %2)", _name, mapGridPosition _site]
+    params ["_site"];
+    [_site, true] call aegism_fnc_siteName
 };
 
 // Found capable but not activated: deferred until synced to a Site
@@ -241,16 +201,18 @@ if (_focusIndex >= 0) then {
         _lines pushBack format ["<t size='0.75' color='%1'>%2 vehicle(s), %3 contact(s), %4 engagement(s) -- contacts and engagements shared</t><br/>", COL_DIM, count _members, count _pool, count _allRecords];
         _lines pushBack format ["<t size='0.75' color='%1'>Coordinated by %2 -- %3</t><br/>", COL_TRACK, [_lead, _sites find _lead] call _fnSiteName,
             ["first set up; each vehicle keeps its own Site's settings", "Shared Site Coordinator: its settings apply to every vehicle"] select (_lead getVariable ["sharedCoordinator", false])];
-        // Each link on its own line: losing one of several keeps the group.
+        // Each link on its own line, between the two Sites it joins: losing
+        // one of several keeps the group.
         _lines pushBack format ["<t size='0.75' color='%1'>Linked by %2 link(s)%3:</t><br/>", COL_DIM, count _links,
             ["", " -- it splits when the last goes"] select (count _links > 1)];
         {
-            _x params ["_type", "_a", "_b"];
-            _lines pushBack format ["<t align='left' size='0.72' color='%1'>    %2</t><br/>", COL_DIM,
+            _x params ["_type", "_a", "_b", ["_siteA", objNull], ["_siteB", objNull]];
+            _lines pushBack format ["<t align='left' size='0.72'>    <t color='%1'>%2  &lt;-&gt;  %3</t><t color='%4'>  by %5</t></t><br/>", COL_TRACK,
+                [_siteA] call aegism_fnc_siteName, [_siteB] call aegism_fnc_siteName, COL_DIM,
                 switch (_type) do {
-                    case "shared": { format ["%1, synced to both", [_a] call _fnShortName] };
-                    case "pair": { format ["%1 (%2) -- %3 (%4)", [_a] call _fnShortName, _a call _fnSiteOf, [_b] call _fnShortName, _b call _fnSiteOf] };
-                    default { format ["%1 and %2 modules synced to each other", [_a, _sites find _a] call _fnSiteName, [_b, _sites find _b] call _fnSiteName] };
+                    case "shared": { format ["%1, a vehicle of both", [_a] call _fnShortName] };
+                    case "pair": { format ["%1 synced to %2", [_a] call _fnShortName, [_b] call _fnShortName] };
+                    default { "their modules, synced to each other" };
                 }];
         } forEach _links;
     } else {
@@ -271,6 +233,17 @@ if (_focusIndex >= 0) then {
             private _siteTags = [];
             if (_site == _lead) then { _siteTags pushBack "coordinator"; };
             if (_site == _focus) then { _siteTags pushBack (["this terminal", "nearest"] select _everything); };
+            // Whose settings its vehicles use, and the Sites it's linked to
+            // directly.
+            private _source = [_site] call aegism_fnc_siteSettingsSource;
+            _siteTags pushBack (["its own settings", format ["settings from %1", [_source] call aegism_fnc_siteName]] select (_source != _site));
+            private _direct = [];
+            {
+                _x params ["", "", "", ["_siteA", objNull], ["_siteB", objNull]];
+                if (_siteA == _site) then { _direct pushBackUnique ([_siteB] call aegism_fnc_siteName); };
+                if (_siteB == _site) then { _direct pushBackUnique ([_siteA] call aegism_fnc_siteName); };
+            } forEach _links;
+            if (_direct isNotEqualTo []) then { _siteTags pushBack ("linked to " + (_direct joinString ", ")); };
             _lines pushBack format ["<br/><t align='left' size='0.85' font='PuristaSemibold' color='%1'>%2</t><t align='left' size='0.75' color='%3'>%4</t><br/>",
                 COL_HEAD, [_site, _sites find _site] call _fnSiteName, COL_DIM, ["", format ["  (%1)", _siteTags joinString ", "]] select (_siteTags isNotEqualTo [])];
         } else {

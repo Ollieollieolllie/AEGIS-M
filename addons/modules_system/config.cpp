@@ -307,12 +307,23 @@ class Cfg3DEN
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstMin,"AEGISM_ovr_ciwsBurstMin","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstMin', parseNumber _value]};","Burst Length Min (s)","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstMax,"AEGISM_ovr_ciwsBurstMax","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstMax', parseNumber _value]};","Burst Length Max (s)","Blank = Site setting.");
                     AEGISM_OVR_NUMBER(AEGISM_ovr_ciwsBurstPause,"AEGISM_ovr_ciwsBurstPause","if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsBurstPause', parseNumber _value]};","Pause Between Bursts (s)","Blank = Site setting.");
-                    class AEGISM_ovr_ciwsLastResort: AEGISM_ovr_costValueJudgment
+                    class AEGISM_ovr_ciwsMode
                     {
-                        displayName = "Last Resort Only";
-                        tooltip = "On: this gun holds while a launcher covers the contact, until the launcher fails or the contact closes inside 40% of the gun's reach.";
-                        property = "AEGISM_ovr_ciwsLastResort";
-                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsLastResort', _value == 'on']};";
+                        displayName = "Engagement Mode";
+                        tooltip = "How this gun works beside its Site's launchers. Overlapping: engages whatever it can reach, a launcher on it or not. Planned: given incoming munitions of its own, which the launchers leave to it. Last Resort: holds while a launcher covers the contact, until the launcher fails or the contact closes inside 40% of the gun's reach.";
+                        property = "AEGISM_ovr_ciwsMode";
+                        control = "Combo";
+                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_ciwsMode', _value]};";
+                        typeName = "STRING";
+                        defaultValue = "''";
+                        condition = "objectVehicle";
+                        class Values
+                        {
+                            class Site { name = "Site setting"; value = ""; };
+                            class Overlap { name = "Overlapping"; value = "overlap"; };
+                            class Planned { name = "Planned (targets of its own)"; value = "planned"; };
+                            class LastResort { name = "Last Resort"; value = "lastResort"; };
+                        };
                     };
                     class AEGISM_ovr_ciwsSelfDestruct: AEGISM_ovr_costValueJudgment
                     {

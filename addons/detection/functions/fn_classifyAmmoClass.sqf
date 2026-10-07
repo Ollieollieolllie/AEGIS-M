@@ -2,27 +2,9 @@
 Function: aegism_detect_fnc_classifyAmmoClass
 
 Description:
-    Pure CfgAmmo classifier, extracted from aegism_detect_fnc_classifyTarget
-    so the same inheritance-chain logic can classify an ammo classname
-    directly (e.g. from a magazine's "ammo" config entry) as well as a live
-    fired-projectile object -- used both for incoming-threat classification
-    and for aegism_system_fnc_discoverCapabilities classifying a vehicle's
-    OWN loaded ammo to determine whether it has launcher/CIWS capability.
-
-    Checks the CfgAmmo inheritance chain against the vanilla base classes
-    ShellCore (artillery/mortar shells -- only those with artilleryLock = 1;
-    direct-fire tank rounds also inherit ShellCore and are deliberately
-    excluded), BombCore (aircraft bombs), MissileCore (guided missiles), and
-    RocketCore (unguided rockets) -- inheritance is a more reliable
-    discriminator than simulation-string matching, since mods reuse
-    simulation types across different ammo roles but rarely break the base
-    class chain.
-
-    Cached per ammo class ("AEGISM_cacheAmmoClass"): this runs for every
-    round fired in the mission (the server's Fired handler), and from the aim
-    and fuse code every frame. The inheritance test is the engine's own
-    isKindOf on CfgAmmo (it used to be four CBA_fnc_inheritsFrom walks, each
-    an SQF loop up the whole chain).
+    Classifies an ammo class name into an AEGIS-M target class from its
+    CfgAmmo inheritance chain.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _ammoClassName - a CfgAmmo classname <STRING>

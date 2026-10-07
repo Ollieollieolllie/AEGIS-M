@@ -3,17 +3,8 @@ Function: aegism_intercept_fnc_missileFlightTime
 
 Description:
     Seconds a launcher's missile flies toward a point a given distance away,
-    on its speed curve learned from its own flights, or simulated from
-    config until then (aegism_intercept_fnc_missileProfile) -- until it gets
-    there, or until its lifetime (CfgAmmo timeToLive) runs out if that's
-    sooner. The same flight aegism_intercept_fnc_computeLeadPoint solves
-    with.
-
-    Used to rule out, without solving anything, a target too far out for a
-    missile to meet inside its reach: in the time the missile takes to fly to
-    the edge of its reach, the target can close at most speed x t + g t^2 / 2
-    (aegism_intercept_fnc_canEngage, and the Site coordinator's reserve
-    plan).
+    on its learned or simulated speed curve.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _weaponInfo - weaponInfo, see aegism_system_fnc_discoverCapabilities <ARRAY>

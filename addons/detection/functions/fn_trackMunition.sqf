@@ -3,22 +3,7 @@ Function: aegism_detect_fnc_trackMunition
 
 Description:
     Starts tracking a freshly-fired, already-classified munition.
-
-    Gives the munition its own contact key ("AEGISM_contactKey" = "m<n>", see
-    aegism_fnc_contactKey) and adds it to the list the single munition
-    tracker works through (aegism_detect_fnc_munitionTracker: every tracked
-    munition checked every AEGISM_TRACK_INTERVAL s, spread over frames by
-    fire time). What a check does (seen by a sensor, IFF, whether it
-    threatens a Site): aegism_detect_fnc_munitionCheck.
-
-    Whether a sensor sees it is AEGIS-M's own judgement, from each sensor's
-    config (aegism_detect_fnc_munitionSeen), made on every vehicle's sensor
-    read (aegism_detect_fnc_confidenceLoop) from the moment it's tracked: a
-    fired projectile can't be a target of the game's sensors itself (CfgAmmo
-    has no radar/IR/visual target properties). All on the server, whoever
-    crews the vehicles. An AEGIS-M System's own interceptor is only watched
-    for if some AEGIS-M vehicle is hostile to the side that fired it
-    ("watched"): nobody else would track it.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _projectile - the fired munition object <OBJECT>

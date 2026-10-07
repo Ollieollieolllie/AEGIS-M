@@ -14,7 +14,13 @@ class CfgFunctions
             class drawThreatRings {};
             class isTerminal {};
             class terminalAction {};
+            class terminalScan {};
             class terminalOpen {};
+            class terminalScope {};
+            class terminalFill {};
+            class terminalSelect {};
+            class terminalSend {};
+            class terminalApply {};
             class terminalRequest {};
             class terminalShow {};
             class zeusApplySite {};

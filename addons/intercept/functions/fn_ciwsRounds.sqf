@@ -3,48 +3,8 @@ Function: aegism_intercept_fnc_ciwsRounds
 
 Description:
     Tracks a CIWS gun's rounds in flight: proximity fuse against a munition
-    target, and spotting against the target's predicted track. One handler
-    per gun turret works through every round it has in the air (turret state
-    "rounds"); it used to be one per-frame handler per ROUND -- a Phalanx
-    firing ~53 rounds a second had 20-100 of them running at once.
-
-    A round is only examined while it can be near the target: from 80% of
-    its predicted flight time to the intercept (the aim solve's own, turret
-    state "trackTof") onward. Before that it's still on its way out and
-    nothing is done with it. (From half the flight time, a round was
-    examined ~100 frames on average: most of the round tracker's cost.)
-
-    Fuse (munition targets): the engine has no projectile-vs-projectile
-    collision, so a round passing through an incoming shell does nothing
-    unless scripted. A hit is the round's path, frame to frame, coming
-    within the round's own radius -- its blast (CfgAmmo indirectHitRange) or
-    its proximity fuse (proximityExplosionDistance), whichever is larger; 0
-    for a ball round -- of the target's body, its box (aegism_intercept_fnc_
-    bodyPass). It used to be within the box's sphere: 6.19 m round vanilla's
-    230 mm rocket, so a .50 with no blast at all scored kills 4-5 m off it.
-    The path is RELATIVE motion between frames (both move; at a 1500 m/s
-    closing speed that's ~25m per frame). No detonation before the round's
-    own CfgAmmo fuseDistance. On a hit: aegism_intercept_fnc_interceptHit. A
-    round stops being fuzed once it has closed on the target and started
-    opening (it can't come back), or the target is gone.
-
-    An airburst round (aegism_intercept_fnc_ammoBurst: POOK's 20-30 mm)
-    also kills where it bursts, if the target's body is within the burst's
-    blast then (SubmunitionCreated).
-
-    Spotting (every AEGISM_SPOT_EVERY-th round, aegism_intercept_fnc_
-    onSystemFired): the round's closest pass to the track the target was
-    PREDICTED to fly when it was fired goes to aegism_intercept_fnc_
-    ciwsSpot. Measuring against the prediction keeps the gun's own errors
-    (turret lag, flight time, drop) apart from the target's evasion. A round
-    that ends before it passes (it hit, or detonated) has its pass
-    extrapolated from its last motion relative to the predicted target.
-    Gun rounds against aircraft are tracked for spotting alone (the engine's
-    own collision decides hits on aircraft).
-
-    A round that hasn't resolved by twice its predicted flight time plus a
-    second (or its lifetime, aegism_intercept_fnc_ammoBurst, if the flight
-    time isn't known) is dropped.
+    target, and spotting against the target's predicted track.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the CIWS vehicle <OBJECT>
@@ -190,7 +150,7 @@ _ts set ["roundsRunning", true];
             if ((isNull _projectile || {!alive _projectile}) && {_round select 10} && {!(_round select 15)}) then {
                 _round params ["", "_target", "", "_launchPos", "", "", "", "_hitRadius", "", "_armDistance", "", "_lastProjPos", "_lastTargetPos"];
                 if (!isNull _target && {alive _target} && {(_launchPos distance _lastProjPos) >= _armDistance}) then {
-                    private _end = _lastProjPos vectorAdd ((_round select 21) vectorMultiply diag_deltaTime);
+                    private _end = _lastProjPos vectorAdd ((_round select 21) vectorMultiply AEGISM_frameDelta);
                     private _miss = [_target, _lastProjPos vectorDiff _lastTargetPos, _end vectorDiff (getPosWorldVisual _target), _hitRadius] call aegism_intercept_fnc_bodyPass;
                     if (_miss <= _hitRadius) then {
                         [_projectile, _target, true, _miss, _hitRadius, _end, _round select 22] call aegism_intercept_fnc_interceptHit;
@@ -250,7 +210,7 @@ _ts set ["roundsRunning", true];
                             _round set [17, _rel1];
                             _round set [18, _separation];
                             _round set [19, _ghostClosed];
-                            _round set [20, _seg vectorMultiply (1 / (diag_deltaTime max 0.001))];
+                            _round set [20, _seg vectorMultiply (1 / (AEGISM_frameDelta max 0.001))];
                         };
                     };
 

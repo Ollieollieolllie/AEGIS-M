@@ -3,25 +3,8 @@ Function: aegism_intercept_fnc_turretCanPoint
 
 Description:
     Whether a turret can physically point along a world direction, and the
-    closest direction it CAN point along: the direction taken into the
-    vehicle's own model space (so a vehicle on a slope is handled) and
-    checked against the turret config's own limits (cached, aegism_
-    intercept_fnc_turretConfig):
-        elevation - minElev / maxElev
-        traverse - minTurn / maxTurn, degrees from the vehicle's forward,
-            positive to the LEFT (verified on the Ghost Hawk's door guns:
-            left 15 to 160, right -160 to -15); a span of 360 or more turns
-            all the way round
-    The closest reachable direction clamps each axis to its nearest limit --
-    where a fixed-bearing or fixed launcher actually sends its missile
-    (aegism_intercept_fnc_launchSolution).
-
-    Why: a CIWS whose aim point was beyond its travel could never get its
-    barrel within tolerance, so it held fire on that target until the target
-    landed. The Praetorian 1C (B_AAA_System_01_F, maxElev 85) sat with its
-    barrel pinned 1.5-4 degrees short of shells coming down steeply beside
-    it for over 5s each, while other shells it could have reached got
-    through.
+    closest direction it can point along.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the vehicle <OBJECT>

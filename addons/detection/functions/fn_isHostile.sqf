@@ -4,15 +4,7 @@ Function: aegism_detect_fnc_isHostile
 Description:
     IFF check: true if _otherSide is hostile to _ownSide per the mission's
     own side relations (getFriend < 0.6, the engine's own enemy threshold).
-    A renegade (sideEnemy) is always hostile, as it is to every side in the
-    game. Civilian, empty, logic and unknown sides are never hostile -- an empty
-    parked aircraft, a civilian helicopter, or an AEGIS-M Site logic must
-    never become a contact.
-
-    Used for platforms (so a friendly jet the radar hasn't identified yet,
-    getSensorTargets relationship "unknown", isn't shot down -- real IADS
-    have IFF) and for munitions (so the battery's own outgoing interceptors
-    and friendly artillery are never tracked as incoming threats).
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _ownSide - the defending System's side <SIDE>

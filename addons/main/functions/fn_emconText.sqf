@@ -2,20 +2,9 @@
 Function: aegism_fnc_emconText
 
 Description:
-    A radar vehicle's emission state for the debug overlays and the status
-    board, from what aegism_system_fnc_emconUpdate records on it ("AEGISM_
-    emcon") and whether its radar really is emitting (isVehicleRadarOn):
-
-        EMITTING (amber) - lit by AEGIS-M: always on, cued, guiding missiles,
-            holding after its last contact, or an intermittent search burst
-        SILENT (grey) - silent until cued, or between intermittent bursts
-        SHUT DOWN (red) - an anti-radiation missile is inbound on it
-        AI: EMITTING / AI: SILENT - Radar Emission "AI decides": AEGIS-M
-            leaves it to the AI, and this is what the AI chose
-
-    The detail says why ("cued: ...", "fire control: ...", "silent in 6s").
-    If the radar hasn't followed what AEGIS-M set within 2 s, the detail
-    says so.
+    A radar vehicle's emission state as text, for the debug overlays and the
+    status board.
+    Full notes: docs/functions/main.md
 
 Parameters:
     _vehicle - the vehicle <OBJECT>

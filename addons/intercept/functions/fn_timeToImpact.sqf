@@ -5,18 +5,7 @@ Description:
     Seconds until a contact reaches the Site: the urgency the coordinator
     orders engagements by ("Soonest Impact" Target Priority), queues a
     launcher's targets by, and checks every queued shot against.
-
-        unguided munition (artilleryShell, rocket, bomb) - the time its
-            drag-free ballistic path comes down through each protected
-            vehicle's height (later root of z0 + vz*t - g*t^2/2 = z), the
-            soonest across them. An MLRS rocket's arc is decided at launch,
-            so this is right from the first detection -- distance / closing
-            speed (the old estimate) badly misjudged a rocket still climbing.
-        anything else (guided missile, aircraft) - distance to the nearest
-            protected vehicle / closing speed toward it.
-
-    1e10 when the contact isn't coming (receding, or never descends to the
-    Site's height).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _object - the contact <OBJECT>

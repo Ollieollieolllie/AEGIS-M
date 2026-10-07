@@ -3,61 +3,8 @@ Function: aegism_intercept_fnc_interceptorPFH
 
 Description:
     Per-frame proximity/direct-hit tracker for one AEGIS-M launcher missile
-    (started by aegism_intercept_fnc_onSystemFired). Necessary because the
-    engine has no projectile-vs-projectile collision at all: a missile
-    passing straight through an incoming munition does nothing unless
-    something scripted detonates both. (CIWS rounds are tracked together per
-    gun by aegism_intercept_fnc_ciwsRounds.)
-
-    Hit: against a MUNITION target, the missile's path coming within its
-    own radius -- its blast (CfgAmmo indirectHitRange) or its proximity fuse
-    (proximityExplosionDistance), whichever is larger -- of the target's
-    body, its box (aegism_intercept_fnc_bodyPass); against an aircraft,
-    within its blast of the aircraft's centre.
-
-    Arming: no detonation until the missile has flown its own CfgAmmo
-    fuseDistance from where it was fired (e.g. 100m for the MIM-145 SAM).
-
-    Closest approach is computed on RELATIVE motion between frames (both
-    the missile and the target move), not against the target's current
-    position only -- at a 1500 m/s closing speed that difference is ~25m
-    per frame.
-
-    A guided missile is tracked for its whole flight: it routinely opens
-    distance during boost or a turn and closes again. An unguided one stops
-    being tracked once it has closed and started opening.
-
-    On a hit: aegism_intercept_fnc_interceptHit. The engine's own proximity
-    fuse (CfgAmmo proximityExplosionDistance, set on most vanilla SAMs) may
-    detonate the missile first; this handler then sees it gone, and credits
-    the kill if the stretch it was on that frame came within its radius of
-    the munition's body.
-
-    Lost target: a guided missile whose target is gone before it gets there
-    (another weapon killed it first), or whose seeker has turned to
-    something else, follows another incoming munition its launcher's Site
-    is tracking if that's what its seeker took -- otherwise it
-    self-destructs (aegism_intercept_fnc_interceptorLost). Left free, its
-    seeker took the next thing it found, which shot down an aircraft the
-    Site wasn't allowed to engage.
-
-    Turn rate: a guided missile's body direction is followed every frame,
-    and its rotation summed over AEGISM_TURN_WINDOW s windows -- the fastest
-    window is the flight's fastest SUSTAINED turn (a window that long
-    averages out frame-to-frame jitter and a last-instant jink). The body
-    direction, not the velocity: gravity bends a slow missile's path just
-    off the rail without it steering at all. At the end of the flight it's
-    folded into the missile's turn rate (aegism_intercept_fnc_
-    recordMissileTurn, MISSILE-TURN) -- what an off-bore launch is planned
-    with (aegism_intercept_fnc_launchSolution).
-
-    Speed: sampled every second after launch, and folded into the missile's
-    learned speed curve however the flight ends (aegism_intercept_fnc_
-    recordMissileSpeed, MISSILE-SPEED). An intercept also logs the length
-    of the path it actually flew (summed frame by frame) against the
-    straight line, for the log's check of the prediction. A missile whose
-    seeker changed to another munition (above) isn't measured for its turn
-    rate; its speeds still count.
+    (started by aegism_intercept_fnc_onSystemFired).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _projectile - the missile <OBJECT>
@@ -76,7 +23,7 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
-// Turn-rate measurement window, seconds (see header).
+// Turn-rate measurement window, seconds (see notes).
 #define AEGISM_TURN_WINDOW 0.5
 
 params ["_projectile", "_target", ["_launch", []]];
@@ -97,7 +44,7 @@ private _launchPos = getPosASLVisual _projectile;
     params ["_args", "_pfhHandle"];
     _args params ["_projectile", "_target", "_hitRadius", "_armDistance", "_isGuided", "_launchPos", "_isMunitionTarget", "_lastProjPos", "_lastTargetPos", "_lastSeparation", "_hasClosed",
         "_ammoClass", "_launch", "_turn", "", "_retargeted", "_speeds", "_pathFlown"];
-    // Turn measurement (see header): [last direction, last time, window
+    // Turn measurement (see notes): [last direction, last time, window
     // angle, window time, fastest window deg/s].
     _turn params ["_lastDir", "_lastTime", "_windowAngle", "_windowTime", "_peakRate"];
 
@@ -113,7 +60,7 @@ private _launchPos = getPosASLVisual _projectile;
         private _at = _lastProjPos;
         if (_isMunitionTarget && {!isNull _target} && {alive _target} && {(_launchPos distance _lastProjPos) >= _armDistance}) then {
             private _targetPos = getPosWorldVisual _target;
-            private _stretch = (_args select 18) vectorMultiply diag_deltaTime;
+            private _stretch = (_args select 18) vectorMultiply AEGISM_frameDelta;
             private _passed = [_target, _lastProjPos vectorDiff _lastTargetPos, (_lastProjPos vectorAdd _stretch) vectorDiff _targetPos, _hitRadius] call aegism_intercept_fnc_bodyPass;
             if (_passed <= _hitRadius) then {
                 _miss = _passed;
@@ -187,7 +134,7 @@ private _launchPos = getPosASLVisual _projectile;
             _windowTime = 0;
         };
         _args set [13, [_dir, CBA_missionTime, _windowAngle, _windowTime, _peakRate]];
-        // Its speed each whole second after launch (see header).
+        // Its speed each whole second after launch (see notes).
         if (_launch isNotEqualTo [] && {CBA_missionTime - (_launch param [2, CBA_missionTime]) >= (count _speeds) + 1}) then {
             _speeds pushBack (vectorMagnitude velocity _projectile);
         };

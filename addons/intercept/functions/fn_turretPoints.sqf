@@ -2,25 +2,9 @@
 Function: aegism_intercept_fnc_turretPoints
 
 Description:
-    World positions of a turret's muzzle (where rounds/missiles leave) and
-    of its aiming camera (what lockCameraTo points), from the turret's own
-    config memory points (resolved once per vehicle type, aegism_intercept_
-    fnc_turretConfig).
-
-        muzzle - gunBeg for a gun, missileBeg for a launcher (falling back
-            to the other if one is missing)
-        camera - uavCameraGunnerPos for an unmanned turret, otherwise
-            memoryPointGunnerOptics
-
-    Why both: lockCameraTo points the CAMERA at the aim point, and the
-    barrel runs parallel to it but offset (often by about a metre), so every
-    round passed the target by that offset -- CIWS rounds landing about a
-    metre low at all ranges. Solving the lead from the muzzle and shifting
-    the camera's lock point by (camera - muzzle) makes the barrel line itself
-    pass through the aim point.
-
-    Missing memory points fall back to the turret crewman's eye position
-    (or the vehicle's position if the turret is empty).
+    World positions of a turret's muzzle and of its aiming camera, from the
+    turret's config memory points.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the vehicle <OBJECT>

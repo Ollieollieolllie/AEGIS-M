@@ -2,30 +2,10 @@
 Function: aegism_detect_fnc_armInbound
 
 Description:
-    An anti-radiation missile (aegism_detect_fnc_antiRadiation) seen by an
-    AEGIS-M vehicle's own sensors: marks the radars it threatens among what
-    that vehicle protects -- every live member of its Site and the Sites
-    linked with it (aegism_network_fnc_linkSites), or itself if standalone
-    -- so they shut down (Radar Emission, aegism_system_fnc_emconUpdate):
-
-        - the radar it's homing on (missileTarget), if that's one of them;
-        - otherwise each of them that's emitting inside its seeker's view:
-          within its seeker's reach, and within half its seeker's arc of its
-          line of flight.
-
-    A friendly or neutral one only counts while homing on one of them.
-
-    Each mark ("AEGISM_armInbound" on the radar: munition key -> [missile,
-    ammo class, until, why, sensor kinds that saw it, who saw it]) lasts
-    until the time the missile would take to reach that radar at its
-    current speed (at least AEGISM_ARM_MIN_SPEED m/s), plus
-    AEGISM_ARM_MARGIN s, and is renewed at every sighting; the radar comes
-    back sooner if the missile is gone. A radar newly marked is shut down at
-    once, not at its next once-a-second emission update.
-
-    Called for every sighting by the munition tracker (aegism_detect_fnc_
-    munitionCheck), whether or not the Site engages missiles: a Site that
-    doesn't still protects its radars.
+    An anti-radiation missile seen by an AEGIS-M vehicle's sensors: marks
+    the radars it threatens among what that vehicle protects, so they shut
+    down.
+    Full notes: docs/functions/detection.md
 
 Parameters:
     _projectile - the missile <OBJECT>

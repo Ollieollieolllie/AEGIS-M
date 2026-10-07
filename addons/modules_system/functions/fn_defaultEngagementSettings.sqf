@@ -2,10 +2,9 @@
 Function: aegism_system_fnc_defaultEngagementSettings
 
 Description:
-    Hardcoded fallback doctrine used by a System with no directly-set or
-    Site-inherited Doctrine data (AEGISM_Module_Site's own Attributes), so
-    a standalone vehicle with just a role checked -- no Site module synced
-    at all -- remains fully functional.
+    Hardcoded fallback doctrine for a System with no directly-set or
+    Site-inherited one.
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     None
@@ -63,8 +62,11 @@ Returns:
             Site's vehicles. A Site's own setting, not a vehicle's (a
             standalone vehicle has no area) <NUMBER>
         targetClassAllowlist - permitted contact classes <ARRAY of STRING>
-        ciwsLastResort - a CIWS gun holds while a launcher covers the
-            contact <BOOLEAN>
+        ciwsMode - a CIWS gun beside its Site's launchers: "overlap" (it
+            engages what it can reach, a launcher on it or not) | "planned"
+            (it's given munitions of its own, which the launchers leave to
+            it) | "lastResort" (it holds while a launcher covers the
+            contact) (aegism_intercept_fnc_assignEngagements) <STRING>
         ciwsSelfDestruct - a CIWS round that hits nothing detonates just
             before its lifetime runs out (aegism_intercept_fnc_
             ciwsSelfDestruct) <BOOLEAN>
@@ -112,7 +114,7 @@ createHashMapFromArray [
     ["friendlyThreatRadius", 0],
     ["protectRadius", 750],
     ["targetClassAllowlist", ["missile", "rocket", "bomb", "artilleryShell", "fixedWing", "helicopter", "drone"]],
-    ["ciwsLastResort", false],
+    ["ciwsMode", "overlap"],
     ["ciwsSelfDestruct", false],
     ["emcon", "auto"],
     ["emconHold", 10],

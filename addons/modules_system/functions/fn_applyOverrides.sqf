@@ -4,24 +4,7 @@ Function: aegism_system_fnc_applyOverrides
 Description:
     Applies a vehicle's own per-vehicle overrides on top of the settings it
     would otherwise use (its Site's, or the defaults when standalone).
-
-    Overrides come from the vehicle's Eden attributes, category "AEGIS-M:
-    Vehicle Overrides" (addons/modules_system/config.cpp, Cfg3DEN), or from
-    script. They only apply while the master switch "AEGISM_ovr_enabled" is
-    true. Each setting is an object variable "AEGISM_ovr_<key>"; one that
-    was left on "Site setting" (or blank) is never set, so it stays nil and
-    that setting falls back to the Site's value.
-
-        _vehicle setVariable ["AEGISM_ovr_enabled", true];
-        _vehicle setVariable ["AEGISM_ovr_salvoSize", 2];
-        _vehicle setVariable ["AEGISM_ovr_allow_artilleryShell", false];
-
-    Target classes are overridden one at a time ("AEGISM_ovr_allow_<class>"
-    true/false) and applied to the inherited allowlist.
-
-    "AEGISM_ovr_ciwsGuns" ("all" / "none"; nil = cannons only) isn't a
-    setting: it decides which guns are CIWS at all, read when the vehicle's
-    weapons are discovered (aegism_system_fnc_discoverCapabilities).
+    Full notes: docs/functions/modules_system.md
 
 Parameters:
     _vehicle - the System vehicle <OBJECT>
@@ -50,7 +33,7 @@ private _keys = if (_kind == "crew") then {
 } else {
     ["targetPriority", "minAltitude", "maxAltitude", "engageFriendlyThreats", "engageOnlyThreats", "friendlyThreatRadius",
      "minRange", "maxRange", "salvoSize", "minShotInterval", "maxOffBoreSwing", "maxOffBoreLimit",
-     "ciwsMaxRange", "ciwsMinElevation", "ciwsOpenFireChance", "ciwsCueAhead", "ciwsMinWindow", "ciwsBurstMin", "ciwsBurstMax", "ciwsBurstPause", "ciwsLastResort", "ciwsSelfDestruct",
+     "ciwsMaxRange", "ciwsMinElevation", "ciwsOpenFireChance", "ciwsCueAhead", "ciwsMinWindow", "ciwsBurstMin", "ciwsBurstMax", "ciwsBurstPause", "ciwsMode", "ciwsSelfDestruct",
      "emcon", "emconHold", "emconBurstOn", "emconBurstOff", "armShutdown"]
 };
 
@@ -64,6 +47,12 @@ private _result = +_settings;
 } forEach _keys;
 
 if (_kind == "engagement") then {
+    // A mission saved with the old Last Resort Only override.
+    private _lastResort = _vehicle getVariable "AEGISM_ovr_ciwsLastResort";
+    if (!isNil "_lastResort" && {isNil { _vehicle getVariable "AEGISM_ovr_ciwsMode" }}) then {
+        _result set ["ciwsMode", ["overlap", "lastResort"] select _lastResort];
+        _changes pushBack format ["ciwsMode=%1", _result get "ciwsMode"];
+    };
     private _allowlist = +(_result getOrDefault ["targetClassAllowlist", []]);
     {
         private _allow = _vehicle getVariable ("AEGISM_ovr_allow_" + _x);

@@ -3,25 +3,8 @@ Function: aegism_intercept_fnc_debugProbeMunitions
 
 Description:
     In-game probe, run from the debug console while testing (on the server:
-    in single player or as host the local console is fine). From then on,
-    each new ammo type AEGIS-M tracks is probed once, AEGISM_PROBE_AFTER s
-    into its flight (clear of whatever fired it), and the result logged
-    (PROBE, RPT and system chat):
-
-    Its body. A round counts as hitting a munition where its path comes
-    within its own radius of the munition's bounding box (aegism_intercept_
-    fnc_bodyPass) -- all AEGIS-M has for a shape, if nothing finer exists.
-    Lines are cast across the munition in every LOD lineIntersectsSurfaces
-    knows (GEOM, FIRE, VIEW, IFIRE, PHYSX) to find whether any of them can
-    hit this projectile at all, and if one can, the body is measured in it:
-    its length, width and height, and where along the box it sits.
-
-    Found so far (2026-10-06): no LOD of vanilla's R_230mm_HE can be hit.
-    And a vehicle can't be given a munition as its target: doTarget on a
-    projectile left assignedTarget empty (so a mod script that reads it,
-    like POOK's AAA fuse, can't be fed one).
-
-    [false] call ... stops it.
+    in single player or as host the local console is fine).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _on - start (true) or stop (false) <BOOLEAN, default true>
@@ -59,7 +42,7 @@ if (_handle >= 0) then {
 };
 if (!_on) exitWith { ["PROBE: stopped."] call _fnSay; };
 
-// Measures one munition (see header).
+// Measures one munition (see notes).
 private _fnProbe = {
     params ["_projectile", "_fnSay"];
     private _started = diag_tickTime;

@@ -8,6 +8,7 @@ class CfgFunctions
             class pollSyncedObjects {};
             class contactKey {};
             class siteSettingsSource {};
+            class siteName {};
             class perfLog {};
             class statusStyle {};
             class sensorTags {};

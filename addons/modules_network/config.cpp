@@ -41,6 +41,38 @@ class Cfg3DEN
             onConnectionAdded = "_this call aegism_network_fnc_edenCoordinator";
         };
     };
+    // A terminal's access, on any object that isn't a unit or a vehicle (a
+    // terminal is a laptop, aegism_network_fnc_isTerminal).
+    class Object
+    {
+        class AttributeCategories
+        {
+            class AEGISM_Terminal
+            {
+                displayName = "AEGIS-M: Terminal";
+                collapsed = 1;
+                class Attributes
+                {
+                    class AEGISM_terminalAccess
+                    {
+                        displayName = "Terminal Access";
+                        tooltip = "For a laptop synced to an AEGIS-M Site or air-defence vehicle (any object with 'laptop' in its class name): what players can do at it. Status Only (default): see the live status board. Full Control: also change settings from it. What it reaches follows what it is synced to -- a vehicle: that vehicle's overrides only; a Site: that Site's settings and each of its vehicles' overrides; the Shared Site Coordinator of linked Sites: every one of them. Does nothing on any other object.";
+                        property = "AEGISM_terminalAccess";
+                        control = "Combo";
+                        expression = "_this setVariable ['AEGISM_terminalAccess', _value, true];";
+                        typeName = "STRING";
+                        defaultValue = "'status'";
+                        condition = "(1 - objectBrain) * (1 - objectVehicle)";
+                        class Values
+                        {
+                            class Status { name = "Status Only"; value = "status"; };
+                            class Control { name = "Full Control"; value = "control"; };
+                        };
+                    };
+                };
+            };
+        };
+    };
 };
 
 // The other Alarm Ranges (below): each tone's sound and sound source again,
@@ -680,15 +712,33 @@ class CfgVehicles
                 typeName = "NUMBER";
                 defaultValue = "1";
             };
-            class CiwsLastResort
+            class CiwsMode
             {
-                displayName = "Last Resort Only";
-                tooltip = "Off (default): a CIWS engages a contact immediately, alongside any launcher already assigned to it. On: the CIWS holds while a launcher covers the contact, until every launcher assignment against it has failed or the contact has closed inside 40% of the gun's own reach.";
-                property = "ciwsLastResort";
-                control = "Checkbox";
-                expression = "_this setVariable ['ciwsLastResort', _value];";
-                typeName = "BOOL";
-                defaultValue = "false";
+                displayName = "Engagement Mode";
+                tooltip = "How a CIWS gun works beside the Site's launchers. Overlapping (default): it engages whatever it can reach, including a contact a launcher is already on. Planned: it is given incoming munitions of its own and the launchers leave those to it -- a gun and a missile are never on the same contact. The gun takes a munition it is free for as that munition comes into its reach, one per Minimum Firing Window (and no less than one longest burst and its pause); the rest go to the launchers. Logged as GUN-PLAN. Last Resort: it holds while a launcher covers the contact, until every launcher assignment against it has failed or the contact has closed inside 40% of the gun's own reach.";
+                property = "ciwsMode";
+                control = "Combo";
+                expression = "_this setVariable ['ciwsMode', _value];";
+                typeName = "STRING";
+                defaultValue = "'overlap'";
+                class Values
+                {
+                    class Overlap
+                    {
+                        name = "Overlapping";
+                        value = "overlap";
+                    };
+                    class Planned
+                    {
+                        name = "Planned (targets of its own)";
+                        value = "planned";
+                    };
+                    class LastResort
+                    {
+                        name = "Last Resort";
+                        value = "lastResort";
+                    };
+                };
             };
             class CiwsSelfDestruct
             {

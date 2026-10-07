@@ -4,15 +4,7 @@ Function: aegism_intercept_fnc_barrelDirection
 Description:
     World-space unit vector a System weapon's barrel (or missile rail)
     currently points along.
-
-    weaponDirection is tried first. It looks the weapon up by NAME, and for
-    some turrets it returns [0,0,0] -- e.g. the POOK C-RAM's second turret
-    (LF_Turret, pook_SAM_M2HB): every alignment check against a zero vector
-    reads exactly 90 degrees, so that gun logged "barrel 90 deg off" forever
-    and never fired. The fallback reads the specific turret's own barrel
-    memory points (gunBeg/gunEnd, or missileBeg/missileEnd for a launcher;
-    names cached by aegism_intercept_fnc_turretConfig) -- beginning (muzzle)
-    minus end (breech) -- which follow the turret's animation.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the vehicle <OBJECT>

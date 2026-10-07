@@ -3,53 +3,9 @@ Function: aegism_intercept_fnc_openFireRange
 
 Description:
     How far out one gun turret opens fire on a target: the longest intercept
-    distance at which ONE BURST is at least doctrine ciwsOpenFireChance
-    likely to put a round within the hit radius -- from what's measurable,
-    not from the fire modes' AI hit-probability values:
-
-        a round's miss at intercept distance d scatters square to the line
-        of sight with a per-axis RMS of
-            sigma(d)^2 = (s d)^2 + (u t(d))^2 / 3
-        s - the gun's angular scatter: its OWN measured misses (every
-            spotted round's miss square to the line of sight, over its range,
-            aegism_intercept_fnc_ciwsSpot) for this kind of target, blended
-            with a prior worth AEGISM_SCATTER_PRIOR_ROUNDS rounds: the
-            current fire mode's CfgWeapons dispersion (read as the RMS
-            angle, its widest reading) plus the barrel being anywhere inside
-            its fire gate when it fires (dispersion + hit radius / d, spread
-            evenly over that disc). The prior alone is optimistic -- turret
-            tracking isn't in it -- so the range comes in as the gun's own
-            misses are measured: ~2.4km for a Phalanx against a shell before
-            it has fired, ~1.3-1.8km at the 7-10 mrad its rounds have
-            measured in play.
-        u - how fast the real target strays from its predicted track, per
-            second of the round's flight (measured the same way; 3D, so a
-            third of it per axis)
-        t(d) - the round's flight time to d: (exp(k d) - 1) / (k v0)
-            (CfgMagazines initSpeed, CfgAmmo airFriction)
-        one round hits if its miss is within r, the hit radius: the
-            target's size to the gun (aegism_intercept_fnc_aimWeapon -- a
-            munition's body as seen along the line of fire plus the round's
-            own blast or proximity radius, as its fuse counts a hit; an
-            aircraft's half-size):
-            p = 1 - exp(-r^2 / (2 sigma^2))
-        a burst is N rounds: the gun's measured rate of fire (else its fire
-            mode's reloadTime) x the doctrine's mean burst length, and hits
-            with 1 - (1 - p)^N
-
-    Capped by the round's reach in its own lifetime (CfgAmmo timeToLive, or
-    until an airburst round bursts, aegism_intercept_fnc_ammoBurst:
-    ln(1 + k v0 T) / k). A munition target isn't engaged inside the round's
-    arming distance (CfgAmmo fuseDistance) -- the scripted fuse can't
-    detonate before it.
-
-    Cached per turret, target class and hit radius for AEGISM_OPEN_FIRE_
-    REFRESH s (the gun's measured scatter moves slowly; recomputing on every
-    measured round -- ~17 a second while firing -- redid the search at every
-    aim solve). Logged when it
-    moves by more than AEGISM_OPEN_FIRE_LOG_CHANGE (OPEN-FIRE-RANGE, with
-    every input). Doctrine ciwsOpenFireChance 0: no limit short of the
-    round's reach.
+    distance at which one burst is at least the doctrine's Open Fire Chance
+    likely to hit.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the gun's vehicle <OBJECT>

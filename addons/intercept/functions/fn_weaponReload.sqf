@@ -2,31 +2,8 @@
 Function: aegism_intercept_fnc_weaponReload
 Description:
     Whether a turret's weapon can fire right now, and how long until it can,
-    from the engine's own reload state (weaponState [vehicle, turret,
-    weapon], Arma 3 2.06+):
-        magazineReloadPhase - 1 -> 0 while it loads its next magazine, 0
-            once loaded
-        roundReloadPhase - 1 -> 0 while it readies the next round (-1 with
-            no magazine)
-
-    The time left is the phase times how long that reload REALLY takes,
-    measured here from how fast the phase itself falls (turret state
-    "reload|<weapon>"); until a tenth of one reload has been watched
-    (AEGISM_RELOAD_MEASURE_PHASE) it's the config's time -- CfgWeapons
-    magazineReloadTime, or the fire mode's reloadTime (aegism_intercept_fnc_
-    fireModeStats). The config's time alone ran short: POOK's 9K332 (reloadTime
-    6.5) fired every 9.7-10 s, and its S-400 launcher (reloadTime 25) took 37
-    and 42 s over two reloads, its "ready in" slipping 0.4 s every second.
-    The coordinator booked each a queue it could never fire, releasing the
-    claims one after another as their turn failed to come (2026-10-06).
-    Logged when first measured for a weapon (RELOAD-TIME).
-
-    A launcher that has just fired the last missile of a magazine already
-    shows the next magazine's full count while it's still loading it, and a
-    fire command then fires nothing: POOK's 9K331 fired six times into its
-    reload, each taken for a missed shot, and its targets got through
-    (2026-10-06). POOK's launchers reload for minutes (the S-125's
-    magazineReloadTime is 900 s).
+    from the engine's own reload state.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the vehicle <OBJECT>

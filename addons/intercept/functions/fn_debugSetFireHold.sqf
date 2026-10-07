@@ -2,18 +2,9 @@
 Function: aegism_intercept_fnc_debugSetFireHold
 
 Description:
-    On-demand hard hold/release for a System's launcher/CIWS weapons, meant
-    to be run from the Arma debug console while testing -- forces a
-    specific System (or every weapon it has, if no turret path is given) to
-    stop firing entirely, or releases a hold previously set.
-
-    This is a genuine circuit breaker, not a Doctrine/salvo setting: it's
-    checked in aegism_intercept_fnc_fireWeapon itself, the single narrowest
-    choke point every real fire command passes through (turret state
-    "fireHold"), so it guarantees no shot from that turret regardless of
-    what upstream logic tries to trigger.
-
-    Not something a mission should ship with set permanently.
+    Debug console: forces a System's launcher/CIWS weapons to stop firing,
+    or releases that hold.
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the System vehicle to hold/release <OBJECT>

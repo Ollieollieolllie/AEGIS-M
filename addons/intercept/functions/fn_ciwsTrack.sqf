@@ -5,32 +5,7 @@ Description:
     Keeps a CIWS gun's turret on its intercept point EVERY FRAME for as long
     as it has a target, not just while a burst is running, and returns the
     gun's current aim for the engagement loop.
-
-    Solve and steer: every AEGISM_CIWS_SOLVE_INTERVAL s the full aim is
-    solved (aegism_intercept_fnc_aimWeapon: lead solve, spotting correction,
-    gate); every frame in between the turret is steered along the aim
-    point's own motion since the last solve -- aim point + its velocity x
-    time since -- re-locked, and the barrel checked against that point
-    (aegism_intercept_fnc_ciwsGate). A full solve every frame did the same
-    job at many times the cost; at 20 Hz a smoothly moving aim point is
-    extrapolated at most 50ms.
-
-    Why per frame: between bursts -- and before the first one -- the turret
-    was only re-aimed at the engagement loop's 0.1s tick, chasing a lead
-    point that jumped every tick. Against a shell close in and crossing
-    fast, it trailed by more than the fire gate allows, so the first burst
-    never opened.
-
-    One handler per turret (turret state "tracking"), aiming at its
-    "trackTarget" [target, weaponInfo, time], refreshed every engagement
-    tick. It stops once that goes stale for longer than AEGISM_TRACK_STALE
-    (the engagement was released), or the target dies. A turret that isn't
-    local to this machine is only steered at the engagement tick (its lock
-    goes over the network).
-
-    Called by the engagement loop each tick: starts the handler if needed,
-    and solves on the spot if the gun has no fresh aim for this target yet
-    (the loop then never solves a second time in the same moment).
+    Full notes: docs/functions/intercept.md
 
 Parameters:
     _system - the CIWS vehicle <OBJECT>
