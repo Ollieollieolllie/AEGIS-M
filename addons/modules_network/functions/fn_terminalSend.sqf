@@ -44,7 +44,7 @@ private _pairs = [];
         };
     };
     _pairs pushBack [_property, _value];
-} forEach (_state get "rows");
+} forEach (_state get "formRows");
 
 (_display displayCtrl AEGISM_TERMINAL_NOTE_IDC) ctrlSetStructuredText parseText format ["<t size='0.85' color='%1'>Sending...</t>", AEGISM_TERMINAL_DIM_HEX];
 [_state get "terminal", _state get "anchor", _target, _pairs] remoteExecCall ["aegism_network_fnc_terminalApply", 2];

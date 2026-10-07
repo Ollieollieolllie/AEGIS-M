@@ -4,7 +4,8 @@ Function: aegism_network_fnc_terminalOpen
 Description:
     Opens a terminal's screen on this machine: what it reaches on the left
     (its Sites and their vehicles), and for the one picked a Status tab
-    (the live status board) and, on a control terminal, a Settings tab.
+    (the live status board), on a control terminal a Settings tab, and on
+    one with manual interception an Interception tab (map, tracks, weapons).
     Full notes: docs/functions/modules_network.md
 
 Parameters:
@@ -31,10 +32,17 @@ private _display = (findDisplay 46) createDisplay "RscDisplayEmpty";
 if (isNull _display) exitWith {};
 uiNamespace setVariable ["AEGISM_terminalDisplay", _display];
 // The screen's state: what it reaches ("nodes", from the server), the one
-// picked, the tab shown, and the settings form built for it.
+// picked, the tab shown, and the settings form built for it; for the
+// Interception page, whether the terminal has it ("engage"), the server's
+// last answer ("picture") and the track and weapon picked there.
+private _fnMarkerIcon = { getText (configFile >> "CfgMarkers" >> _this >> "icon") };
 uiNamespace setVariable ["AEGISM_terminalState", createHashMapFromArray [
-    ["terminal", _terminal], ["anchor", _anchor], ["access", "status"], ["nodes", []], ["node", -1],
-    ["tab", "status"], ["rows", []], ["formControls", []], ["formFor", objNull]
+    ["terminal", _terminal], ["anchor", _anchor], ["access", "status"], ["engage", false], ["nodes", []], ["node", -1],
+    ["tab", "status"], ["formRows", []], ["formControls", []], ["formFor", objNull],
+    ["picture", []], ["pictureAt", 0], ["pictureFor", objNull], ["trackKey", ""], ["weaponId", ""], ["filling", false],
+    ["rows", []], ["rings", []], ["labelled", []], ["radarId", ""],
+    ["icons", ["mil_triangle" call _fnMarkerIcon, "mil_arrow2" call _fnMarkerIcon, "mil_circle" call _fnMarkerIcon, "mil_box" call _fnMarkerIcon,
+        "mil_arrow" call _fnMarkerIcon, "mil_objective" call _fnMarkerIcon]]
 ]];
 _display displayAddEventHandler ["Unload", { uiNamespace setVariable ["AEGISM_terminalState", nil]; }];
 
@@ -104,8 +112,19 @@ _tabSettings ctrlCommit 0;
 _tabSettings ctrlShow false;
 _tabSettings ctrlAddEventHandler ["ButtonClick", { [-1, "settings"] call aegism_network_fnc_terminalSelect; }];
 
+private _tabIntercept = _display ctrlCreate ["RscButtonMenu", AEGISM_TERMINAL_TAB_INTERCEPT_IDC];
+_tabIntercept ctrlSetPosition [_paneX + 2 * (_tabW + _padX), _bodyY, 1.3 * _tabW, _tabH];
+_tabIntercept ctrlSetText "INTERCEPTION";
+_tabIntercept ctrlCommit 0;
+_tabIntercept ctrlShow false;
+_tabIntercept ctrlAddEventHandler ["ButtonClick", { [-1, "intercept"] call aegism_network_fnc_terminalSelect; }];
+// (Where the tabs go: the ones a terminal has are packed to the left,
+// aegism_network_fnc_terminalFill.)
+(uiNamespace getVariable "AEGISM_terminalState") set ["tabRow", [_paneX, _bodyY, _tabW, _tabH, _padX]];
+
+private _headingX = _paneX + 3.3 * _tabW + 3 * _padX;
 private _heading = _display ctrlCreate ["RscStructuredText", AEGISM_TERMINAL_HEADING_IDC];
-_heading ctrlSetPosition [_paneX + 2 * (_tabW + _padX), _bodyY + 0.004 * safeZoneH, _paneW - 2 * (_tabW + _padX), _tabH];
+_heading ctrlSetPosition [_headingX, _bodyY + 0.004 * safeZoneH, _paneX + _paneW - _headingX, _tabH];
 _heading ctrlCommit 0;
 
 [[_paneX, _contentY, _paneW, _contentH], [1, 1, 1, 0.04]] call _fnPanel;
@@ -125,6 +144,103 @@ _form ctrlSetPosition [_paneX + _padX, _contentY + _padY, _paneW - 2 * _padX, _c
 _form ctrlCommit 0;
 _form ctrlShow false;
 
+// Interception: the map on the left; on the right the automation switch,
+// the tracks, the weapons and the radars of the Site or vehicle picked, and
+// the orders standing (aegism_network_fnc_terminalIntercept fills them,
+// aegism_network_fnc_terminalMapDraw draws the map). A map control can't sit in a group, so
+// it's the screen's own; it's shown with the tab (aegism_network_fnc_
+// terminalSelect) at "mapRect".
+private _mapW = 0.58 * _paneW;
+private _colX = _paneX + _mapW + _padX;
+private _colW = _paneW - _mapW - _padX;
+private _headH = 0.026 * safeZoneH;
+private _radarRowH = 0.03 * safeZoneH;
+private _listsH = _contentH - _tabH - 3 * _headH - _radarRowH - 6 * 0.5 * _padY;
+(uiNamespace getVariable "AEGISM_terminalState") set ["mapRect", [_paneX, _contentY, _mapW, _contentH]];
+
+private _map = _display ctrlCreate ["RscMapControl", AEGISM_TERMINAL_MAP_IDC];
+_map ctrlSetPosition [_paneX, _contentY, 0, 0];
+_map ctrlCommit 0;
+_map ctrlShow false;
+_map ctrlAddEventHandler ["Draw", { _this call aegism_network_fnc_terminalMapDraw; }];
+_map ctrlAddEventHandler ["MouseButtonClick", {
+    params ["_map", "_button", "_x", "_y"];
+    if (_button == 0) then { ["mapClick", [_map, _x, _y]] call aegism_network_fnc_terminalCommand; };
+}];
+
+private _auto = _display ctrlCreate ["RscButtonMenu", AEGISM_TERMINAL_AUTO_IDC];
+_auto ctrlSetPosition [_colX, _contentY, _colW, _tabH];
+_auto ctrlSetText "AUTOMATION: ON";
+_auto ctrlSetTooltip "Off: this Site's weapons fire on this page's orders only. On: the Site also runs them on its own.";
+_auto ctrlCommit 0;
+_auto ctrlAddEventHandler ["ButtonClick", { ["automation"] call aegism_network_fnc_terminalCommand; }];
+
+private _rowY = _contentY + _tabH + 0.5 * _padY;
+private _tracksHead = _display ctrlCreate ["RscStructuredText", AEGISM_TERMINAL_TRACKS_HEAD_IDC];
+_tracksHead ctrlSetPosition [_colX, _rowY, _colW, _headH];
+_tracksHead ctrlCommit 0;
+_rowY = _rowY + _headH;
+private _tracks = _display ctrlCreate ["RscListBox", AEGISM_TERMINAL_TRACKS_IDC];
+_tracks ctrlSetPosition [_colX, _rowY, _colW, 0.36 * _listsH];
+_tracks ctrlSetBackgroundColor [1, 1, 1, 0.04];
+_tracks ctrlCommit 0;
+_tracks ctrlAddEventHandler ["LBSelChanged", {
+    params ["_list", "_index"];
+    if (_index >= 0) then { ["track", [_list lbData _index]] call aegism_network_fnc_terminalCommand; };
+}];
+_rowY = _rowY + 0.36 * _listsH + 0.5 * _padY;
+
+private _weaponsHead = _display ctrlCreate ["RscStructuredText", AEGISM_TERMINAL_WEAPONS_HEAD_IDC];
+_weaponsHead ctrlSetPosition [_colX, _rowY, _colW, _headH];
+_weaponsHead ctrlCommit 0;
+_rowY = _rowY + _headH;
+private _weapons = _display ctrlCreate ["RscListBox", AEGISM_TERMINAL_WEAPONS_IDC];
+_weapons ctrlSetPosition [_colX, _rowY, _colW, 0.26 * _listsH];
+_weapons ctrlSetBackgroundColor [1, 1, 1, 0.04];
+_weapons ctrlCommit 0;
+_weapons ctrlAddEventHandler ["LBSelChanged", {
+    params ["_list", "_index"];
+    if (_index >= 0) then { ["weapon", [_list lbData _index]] call aegism_network_fnc_terminalCommand; };
+}];
+_rowY = _rowY + 0.26 * _listsH + 0.5 * _padY;
+
+// The radars, and what the one picked (or all of them, the first row) is
+// ordered to do.
+private _radarsHead = _display ctrlCreate ["RscStructuredText", AEGISM_TERMINAL_RADARS_HEAD_IDC];
+_radarsHead ctrlSetPosition [_colX, _rowY, _colW, _headH];
+_radarsHead ctrlCommit 0;
+_rowY = _rowY + _headH;
+private _radars = _display ctrlCreate ["RscListBox", AEGISM_TERMINAL_RADARS_IDC];
+_radars ctrlSetPosition [_colX, _rowY, _colW, 0.18 * _listsH];
+_radars ctrlSetBackgroundColor [1, 1, 1, 0.04];
+_radars ctrlCommit 0;
+_radars ctrlAddEventHandler ["LBSelChanged", {
+    params ["_list", "_index"];
+    if (_index >= 0) then { ["radar", [_list lbData _index]] call aegism_network_fnc_terminalCommand; };
+}];
+_rowY = _rowY + 0.18 * _listsH + 0.25 * _padY;
+{
+    _x params ["_idc", "_text", "_order", "_tooltip"];
+    private _button = _display ctrlCreate ["RscButtonMenu", _idc];
+    _button ctrlSetPosition [_colX + _forEachIndex * (_colW / 3), _rowY, _colW / 3 - 0.25 * _padX, _radarRowH];
+    _button ctrlSetText _text;
+    _button ctrlSetTooltip _tooltip;
+    _button ctrlCommit 0;
+    _button setVariable ["AEGISM_radarOrder", _order];
+    _button ctrlAddEventHandler ["ButtonClick", { ["radarOrder", [(_this select 0) getVariable ["AEGISM_radarOrder", ""]]] call aegism_network_fnc_terminalCommand; }];
+} forEach [
+    [AEGISM_TERMINAL_RADAR_AUTO_IDC, "RADAR: AUTO", "", "The radar picked (or every radar, with the first row picked) goes back to its own emission control."],
+    [AEGISM_TERMINAL_RADAR_ON_IDC, "EMIT", "on", "Orders the radar picked (or every radar) on, until taken back. It still shuts down for an anti-radiation missile inbound on it, if it's set to."],
+    [AEGISM_TERMINAL_RADAR_OFF_IDC, "SILENT", "off", "Orders the radar picked (or every radar) silent, until taken back."]
+];
+_rowY = _rowY + _radarRowH + 0.5 * _padY;
+
+private _ordersText = _display ctrlCreate ["RscStructuredText", AEGISM_TERMINAL_ORDERS_IDC];
+_ordersText ctrlSetPosition [_colX, _rowY, _colW, 0.2 * _listsH];
+_ordersText ctrlSetBackgroundColor [1, 1, 1, 0.04];
+_ordersText ctrlCommit 0;
+{ (_display displayCtrl _x) ctrlShow false; } forEach AEGISM_TERMINAL_INTERCEPT_IDCS;
+
 private _footY = _contentY + _contentH + _padY;
 private _apply = _display ctrlCreate ["RscButtonMenu", AEGISM_TERMINAL_APPLY_IDC];
 _apply ctrlSetPosition [_paneX, _footY, _tabW, _footH];
@@ -140,14 +256,32 @@ _revert ctrlCommit 0;
 _revert ctrlShow false;
 _revert ctrlAddEventHandler ["ButtonClick", { [-1, "", true] call aegism_network_fnc_terminalSelect; }];
 
+// (Interception's own two, where Settings has Apply and Revert.)
+private _engage = _display ctrlCreate ["RscButtonMenu", AEGISM_TERMINAL_ENGAGE_IDC];
+_engage ctrlSetPosition [_paneX, _footY, _tabW, _footH];
+_engage ctrlSetText "ENGAGE";
+_engage ctrlSetTooltip "Orders the weapon picked onto the track picked: one missile, or a gun's fire until it's down. Again for another missile.";
+_engage ctrlCommit 0;
+_engage ctrlShow false;
+_engage ctrlAddEventHandler ["ButtonClick", { ["engage"] call aegism_network_fnc_terminalCommand; }];
+
+private _cease = _display ctrlCreate ["RscButtonMenu", AEGISM_TERMINAL_CEASE_IDC];
+_cease ctrlSetPosition [_paneX + _tabW + _padX, _footY, _tabW, _footH];
+_cease ctrlSetText "CEASE FIRE";
+_cease ctrlSetTooltip "Ends the orders on the track picked -- with none picked, every order. A missile already in flight flies on.";
+_cease ctrlCommit 0;
+_cease ctrlShow false;
+_cease ctrlAddEventHandler ["ButtonClick", { ["cease"] call aegism_network_fnc_terminalCommand; }];
+
 private _note = _display ctrlCreate ["RscStructuredText", AEGISM_TERMINAL_NOTE_IDC];
 _note ctrlSetPosition [_paneX + 2 * (_tabW + _padX), _footY + 0.006 * safeZoneH, _paneW - 2 * (_tabW + _padX), _footH];
 _note ctrlCommit 0;
 
-// Once a second while it's open: what it reaches, until the server has
-// answered and every fifth second after (its reach changes with the Sites'
-// links and coordinator); and the board of the one picked, while Status is
-// shown.
+// Twice a second while it's open. What it reaches: until the server has
+// answered, and every fifth second after (its reach changes with the Sites'
+// links and coordinator). Every second, the board of the one picked while
+// Status is shown, or its picture while Interception is -- and that twice a
+// second while the Site has a missile in flight, so it moves on the map.
 [{
     params ["_args", "_pfhHandle"];
     _args params ["_anchor", "_terminal", "_display", "_count"];
@@ -159,13 +293,18 @@ _note ctrlCommit 0;
     };
     private _state = uiNamespace getVariable ["AEGISM_terminalState", createHashMap];
     private _nodes = _state getOrDefault ["nodes", []];
-    if (_nodes isEqualTo [] || {_count mod 5 == 4}) then {
+    private _second = _count mod 2 == 0;
+    if ((_nodes isEqualTo [] && {_second}) || {_count mod 10 == 8}) then {
         [_terminal, _anchor, true] remoteExecCall ["aegism_network_fnc_terminalScope", 2];
     };
-    if ((_state getOrDefault ["tab", "status"]) == "status") then {
+    private _tab = _state getOrDefault ["tab", "status"];
+    if (_tab == "status" && {_second}) then {
         private _node = _nodes param [_state getOrDefault ["node", -1], []];
         if (_node isNotEqualTo []) then { [_node select 0] remoteExecCall ["aegism_network_fnc_terminalRequest", 2]; };
     };
-}, 1, [_anchor, _terminal, _display, 0]] call CBA_fnc_addPerFrameHandler;
+    if (_tab == "intercept" && {_second || {((_state getOrDefault ["picture", []]) param [8, []]) isNotEqualTo []}}) then {
+        ["request"] call aegism_network_fnc_terminalCommand;
+    };
+}, 0.5, [_anchor, _terminal, _display, 0]] call CBA_fnc_addPerFrameHandler;
 
 [_terminal, _anchor, true] remoteExecCall ["aegism_network_fnc_terminalScope", 2];

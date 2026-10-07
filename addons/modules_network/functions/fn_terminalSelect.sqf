@@ -3,14 +3,15 @@ Function: aegism_network_fnc_terminalSelect
 
 Description:
     Shows one of the things a terminal reaches on this machine's open
-    terminal screen, on the Status or the Settings tab: asks the server for
-    its board, or builds its settings form from the same attribute config
-    Eden uses.
+    terminal screen, on the Status, Settings or Interception tab: asks the
+    server for its board or its picture, or builds its settings form from
+    the same attribute config Eden uses.
     Full notes: docs/functions/modules_network.md
 
 Parameters:
     _index - the node picked, -1 to keep the one shown <NUMBER, default -1>
-    _tab - "status" or "settings", "" to keep the one shown <STRING, default "">
+    _tab - "status", "settings" or "intercept", "" to keep the one shown
+        <STRING, default "">
     _rebuild - build the settings form again from the current values
         (Revert) <BOOLEAN, default false>
 
@@ -35,31 +36,76 @@ if (isNull _display || {isNil "_state"}) exitWith {};
 
 if (_index >= 0) then { _state set ["node", _index]; };
 if (_tab != "") then { _state set ["tab", _tab]; };
-if ((_state get "access") != "control") then { _state set ["tab", "status"]; };
+// (A tab the terminal doesn't have falls back to Status.)
+if ((_state get "tab") == "settings" && {(_state get "access") != "control"}) then { _state set ["tab", "status"]; };
+if ((_state get "tab") == "intercept" && {!(_state getOrDefault ["engage", false])}) then { _state set ["tab", "status"]; };
 
 private _node = (_state get "nodes") param [_state get "node", []];
 if (_node isEqualTo []) exitWith {};
 _node params ["_target", "_label", "_kind"];
 private _isSite = _kind == "site";
-private _settings = (_state get "tab") == "settings";
+private _shownTab = _state get "tab";
+private _settings = _shownTab == "settings";
+private _intercept = _shownTab == "intercept";
 
 (_display displayCtrl AEGISM_TERMINAL_HEADING_IDC) ctrlSetStructuredText parseText format [
     "<t size='0.95' color='%1'>%2</t><t size='0.8' color='%3'>   %4</t>",
     AEGISM_TERMINAL_ACCENT_HEX, _label, AEGISM_TERMINAL_DIM_HEX,
-    if (_settings) then { ["this vehicle's overrides of its Site's settings", "the Site's settings"] select _isSite } else { "live status" }];
+    switch (true) do {
+        case _settings: { ["this vehicle's overrides of its Site's settings", "the Site's settings"] select _isSite };
+        case _intercept: { ["manual interception: this vehicle's weapons", "manual interception: the Site's weapons"] select _isSite };
+        default { "live status" };
+    }];
 
-(_display displayCtrl AEGISM_TERMINAL_GROUP_IDC) ctrlShow !_settings;
+(_display displayCtrl AEGISM_TERMINAL_GROUP_IDC) ctrlShow (_shownTab == "status");
 { (_display displayCtrl _x) ctrlShow _settings; } forEach [AEGISM_TERMINAL_FORM_IDC, AEGISM_TERMINAL_APPLY_IDC, AEGISM_TERMINAL_REVERT_IDC];
+{ (_display displayCtrl _x) ctrlShow _intercept; } forEach AEGISM_TERMINAL_INTERCEPT_IDCS;
+// (The map takes no part of the screen while it isn't shown.)
+private _map = _display displayCtrl AEGISM_TERMINAL_MAP_IDC;
+(_state get "mapRect") params ["_mapX", "_mapY", "_mapW", "_mapH"];
+_map ctrlSetPosition ([[_mapX, _mapY, 0, 0], [_mapX, _mapY, _mapW, _mapH]] select _intercept);
+_map ctrlCommit 0;
 // The tab shown is marked in its text as well as its colour (a menu button
 // doesn't always take a text colour).
-(_display displayCtrl AEGISM_TERMINAL_TAB_STATUS_IDC) ctrlSetText (["> STATUS", "STATUS"] select _settings);
-(_display displayCtrl AEGISM_TERMINAL_TAB_STATUS_IDC) ctrlSetTextColor ([AEGISM_TERMINAL_ACCENT, AEGISM_TERMINAL_DIM] select _settings);
-(_display displayCtrl AEGISM_TERMINAL_TAB_SETTINGS_IDC) ctrlSetText (["SETTINGS", "> SETTINGS"] select _settings);
-(_display displayCtrl AEGISM_TERMINAL_TAB_SETTINGS_IDC) ctrlSetTextColor ([AEGISM_TERMINAL_DIM, AEGISM_TERMINAL_ACCENT] select _settings);
+{
+    _x params ["_idc", "_name", "_shown"];
+    (_display displayCtrl _idc) ctrlSetText ([_name, "> " + _name] select _shown);
+    (_display displayCtrl _idc) ctrlSetTextColor ([AEGISM_TERMINAL_DIM, AEGISM_TERMINAL_ACCENT] select _shown);
+} forEach [
+    [AEGISM_TERMINAL_TAB_STATUS_IDC, "STATUS", _shownTab == "status"],
+    [AEGISM_TERMINAL_TAB_SETTINGS_IDC, "SETTINGS", _settings],
+    [AEGISM_TERMINAL_TAB_INTERCEPT_IDC, "INTERCEPTION", _intercept]
+];
 
-if (!_settings) exitWith {
+if (_shownTab == "status") exitWith {
     (_display displayCtrl AEGISM_TERMINAL_NOTE_IDC) ctrlSetStructuredText parseText "";
     [_target] remoteExecCall ["aegism_network_fnc_terminalRequest", 2];
+};
+if (_intercept) exitWith {
+    // Another Site or vehicle than its picture is of: started afresh, and
+    // the map brought onto it.
+    if ((_state get "pictureFor") isNotEqualTo _target) then {
+        _state set ["pictureFor", _target];
+        _state set ["picture", []];
+        _state set ["trackKey", ""];
+        _state set ["weaponId", ""];
+        lbClear (_display displayCtrl AEGISM_TERMINAL_TRACKS_IDC);
+        lbClear (_display displayCtrl AEGISM_TERMINAL_WEAPONS_IDC);
+        lbClear (_display displayCtrl AEGISM_TERMINAL_RADARS_IDC);
+        _state set ["rows", []];
+        _state set ["rings", []];
+        _state set ["labelled", []];
+        _state set ["radarId", ""];
+        (_display displayCtrl AEGISM_TERMINAL_ORDERS_IDC) ctrlSetStructuredText parseText format ["<t size='0.75' color='%1'>Connecting...</t>", AEGISM_TERMINAL_DIM_HEX];
+        (_display displayCtrl AEGISM_TERMINAL_NOTE_IDC) ctrlSetStructuredText parseText "";
+        // (Over the next frames, once it has its size: aegism_network_fnc_
+        // terminalMapCentre.)
+        _state set ["mapCentre", [getPosASL _target, AEGISM_TERMINAL_MAP_SPAN min worldSize, 0, [], 0, []]];
+        if ((_state getOrDefault ["mapCentreHandle", -1]) < 0) then {
+            _state set ["mapCentreHandle", [{ _this call aegism_network_fnc_terminalMapCentre; }, 0, []] call CBA_fnc_addPerFrameHandler];
+        };
+    };
+    ["request"] call aegism_network_fnc_terminalCommand;
 };
 if (!_rebuild && {(_state get "formFor") isEqualTo _target}) exitWith {};
 
@@ -154,6 +200,6 @@ private _shade = false;
     };
 } forEach configProperties [_attributesCfg, "isClass _x", true];
 
-_state set ["rows", _rows];
+_state set ["formRows", _rows];
 _state set ["formControls", _controls];
 _state set ["formFor", _target];

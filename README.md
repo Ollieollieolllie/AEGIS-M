@@ -899,11 +899,66 @@ its attributes, under *AEGIS-M: Terminal*; Zeus, with Zeus Enhanced: its
   current values. **Apply** sends them to the server; **Revert** puts the
   form back to the current values.
 
-The server builds the board and applies the changes, so both work on a
-dedicated server. It takes a change only from a Full Control terminal, for
-something within that terminal's reach, from a player within 10 m of it
-(`TERMINAL` in the RPT, applied or refused), and applies it exactly as a
-Zeus edit of the same Site or vehicle. A vehicle with no Site shows the
+Separate from that, the laptop's **Manual Interception** attribute (same
+places, off by default) gives it an **Interception** tab. A terminal can have
+either, both or neither.
+
+- **The map** shows the weapons' vehicles and the radars (amber while
+  emitting, grey while silent), every track, the Site's own missiles in
+  flight (white; magenta if fired on an order), a line from each weapon to
+  what it is on (in its engagement's colour; an order's is magenta), and
+  the reach of the weapon picked. Tracks are coloured by what
+  they are to the Site: red, one it engages; yellow, a hostile of a class it
+  doesn't engage; blue, a friendly aircraft its sensors see; grey, anything
+  else; magenta, one it holds for an order alone. Click a track to pick it.
+- **Tracks** lists the same, soonest impact first. **Weapons** lists every
+  launcher and gun of the Site or vehicle picked on the left, with its
+  munition and rounds, and, once a track is picked, whether it has a shot at
+  it or why not. With the Shared Site Coordinator of linked Sites picked, it
+  lists the weapons of every one of them. Launchers of one type standing
+  together (within 150 m of another of them, same weapon) are a single row
+  -- a battery of four Patriots is one row with its missiles added up and
+  "3 OF 4 HAVE A SHOT" -- and an order to that row goes to whichever of them
+  is best placed: one with a shot that isn't already on that track, then the
+  least busy, then the fullest. So another missile at the same track comes
+  from the next launcher instead of waiting on the first one's reload.
+- **Radars** lists each radar of the Site or vehicle picked with what it is
+  doing (hover a row for why), and three buttons for the one picked, or for
+  all of them with the first row picked: **Emit** (on until taken back),
+  **Silent** (off until taken back) and **Radar: Auto** (back to its own
+  Radar Emission setting). An order stands over every emission mode. A
+  radar ordered on still shuts down for an anti-radiation missile inbound on
+  it, if Shut Down for Anti-Radiation Missiles is on.
+- **Engage** orders the weapon picked onto the track picked: one missile, or
+  a gun's fire until the track is down. Press it again for another missile.
+  It works on any track listed, whatever the Site would do on its own -- a
+  threat a launcher already has, an aircraft of a class the Site doesn't
+  engage, a friendly. The server refuses an order the weapon has no shot
+  for, and says why.
+- **Cease Fire** ends the orders on the track picked, or every order with
+  none picked. A missile already in flight flies on.
+- **Automation** switches the Site's own decisions off or on, for what is
+  picked on the left and everything under it: the Shared Site Coordinator's
+  switch is every linked Site's, a Site's is all of its vehicles', a
+  vehicle's is that vehicle's alone. Off, those weapons fire on orders only:
+  what they hadn't fired at yet is let go, and nothing new is given them.
+  Sensors, radars and alarms carry on as before. A linked Site that isn't
+  the coordinator and is switched off leaves the rest of the group running.
+
+An order goes to the front of its launcher's queue and stays with that
+launcher: it isn't handed to another, a lost crew fire cycle is tried
+again, and it ends when its missiles have missed, its target is down or
+lost to the Site's sensors, the weapon has had no shot for 15 s, or it is
+ceased. What became of the last orders is listed under the weapons, on
+every terminal of the Site, and in the RPT (`MANUAL`). Orders work through
+the Site's coordinator, so a vehicle on its own, in no Site, takes none.
+
+The server builds the board and the picture, applies the changes and takes
+the orders, so all of it works on a dedicated server. It takes a change only
+from a Full Control terminal and an order only from one with Manual
+Interception, for something within that terminal's reach, from a player
+within 10 m of it (`TERMINAL` and `MANUAL` in the RPT, taken or refused),
+and applies a change exactly as a Zeus edit of the same Site or vehicle. A vehicle with no Site shows the
 whole board, since there is no board for one vehicle.
 
 **Which Sites are linked.** A Site has the same name everywhere in the
@@ -1096,7 +1151,8 @@ Eden (same names, tooltips and choices, current values filled in):
 - **Either:** right-click it for **AEGIS-M Settings**, or place the module
   **AEGIS-M > Edit Air Defence** on it (or within 50 m of a Site).
 - **A terminal laptop:** the same right-click or button sets its Terminal
-  Access (Status Only or Full Control; see **Site terminal**).
+  Access (Status Only or Full Control) and Manual Interception (see **Site
+  terminal**).
 
 An edit reaches every machine, including players who join later, and the
 Site's vehicles pick it up at once (`SITE-SETTINGS` / `OVERRIDES` in the

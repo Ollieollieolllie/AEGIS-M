@@ -23,6 +23,12 @@ class CfgFunctions
             class terminalApply {};
             class terminalRequest {};
             class terminalShow {};
+            class terminalPicture {};
+            class terminalOrder {};
+            class terminalIntercept {};
+            class terminalCommand {};
+            class terminalMapDraw {};
+            class terminalMapCentre {};
             class zeusApplySite {};
             class zeusEdit {};
             class zeusInit {};

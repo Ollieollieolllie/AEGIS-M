@@ -354,6 +354,39 @@ salvo):
       2026-10-06.)
 Each run's time, and its parts', is counted for the PERF line
 (aegism_fnc_perfLog).
+
+2026-10-07, orders from a terminal's Interception page
+(aegism_network_fnc_terminalOrder):
+- "AEGISM_manualOrders" on the coordinating Site. After the review, an
+  order not yet placed becomes a claim record marked "manual" with
+  "salvo" 1 -- or, if its weapon already has a claim on that contact, one
+  more missile on it ("salvo" = what it has fired or was to fire, + 1;
+  the Site's own unfired claim just becomes the order's). "salvo" on a
+  record replaces the vehicle's Missiles per Target for it, here and in
+  aegism_intercept_fnc_engagementLoop.
+- A manual record in the review: its class needn't be on any allowlist;
+  no shot just now doesn't release it, only none for
+  AEGISM_NEVER_FIRED_TIMEOUT (15 s) since it was ordered or last fired; a
+  lost crew fire cycle doesn't release it (it fires at the next); it isn't
+  offered to other launchers (the hand-off). When it is released, for
+  whatever reason, its order goes too and the reason is kept for the
+  terminals ("AEGISM_manualLog", RPT MANUAL).
+- Published at the front of its launcher's queue (AEGISM_MANUAL_PLACE).
+- A contact the Site doesn't hold itself is put in the pool by the order,
+  "manualOnly": left out of the assign loop and of the idle turret cue,
+  and kept fresh only while a member's "AEGISM_otherTracks" still lists
+  it, so it's pruned 3 s after the sensors lose it or the order ends.
+  aegism_detect_fnc_addContact clears "manualOnly" if the Site's own
+  detection ever adds it (a friendly turned hostile).
+- Automation ("AEGISM_automation" on a Site or a vehicle, false = orders
+  only): those vehicles' weapons are taken out of _allWeapons after the
+  orders are placed, and their unfired claims (and guns' claims) are
+  released in the review. With no weapon left the run ends there: the
+  end-of-run publish became _fnPublish so that exit can call it too.
+- Not covered: a vehicle with no Site (no coordinator, so no orders);
+  the launchers' ETA sums still place a manual claim by its time to
+  impact, not at the front, so another contact's "fires in" can be one
+  missile out while an order is on that launcher.
 ```
 
 ## aegism_intercept_fnc_barrelDirection

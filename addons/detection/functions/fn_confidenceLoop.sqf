@@ -48,6 +48,12 @@ private _lastRejects = _poolOwner getVariable ["AEGISM_lastDetectReject", create
 private _rejects = createHashMap;
 // Munition key -> sensor kinds, for every munition seen this tick.
 private _seenMunitions = createHashMap;
+// Aircraft its sensors see that don't go into a pool -- friendly, or of a
+// class it doesn't engage: [object, class, sensor kinds] each. A terminal's
+// Interception page lists them, and can order a weapon onto one
+// (aegism_network_fnc_terminalPicture, aegism_intercept_fnc_assign
+// Engagements).
+private _others = [];
 // The game's datalink passes on what OTHER vehicles see -- any friendly
 // vehicle with datalink in the mission, not only AEGIS-M's (a Site shares
 // its own members' contacts itself). Used only with the CBA setting Use
@@ -122,15 +128,22 @@ private _fnSighted = {
             // identical to "never detected at all" in the RPT.
             private _rejectKey = netId _target;
             _rejects set [_rejectKey, true];
+            if (_class != "") then { _others pushBack [_target, _class, _sources]; };
             if (!(_rejectKey in _lastRejects)) then {
                 if (AEGISM_RPT_VERBOSE) then {
                     diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " DETECT-REJECT: %1 sees %2 (%3, relationship=%4, classified=%5) but that class is not in this pool's allowlist %6.", _poolOwner, _target, typeOf _target, _relationship, _class, _allowlist];
                 };
             };
         };
+    } else {
+        if (!_datalinkOnly && {_relationship != "destroyed"} && {!isNull _target} && {alive _target} && {_target isKindOf "Air"}) then {
+            private _class = [_target] call aegism_detect_fnc_classifyTarget;
+            if (_class != "") then { _others pushBack [_target, _class, _sources]; };
+        };
     };
 } forEach (getSensorTargets _poolOwner);
 _poolOwner setVariable ["AEGISM_lastDetectReject", _rejects, false];
+_poolOwner setVariable ["AEGISM_otherTracks", [CBA_missionTime, _others], false];
 
 // Munitions: every tracked one against this vehicle's sensors as they stand
 // now (see notes).

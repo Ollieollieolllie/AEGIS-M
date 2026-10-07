@@ -66,6 +66,9 @@ if (isNil "_existing") then {
     _existing set ["class", _contactClass];
     _existing set ["confidence", _confidence];
     _existing set ["lastSeen", CBA_missionTime];
+    // One that was in the pool for a terminal's order alone (aegism_
+    // intercept_fnc_assignEngagements) is the Site's own contact now.
+    _existing deleteAt "manualOnly";
 };
 if (_sources isNotEqualTo []) then {
     private _seen = _existing getOrDefault ["sources", createHashMap];

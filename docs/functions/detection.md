@@ -207,6 +207,14 @@ A detected contact is added/removed on both the scanning System's own
 pool AND its Network's pool (if synced), so a Launcher/CIWS-only System
 with no sensor of its own, relying purely on a Network's shared
 contacts, still sees everything a sensor-equipped sibling detects.
+
+2026-10-07: "AEGISM_otherTracks" on the vehicle, [time, [[object, class,
+sensor kinds], ...]], rewritten on every read: the aircraft its own sensors
+see that don't go into a pool -- not hostile, or hostile of a class it
+doesn't engage. For a terminal's Interception page
+(aegism_network_fnc_terminalPicture) and for orders onto them
+(aegism_intercept_fnc_assignEngagements). Only isKindOf "Air" is classified
+for it, so ground targets cost nothing.
 ```
 
 ## aegism_detect_fnc_destroyMunition

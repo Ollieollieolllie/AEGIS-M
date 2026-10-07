@@ -628,3 +628,195 @@ a Site, aegism_system_fnc_zeusApplyOverrides for a vehicle): only an
 attribute's own config expression ever runs, with the sent value as
 _value, so a client can't have anything else executed.
 ```
+
+## aegism_network_fnc_terminalPicture
+
+`addons/modules_network/functions/fn_terminalPicture.sqf`
+
+```text
+The Interception page's data, built on the server once a second while a
+terminal shows it (2026-10-07). Needs the terminal's own attribute
+"AEGISM_terminalEngage" (Manual Interception), which is separate from
+"AEGISM_terminalAccess".
+
+The picture and the orders belong to the Site that coordinates
+("AEGISM_linkLead"): its pool and claims are the group's.
+
+Tracks: every live contact of that pool ("threat"; "ordered" if it's
+there for an order alone, the entry's "manualOnly"), with what's on it
+from the claims, and its time to impact from the entry's cached "tti".
+Then what the group's vehicles' sensors see besides
+("AEGISM_otherTracks", written by aegism_detect_fnc_confidenceLoop on
+every read, used while no older than AEGISM_TERMINAL_TRACK_FRESH, 2 s, my
+figure): "hostile" (a class the Site doesn't engage), "friendly",
+"neutral". A munition is identified by its contact key, never sent as an
+object: a projectile isn't a network object a client could resolve.
+Positions and velocities are sent and the client moves a track on by its
+velocity between answers.
+
+Weapons: those of the Site picked (its own members), of every vehicle
+of the group when the Site picked is its Shared Site Coordinator (lead,
+ticked, more than one Site linked -- the test aegism_network_fnc_
+terminalScope uses for a terminal's reach; the user's first test showed
+only the coordinator's own launchers, 2026-10-07), or of the one vehicle
+picked. With a track picked, each is asked
+aegism_intercept_fnc_canEngage for it -- the same test the order itself
+has to pass.
+
+Reply: [node, error, automation on, Site name, tracks, weapons, orders,
+last lines], to aegism_network_fnc_terminalIntercept on the machine that
+asked.
+```
+
+## aegism_network_fnc_terminalOrder
+
+`addons/modules_network/functions/fn_terminalOrder.sqf`
+
+```text
+Takes the Interception page's orders on the server (2026-10-07). Refused
+(MANUAL ... refused in the RPT, and a line on the screen): terminal or
+node gone, no "AEGISM_terminalEngage", player further than
+AEGISM_TERMINAL_REACH, node outside the terminal's reach
+(aegism_network_fnc_terminalScope), or a vehicle in no Site.
+
+"engage" [key, vehicle, turret, weapon]: the vehicle has to be one of the
+node's, the weapon one of its "launcherWeapons"/"ciwsWeapons", with a round
+left and a shot at the track now (canEngage). The order is a HashMap
+(target, key, name, system, weaponInfo, role, by, at, placed) pushed on the
+coordinating Site's "AEGISM_manualOrders"; the coordinator places it as a
+claim on its next run ("AEGISM_assignNow" makes that the next frame). See
+aegism_intercept_fnc_assignEngagements.
+
+"cease" [key or ""]: ends the orders of the node's vehicles (on that
+track, or all). A claim nothing was fired for, or a gun's, is taken out of
+the claims here; one with a missile in flight keeps it and fires no more
+("salvo" = fired).
+
+"automation" [on]: sets "AEGISM_automation" on the node and on everything
+under it -- the coordinator's switch on every linked Site and every vehicle
+of the group, a Site's on itself and its vehicles, a vehicle's on itself.
+The coordinator leaves the weapons of a vehicle whose own flag or whose
+Site's is off out of everything it decides itself. (First version set the
+node's flag alone: with the coordinator switched off, the Patriots of the
+Sites linked to it were still assigned on their own, 13:01 RPT
+2026-10-07.)
+
+Lines for the page go on the coordinating Site's "AEGISM_manualLog" (the
+last 8), which the coordinator writes to as well.
+```
+
+## aegism_network_fnc_terminalIntercept
+
+`addons/modules_network/functions/fn_terminalIntercept.sqf`
+
+```text
+Client side of the Interception page: takes the server's picture, keeps it
+in the screen's state ("picture", "pictureAt") for the map, and fills the
+track and weapon lists again. The lists are rebuilt every second, so what's
+picked is kept by contact key ("trackKey") and by weapon id ("weaponId":
+netId|turret|weapon) and put back; "filling" tells the lists' own
+LBSelChanged events that this isn't a pick.
+
+An answer for another node than the one shown, or arriving after the tab
+was left, is dropped.
+```
+
+## aegism_network_fnc_terminalCommand
+
+`addons/modules_network/functions/fn_terminalCommand.sqf`
+
+```text
+Everything the Interception page does on the client: "request" (ask for
+the picture; the screen's once-a-second handler and every pick call it),
+"track" / "weapon" (a pick in a list), "mapClick" (the track nearest the
+click within AEGISM_TERMINAL_PICK_RADIUS of the screen, my figure), and
+the three orders, sent to aegism_network_fnc_terminalOrder.
+```
+
+## aegism_network_fnc_terminalMapDraw
+
+`addons/modules_network/functions/fn_terminalMapDraw.sqf`
+
+```text
+The Draw handler of the Interception page's map. From the picture in the
+screen's state: each weapon vehicle (mil_box), the reach of the weapon
+picked (drawEllipse, metres), each track at its position moved on by its
+velocity for the time since the answer, a 5 s leader, a line from every
+weapon on it, a ring on the one picked. Munitions are only named when
+picked or under 15 s from impact, or a salvo is unreadable.
+
+The map is an RscMapControl made with ctrlCreate on the screen itself (a
+map can't sit in a controls group). It's kept at zero size as well as
+hidden while another tab shows. The user's first test (2026-10-07): the
+map shows and the page works.
+
+Centring is not done here: aegism_network_fnc_terminalMapCentre.
+```
+
+## aegism_network_fnc_terminalMapCentre
+
+`addons/modules_network/functions/fn_terminalMapCentre.sqf`
+
+```text
+Centres the Interception page's map (2026-10-07, third try). A per-frame
+handler, started by aegism_network_fnc_terminalSelect when it sets
+"mapCentre" in the screen's state ([point, width of ground m, moves, last
+aim, frames to wait, first result]); it removes itself when the request is
+done or the screen closed.
+
+History, both from the user's tests: (1) ctrlMapAnimAdd in terminalSelect,
+with the map still at zero size: "opens not centered on the site". (2) The
+same from the map's Draw handler, with one check after it: "still not
+centered". Why isn't known -- no error in the RPT, and the zoom then was a
+guess (24000 / worldSize = 0.78 on Altis, which is nearly the whole
+island).
+
+So nothing is assumed now. Each move: wait 3 frames, wait for
+ctrlMapAnimDone, ask the map what its middle row really shows
+(ctrlMapScreenToWorld at the control's left, middle and right), then move
+again with the scale that would show the width asked for (shown width is
+in proportion to ctrlMapScale) and aimed off by as much as the last move
+landed off. Up to 6 moves; done when the width is within 5 % and the
+middle within 1 % of the width (my figures).
+
+One RPT line per centring, TERMINAL-MAP: centred or NOT, moves, width
+shown against asked, how far off, the scale, what the first move left, the
+control's rectangle. If the user reports it off again, that line says
+which of the game's answers was wrong.
+```
+
+## Interception page, second round (2026-10-07)
+
+```text
+From the user: "Multiple launchers of the same TYPE in close proximity
+should just list as one", "see the missile in flight ... if thats not too
+performance heavy", "need a radar control option as well".
+
+Rows of launchers (aegism_network_fnc_terminalIntercept): the server still
+sends one entry a weapon; the client makes a row of entries with the same
+[vehicle type, role, turret, weapon, magazine] whose vehicles are within
+AEGISM_TERMINAL_BATTERY_RADIUS (150 m, my figure) of one already in the
+row. Greedy, in the order sent: a line of launchers each 150 m from the
+next can come out as two rows. The screen's state keeps "rows" ([id,
+vehicles, turret, weapon, reaches, one has a shot]), "rings" (for the map)
+and "labelled" (one vehicle a row gets its name on the map). The settings
+form's own rows moved to "formRows".
+
+"engage" takes a vehicle or a list (aegism_network_fnc_terminalOrder): of
+those with a shot, sorted by [already on this track, claims it's working
+that aren't in flight, fewer rounds], the first takes the order.
+
+Missiles in flight: the picture's 9th element, [position, velocity, on an
+order] for every live interceptor of every claim. The map moves each on
+by its velocity since the answer and draws a 1 s tail. While there are
+any, the screen asks for the picture twice a second instead of once (its
+handler now ticks every 0.5 s; board and reach requests keep their old
+pace). Cost on the server per answer: one pass over the pool and the
+claims, plus one canEngage a weapon listed when a track is picked.
+
+Radars: the picture's 10th element, [vehicle, emitting, order, state,
+why] (aegism_fnc_emconText). "radar" [vehicles or [], "on"/"off"/""] sets
+"AEGISM_radarOrder" on each and runs aegism_system_fnc_emconUpdate at
+once. Emission only: where a turning radar looks is still its own
+(aegism_system_fnc_radarSchedule).
+```

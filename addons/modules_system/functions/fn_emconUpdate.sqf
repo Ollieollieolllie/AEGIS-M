@@ -39,6 +39,11 @@ private _hold = _settings getOrDefault ["emconHold", 10];
 private _burstOn = (_settings getOrDefault ["emconBurstOn", 5]) max 1;
 private _burstOff = (_settings getOrDefault ["emconBurstOff", 15]) max 0;
 private _armShutdown = _settings getOrDefault ["armShutdown", true];
+// Ordered on or silent at a terminal's Interception page ("on" / "off", ""
+// for neither: aegism_network_fnc_terminalOrder). It stands until taken
+// back there, over every mode -- but not over a shutdown for an
+// anti-radiation missile inbound on it.
+private _order = _vehicle getVariable ["AEGISM_radarOrder", ""];
 
 private _state = _vehicle getVariable "AEGISM_emcon";
 if (isNil "_state") then {
@@ -171,6 +176,7 @@ private _period = _burstOn + _burstOff;
 private _searchers = _members select {
     ((_x getVariable ["AEGISM_system", createHashMap]) getOrDefault ["hasRadar", false])
         && {((_x getVariable ["AEGISM_resolvedEngagementSettings", createHashMap]) getOrDefault ["emcon", "auto"]) in ["intermittent", "auto"]}
+        && {(_x getVariable ["AEGISM_radarOrder", ""]) == ""}
         && {(_x call aegism_system_fnc_turningRadar) isEqualTo []}
 };
 private _slot = (_searchers find _vehicle) max 0;
@@ -179,6 +185,8 @@ private _phaseTime = (CBA_missionTime + _period * _slot / ((count _searchers) ma
 private _relay = [];
 ([] call {
     if (_arm isNotEqualTo []) exitWith { [2, "arm"] };
+    if (_order == "on") exitWith { [1, "orderedOn"] };
+    if (_order == "off") exitWith { [2, "orderedOff"] };
     if (_mode == "on") exitWith { [1, "on"] };
     if !(_mode in ["cued", "intermittent", "auto"]) exitWith { [0, "ai"] };
     if (_guided isNotEqualTo []) exitWith { [1, "guiding"] };
@@ -220,6 +228,8 @@ private _detail = switch (_reason) do {
         format ["anti-radiation missile inbound (%1, %2 out, %3)", _ammo, (_vehicle distance _missile) call _fnRange, _why]
     };
     case "on": { "always on" };
+    case "orderedOn": { "ordered on at a terminal" };
+    case "orderedOff": { "ordered silent at a terminal" };
     case "guiding": {
         (_guided select 0) params ["_target", "_launcher"];
         format ["fire control: %1's missiles in flight at %2", _launcher call _fnName, _target call _fnName]
@@ -260,6 +270,12 @@ if (_reason != _previous) then {
     if (_previous == "arm") then {
         diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ARM-SHUTDOWN: %1 radar back -- %2; now %3.", _vehicle,
             [_armEnded, "Shut Down for Anti-Radiation Missiles was turned off"] select (_armEnded == ""), _detail];
+    };
+    if (_reason in ["orderedOn", "orderedOff"]) then {
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " EMCON: %1 radar %2.", _vehicle, _detail];
+    };
+    if (_previous in ["orderedOn", "orderedOff"] && {_reason != "arm"}) then {
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " EMCON: %1 radar back under its own emission control -- now %2.", _vehicle, _detail];
     };
     if (_reason == "alert" && {_previous in ["", "silent", "pause", "burst"]}) then {
         diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " EMCON: %1 emitting continuously -- %2 (Automatic).", _vehicle, _alert];

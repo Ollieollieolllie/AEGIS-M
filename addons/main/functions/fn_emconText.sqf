@@ -28,7 +28,7 @@ if (isNil "_state") exitWith { ["", "", "", []] };
 private _reason = _state getOrDefault ["reason", ""];
 private _detail = _state getOrDefault ["detail", ""];
 private _on = isVehicleRadarOn _vehicle;
-private _silent = _reason in ["arm", "silent", "pause"];
+private _silent = _reason in ["arm", "silent", "pause", "orderedOff"];
 
 if (_reason != "ai" && {CBA_missionTime - (_state getOrDefault ["since", CBA_missionTime]) > 2} && {_on == _silent}) then {
     _detail = _detail + (["; but its radar isn't on", "; but its radar is still on"] select _on);

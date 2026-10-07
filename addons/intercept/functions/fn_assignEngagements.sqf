@@ -61,6 +61,13 @@ Author:
 // interceptor's settle, then a reaction) and meet the munition in time.
 #define AEGISM_RESERVE_RELOOK 3
 #define AEGISM_GRAVITY 9.80665
+// Orders from a terminal (see _orders): lines kept for its Interception
+// page; how long a vehicle's read of what its sensors see besides the Site's
+// own contacts stays good, s; and an order's place on its launcher's queue
+// (ahead of everything the Site queued there itself).
+#define AEGISM_MANUAL_LOG_LINES 8
+#define AEGISM_OTHER_TRACK_FRESH 2
+#define AEGISM_MANUAL_PLACE -1e6
 
 params ["_logic"];
 
@@ -170,6 +177,39 @@ private _fnDropLastDitch = {
     _busy set [_key, _list select { !(_x call _fnIsLastDitch) }];
 };
 
+// Orders from a terminal's Interception page (aegism_network_fnc_
+// terminalOrder): a weapon told to fire at a contact, whatever the Site
+// would do with it on its own. Each becomes a claim marked "manual" (placed
+// after the review, below), kept for as long as the order stands: its class
+// needn't be one the Site or the vehicle engages, it isn't handed off, and
+// having no shot at it just now doesn't release it. "salvo" on the claim is
+// how many missiles it's to fire in all -- one more with every order.
+private _orders = _logic getVariable ["AEGISM_manualOrders", []];
+// Whether a vehicle is still run on the Site's own account: automation can
+// be switched off at a terminal for a Site or for one vehicle, whose weapons
+// then fire on orders only.
+private _fnAutomated = {
+    (_this getVariable ["AEGISM_automation", true]) && {((_this getVariable ["AEGISM_network", objNull]) getVariable ["AEGISM_automation", true])}
+};
+// A line for the terminals' Interception page, and the RPT.
+private _fnOrderNote = {
+    private _log = _logic getVariable ["AEGISM_manualLog", []];
+    _log pushBack [CBA_missionTime, _this];
+    if (count _log > AEGISM_MANUAL_LOG_LINES) then { _log deleteAt 0; };
+    _logic setVariable ["AEGISM_manualLog", _log, false];
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MANUAL: %1", _this];
+};
+// An order's claim is over: the order goes with it.
+private _fnOrderEnded = {
+    params ["_record", "_reason", "_key"];
+    private _index = _orders findIf {
+        (_x get "key") == _key && {(_x get "system") isEqualTo (_record get "system")} && {((_x get "weaponInfo") select 0) isEqualTo ((_record get "weaponInfo") select 0)}
+    };
+    private _name = if (_index == -1) then { str (_record get "target") } else { (_orders select _index) get "name" };
+    if (_index != -1) then { _orders deleteAt _index; };
+    (format ["%1's order on %2 ended -- %3.", _record get "system", _name, _reason]) call _fnOrderNote;
+};
+
 // Iterates a snapshot of the keys: entries are deleted/replaced below, which
 // isn't safe while iterating the HashMap itself.
 {
@@ -178,7 +218,8 @@ private _fnDropLastDitch = {
     private _entry = _pool getOrDefault [_contactKey, createHashMap];
     private _object = _entry getOrDefault ["object", objNull];
 
-    if (isNull _object || {!alive _object} || {!((_entry getOrDefault ["class", ""]) in _allowlist)}) then {
+    // (A class the Site doesn't engage stays while an order is on it.)
+    if (isNull _object || {!alive _object} || {!((_entry getOrDefault ["class", ""]) in _allowlist) && {(_records findIf { _x getOrDefault ["manual", false] }) == -1}}) then {
         _claims deleteAt _contactKey;
     } else {
         private _kept = _records select {
@@ -189,11 +230,16 @@ private _fnDropLastDitch = {
             private _lastShotAt = _record get "lastShotAt";
             private _alive = !isNull _system && {alive _system};
             private _systemSettings = if (_alive) then { _system call _fnSettings } else { createHashMap };
+            // A terminal's order (_orders, above), and the missiles this claim
+            // is to fire in all: the vehicle's Missiles per Target, or what
+            // its orders came to.
+            private _manual = _record getOrDefault ["manual", false];
+            private _salvoWanted = _record getOrDefault ["salvo", _systemSettings getOrDefault ["salvoSize", 1]];
             // A launcher whose salvo is away isn't re-judged: its missiles are
             // flying, and releasing the claim then (the target crossing out of
             // the envelope) let another launcher fire at it on top of them.
             // Its claim ends when they're gone (missed, below).
-            private _salvoAway = _role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])};
+            private _salvoAway = _role == "launcher" && {(_record get "roundsFired") >= _salvoWanted};
             // Nor is a launcher's claim on a munition while it waits its turn
             // behind others on that launcher's queue ("queued", aegism_
             // intercept_fnc_engagementLoop) and is judged by its planned shot
@@ -216,9 +262,19 @@ private _fnDropLastDitch = {
 
             private _reason = switch (true) do {
                 case (!_alive): { "system dead" };
-                case !((_entry get "class") in (_systemSettings getOrDefault ["targetClassAllowlist", []])): { format ["%1 not engaged by this vehicle (its settings)", _entry get "class"] };
-                case !(_engage select 0): { _engage select 1 };
-                case (_unfiredLauncher && {_record getOrDefault ["crewFailed", false]}): {
+                case (!_manual && {!((_entry get "class") in (_systemSettings getOrDefault ["targetClassAllowlist", []]))}): { format ["%1 not engaged by this vehicle (its settings)", _entry get "class"] };
+                case (!_manual && {!(_engage select 0)}): { _engage select 1 };
+                // An order with no shot for this long, and nothing fired for
+                // it in that time: it would hold its turret for good.
+                case (_manual && {!(_engage select 0)} && {CBA_missionTime > ((_record getOrDefault ["orderedAt", 0]) max _lastShotAt) + AEGISM_NEVER_FIRED_TIMEOUT}): {
+                    format ["no shot at it for %1s (%2)", AEGISM_NEVER_FIRED_TIMEOUT, _engage select 1]
+                };
+                // Its Site's automation switched off at a terminal: what it
+                // hasn't fired at is let go (a missile in flight flies on).
+                case (!_manual && {!(_system call _fnAutomated)} && {_role == "ciws" || {(_record get "roundsFired") == 0}}): { "its automation is switched off at a terminal" };
+                // (An order keeps its launcher through a lost fire cycle: it
+                // fires at the next.)
+                case (!_manual && {_unfiredLauncher} && {_record getOrDefault ["crewFailed", false]}): {
                     // Keep this launcher off the contact until its lost fire
                     // cycle is over, so another weapon gets the next try.
                     private _holdUntil = ([_system, _weaponInfo select 0] call aegism_intercept_fnc_turretState) getOrDefault ["holdUntil", CBA_missionTime];
@@ -230,8 +286,8 @@ private _fnDropLastDitch = {
                 // that fired nothing (aegism_intercept_fnc_fireWeapon,
                 // FIRE-FAILED) isn't a miss -- a launcher firing into its
                 // magazine reload had its targets released as missed.
-                case (_role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])} && {CBA_missionTime > _lastShotAt + AEGISM_INTERCEPTOR_SETTLE} && {(_record get "interceptors") isNotEqualTo []} && {((_record get "interceptors") findIf { !isNull _x && {alive _x} }) == -1}): { "missed (salvo spent, no interceptor still in flight)" };
-                case (_role == "launcher" && {(_record get "roundsFired") >= (_systemSettings getOrDefault ["salvoSize", 1])} && {(_record get "interceptors") isEqualTo []} && {CBA_missionTime > _lastShotAt + AEGISM_NO_LAUNCH_TIMEOUT}): { "fired, but no missile ever left the launcher" };
+                case (_role == "launcher" && {(_record get "roundsFired") >= _salvoWanted} && {CBA_missionTime > _lastShotAt + AEGISM_INTERCEPTOR_SETTLE} && {(_record get "interceptors") isNotEqualTo []} && {((_record get "interceptors") findIf { !isNull _x && {alive _x} }) == -1}): { "missed (salvo spent, no interceptor still in flight)" };
+                case (_role == "launcher" && {(_record get "roundsFired") >= _salvoWanted} && {(_record get "interceptors") isEqualTo []} && {CBA_missionTime > _lastShotAt + AEGISM_NO_LAUNCH_TIMEOUT}): { "fired, but no missile ever left the launcher" };
                 case (_role == "ciws" && {_lastShotAt >= 0} && {CBA_missionTime > _lastShotAt + AEGISM_CIWS_IDLE_GRACE}): { "CIWS idle" };
                 // From when a launcher's claim reached the front of its queue
                 // (a gun works every claim it has at once): one still waiting
@@ -242,6 +298,7 @@ private _fnDropLastDitch = {
 
             if (_reason != "") then {
                 diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ASSIGN-CLEAR: %1 (%2) released %3 -- %4.", _system, _role, _object, _reason];
+                if (_manual) then { [_record, _reason, _contactKey] call _fnOrderEnded; };
                 // A launcher gone from it: its launchers are looked at in
                 // this run, whenever its next look was due (_asleep, below).
                 if (_role == "launcher") then { _entry set ["launcherLookAt", 0]; _entry set ["launcherLookBy", 0]; };
@@ -257,7 +314,7 @@ private _fnDropLastDitch = {
                 private _record = _x;
                 private _isGun = (_record get "role") == "ciws";
                 private _roundsNeeded = if (_isGun) then { 0 } else {
-                    ((((_record get "system") call _fnSettings) getOrDefault ["salvoSize", 1]) - (_record get "roundsFired")) max 0
+                    ((_record getOrDefault ["salvo", ((_record get "system") call _fnSettings) getOrDefault ["salvoSize", 1]]) - (_record get "roundsFired")) max 0
                 };
                 [_record get "system", (_record get "weaponInfo") select 0, _contactKey, _record get "role", _isGun || {_roundsNeeded > 0}, _roundsNeeded,
                     !_isGun && {_record getOrDefault ["working", false]}, _isGun && {_record getOrDefault ["lastDitch", false]}] call _fnBusyAdd;
@@ -296,6 +353,167 @@ if (_allWeapons isEqualTo []) exitWith {
     { if (!isNull _x) then { _x setVariable ["AEGISM_assigned", nil, false]; }; } forEach _members;
 };
 _logic setVariable ["AEGISM_lastAssignWarning", "", false];
+
+// --- Orders from a terminal --------------------------------------------------
+// (_orders, above.) An order not yet placed becomes a claim of its weapon on
+// its contact, or one more missile on the claim that weapon already has
+// there. A contact the Site doesn't hold itself -- a friendly, a class it
+// doesn't engage -- is put in its pool for the order alone ("manualOnly":
+// nothing is assigned to it on the Site's own account), and stays there
+// while a member's sensors still see it (aegism_detect_fnc_confidenceLoop,
+// "AEGISM_otherTracks").
+if (_orders isNotEqualTo []) then {
+    private _seenOthers = createHashMap;
+    {
+        (_x getVariable ["AEGISM_otherTracks", [-1e9, []]]) params ["_readAt", "_list"];
+        if (CBA_missionTime - _readAt <= AEGISM_OTHER_TRACK_FRESH) then {
+            { _seenOthers set [[_x select 0] call aegism_fnc_contactKey, _x]; } forEach _list;
+        };
+    } forEach (_members select { !isNull _x && {alive _x} });
+
+    private _keptOrders = [];
+    // (One order a weapon and contact: a second is added to the first.)
+    private _have = [];
+    {
+        private _order = _x;
+        private _target = _order get "target";
+        private _system = _order get "system";
+        private _weaponInfo = _order get "weaponInfo";
+        private _role = _order get "role";
+        private _key = _order get "key";
+        private _placed = _order getOrDefault ["placed", false];
+        private _records = _claims getOrDefault [_key, []];
+        private _index = _records findIf { (_x get "system") isEqualTo _system && {(_x get "role") == _role} && {((_x get "weaponInfo") select 0) isEqualTo (_weaponInfo select 0)} };
+        private _entry = _pool get _key;
+        private _seen = _seenOthers get _key;
+
+        // ("-": over already, and said so where it ended -- the review.)
+        private _ended = switch (true) do {
+            case (isNull _target || {!alive _target}): { "its target is destroyed or gone" };
+            case (isNull _system || {!alive _system}): { "the vehicle is lost" };
+            case (isNil "_entry" && {isNil "_seen"}): { "the Site's sensors no longer hold its target" };
+            case (_placed && {_index == -1}): { "-" };
+            case (!_placed && {(_system magazineTurretAmmo [_weaponInfo select 2, _weaponInfo select 0]) <= 0}): { "it has nothing left to fire" };
+            default { "" };
+        };
+        if (_ended == "") then {
+            if (isNil "_entry") then {
+                _entry = createHashMapFromArray [
+                    ["object", _target], ["class", _seen select 1], ["confidence", 1], ["firstSeen", CBA_missionTime], ["lastSeen", CBA_missionTime],
+                    ["isMunition", false], ["sources", createHashMap], ["manualOnly", true]
+                ];
+                _pool set [_key, _entry];
+            };
+            if (!isNil "_seen" && {_entry getOrDefault ["manualOnly", false]}) then {
+                _entry set ["lastSeen", CBA_missionTime];
+                private _sources = _entry getOrDefault ["sources", createHashMap];
+                { _sources set [_x, CBA_missionTime]; } forEach (_seen select 2);
+            };
+
+            if (_placed) then {
+                // One more missile was ordered and the launcher has none left.
+                private _record = _records select _index;
+                private _fired = _record get "roundsFired";
+                if (_role == "launcher" && {_fired > 0} && {_fired < (_record getOrDefault ["salvo", 1])} && {(_system magazineTurretAmmo [_weaponInfo select 2, _weaponInfo select 0]) <= 0}) then {
+                    _record set ["salvo", _fired];
+                    (format ["%1 has no missile left for another at %2.", _system, _order get "name"]) call _fnOrderNote;
+                };
+            } else {
+                if (_index == -1) then {
+                    _records pushBack createHashMapFromArray [
+                        ["target", _target], ["class", _entry get "class"], ["system", _system], ["role", _role], ["weaponInfo", _weaponInfo],
+                        ["assignedAt", CBA_missionTime], ["lastShotAt", -1], ["roundsFired", 0], ["interceptors", []], ["flightTime", 0], ["cued", false],
+                        ["manual", true], ["salvo", 1], ["orderedAt", CBA_missionTime]
+                    ];
+                    _claims set [_key, _records];
+                    [_system, _weaponInfo select 0, _key, _role, true, parseNumber (_role == "launcher")] call _fnBusyAdd;
+                } else {
+                    // The claim this weapon already has on it: one more
+                    // missile than it has fired or was ordered to -- unless
+                    // it's the Site's own and hasn't fired yet, when that shot
+                    // becomes the order's.
+                    private _record = _records select _index;
+                    private _salvoNow = _record getOrDefault ["salvo", (_system call _fnSettings) getOrDefault ["salvoSize", 1]];
+                    if (_role == "launcher" && {(_record getOrDefault ["manual", false]) || {(_record get "roundsFired") >= _salvoNow}}) then {
+                        _salvoNow = (_salvoNow max (_record get "roundsFired")) + 1;
+                    };
+                    _record set ["salvo", _salvoNow];
+                    _record set ["manual", true];
+                    _record set ["orderedAt", CBA_missionTime];
+                };
+                _order set ["placed", true];
+            };
+
+            private _combo = [netId _system, _weaponInfo select 0, _key];
+            if !(_combo in _have) then {
+                _have pushBack _combo;
+                _keptOrders pushBack _order;
+            };
+        } else {
+            if (_ended != "-") then { (format ["%1's order on %2 ended -- %3.", _system, _order get "name", _ended]) call _fnOrderNote; };
+        };
+    } forEach _orders;
+    _orders = _keptOrders;
+    _logic setVariable ["AEGISM_manualOrders", _orders, false];
+};
+
+// A Site or vehicle whose automation is switched off at a terminal: its
+// weapons take orders only, and are left out of everything the coordinator
+// decides on its own from here on.
+if ((_members findIf { !isNull _x && {!(_x call _fnAutomated)} }) != -1) then {
+    _allWeapons = _allWeapons select { (_x select 0) call _fnAutomated };
+};
+
+// What every run ends with: the claims kept on the Site, and each member
+// given its own.
+private _fnPublish = {
+    _logic setVariable ["AEGISM_claims", _claims, false];
+    _logic setVariable ["AEGISM_withheldCiws", _withheldCiws, false];
+
+    // Each member's own records, per role, soonest impact first -- a launcher's
+    // in its queue order (_fnQueuePlace: the claim its turret is working kept
+    // ahead), the order its engagement loop works them in. Sorted as [place,
+    // index into _records] pairs, so sort only ever compares numbers. A
+    // terminal's order goes ahead of everything else its launcher has.
+    private _records = [];
+    private _buckets = _members apply { [[], []] };
+    {
+        private _tti = _ttiByKey getOrDefault [_x, 1e10];
+        {
+            private _index = _members find (_x get "system");
+            if (_index != -1) then {
+                private _isGun = (_x get "role") == "ciws";
+                ((_buckets select _index) select (parseNumber _isGun)) pushBack [
+                    if (_x getOrDefault ["manual", false]) then { AEGISM_MANUAL_PLACE } else { [_tti, !_isGun && {_x getOrDefault ["working", false]}] call _fnQueuePlace },
+                    count _records];
+                _records pushBack _x;
+            };
+        } forEach _y;
+    } forEach _claims;
+    {
+        if (!isNull _x) then {
+            (_buckets select _forEachIndex) params ["_launcherOrder", "_ciwsOrder"];
+            _launcherOrder sort true;
+            _ciwsOrder sort true;
+            _x setVariable ["AEGISM_assigned", createHashMapFromArray [
+                ["launcher", _launcherOrder apply { _records select (_x select 1) }],
+                ["ciws", _ciwsOrder apply { _records select (_x select 1) }]
+            ], false];
+        };
+    } forEach _members;
+};
+
+// None of its weapons left to decide for (all of them on orders only):
+// the claims there are go out, and that's the run.
+if (_allWeapons isEqualTo []) exitWith {
+    private _withheldCiws = [];
+    private _ttiByKey = createHashMap;
+    private _fnQueuePlace = { _this select 0 };
+    call _fnPublish;
+    _logic setVariable ["AEGISM_planLeft", [], false];
+    PERF_COORD_ASSIGN_MS call _fnPerfPart;
+    call _fnPerf;
+};
 
 // --- 3. Assign free roles ----------------------------------------------------
 private _withheldCiws = [];
@@ -965,7 +1183,8 @@ PERF_COORD_RESERVE_MS call _fnPerfPart;
 
     // A contact only passive radar hears is a bearing, not a track: it cues
     // the Site's radars (aegism_system_fnc_emconUpdate) but isn't assigned.
-    if (!isNull _object && {alive _object} && {_class in _allowlist} && {[_entry] call aegism_fnc_hasTrack}) then {
+    // Nor is one in the pool for a terminal's order alone ("manualOnly").
+    if (!isNull _object && {alive _object} && {_class in _allowlist} && {!(_entry getOrDefault ["manualOnly", false])} && {[_entry] call aegism_fnc_hasTrack}) then {
         private _targetPos = getPosASL _object;
         private _speed = vectorMagnitude velocity _object;
         private _height = _object call _fnHeight;
@@ -1006,7 +1225,8 @@ PERF_COORD_RESERVE_MS call _fnPerfPart;
         // its claim's hand-off nor a launcher for it.
         private _asleepNow = _contactKey in _asleep;
         if (_isMunition && {_hasLauncher} && {!_asleepNow}) then {
-            private _index = _existing findIf { (_x get "role") == "launcher" && {(_x get "roundsFired") == 0} };
+            // (Not a terminal's order: that stays with the launcher it was given.)
+            private _index = _existing findIf { (_x get "role") == "launcher" && {(_x get "roundsFired") == 0} && {!(_x getOrDefault ["manual", false])} };
             if (_index != -1) then {
                 private _record = _existing select _index;
                 (_record get "weaponInfo") params ["_turretPath"];
@@ -1479,37 +1699,7 @@ if (_lastDitch isNotEqualTo []) then {
     } forEach _order;
 };
 
-_logic setVariable ["AEGISM_claims", _claims, false];
-_logic setVariable ["AEGISM_withheldCiws", _withheldCiws, false];
-
-// Each member's own records, per role, soonest impact first -- a launcher's
-// in its queue order (_fnQueuePlace: the claim its turret is working kept
-// ahead), the order its engagement loop works them in. Sorted as [place,
-// index into _records] pairs, so sort only ever compares numbers.
-private _records = [];
-private _buckets = _members apply { [[], []] };
-{
-    private _tti = _ttiByKey getOrDefault [_x, 1e10];
-    {
-        private _index = _members find (_x get "system");
-        if (_index != -1) then {
-            private _isGun = (_x get "role") == "ciws";
-            ((_buckets select _index) select (parseNumber _isGun)) pushBack [[_tti, !_isGun && {_x getOrDefault ["working", false]}] call _fnQueuePlace, count _records];
-            _records pushBack _x;
-        };
-    } forEach _y;
-} forEach _claims;
-{
-    if (!isNull _x) then {
-        (_buckets select _forEachIndex) params ["_launcherOrder", "_ciwsOrder"];
-        _launcherOrder sort true;
-        _ciwsOrder sort true;
-        _x setVariable ["AEGISM_assigned", createHashMapFromArray [
-            ["launcher", _launcherOrder apply { _records select (_x select 1) }],
-            ["ciws", _ciwsOrder apply { _records select (_x select 1) }]
-        ], false];
-    };
-} forEach _members;
+call _fnPublish;
 
 // The launcher shots of the munitions whose look this run put off: their
 // questions are kept on the Site, and its loop works them out in the frames

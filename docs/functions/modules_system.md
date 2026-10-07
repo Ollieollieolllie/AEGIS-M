@@ -230,6 +230,16 @@ none), desired, reason ("ai", "on", "arm", "guiding", "cued", "alert",
 
 Logged: EMCON (its mode; going silent, or back to searching), CUE (lit
 by a contact, with what found it), ARM-SHUTDOWN (shut down, and back).
+
+2026-10-07: "AEGISM_radarOrder" on the vehicle ("on" / "off", "" for
+none), set from a terminal's Interception page (aegism_network_fnc_
+terminalOrder). Reasons "orderedOn" / "orderedOff", placed after the
+anti-radiation shutdown and before every mode, so an order stands in any
+mode (AI decides included) but a radar ordered on still shuts down for an
+ARM inbound on it when armShutdown is set (my choice: the setting is the
+mission maker's protection). A radar under an order is left out of the
+burst slots (_searchers), and the relay scan already leaves out any radar
+whose reason isn't a burst or a pause.
 ```
 
 ## aegism_system_fnc_guardSystems

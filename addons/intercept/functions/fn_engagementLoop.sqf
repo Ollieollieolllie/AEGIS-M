@@ -79,7 +79,7 @@ private _fnCue = {
     private _scored = [];
     {
         private _object = _y getOrDefault ["object", objNull];
-        if (!isNull _object && {alive _object} && {(_y getOrDefault ["class", ""]) in _allowlist} && {[_y] call aegism_fnc_hasTrack}) then {
+        if (!isNull _object && {alive _object} && {(_y getOrDefault ["class", ""]) in _allowlist} && {!(_y getOrDefault ["manualOnly", false])} && {[_y] call aegism_fnc_hasTrack}) then {
             private _taken = ((_claims getOrDefault [_x, []]) findIf { (_x get "role") == _role }) != -1;
             (_y getOrDefault ["tti", [1e10, CBA_missionTime]]) params ["_tti", "_ttiAt"];
             _scored pushBack [parseNumber _taken, _tti - (CBA_missionTime - _ttiAt), _eye distance (getPosASL _object), count _objects];
@@ -176,7 +176,9 @@ private _fnExecute = {
     // A launcher whose salvo is away has nothing left to do for this target
     // (its missiles guide themselves): it no longer aims at it, so the
     // turret is free for its next assignment while they fly.
-    if (!_isCiws && {(_state get "roundsFired") >= _salvoSize}) exitWith { _state set ["status", "inFlight"]; };
+    // (A terminal's order says how many itself, "salvo": aegism_intercept_
+    // fnc_assignEngagements.)
+    if (!_isCiws && {(_state get "roundsFired") >= (_state getOrDefault ["salvo", _salvoSize])}) exitWith { _state set ["status", "inFlight"]; };
 
     private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 
@@ -390,7 +392,7 @@ private _fnExecute = {
         case 1: {
             _state set ["lastShotAt", CBA_missionTime];
             _state set ["roundsFired", (_state get "roundsFired") + 1];
-            _state set ["status", ["firing", "inFlight"] select (!_isCiws && {(_state get "roundsFired") >= _salvoSize})];
+            _state set ["status", ["firing", "inFlight"] select (!_isCiws && {(_state get "roundsFired") >= (_state getOrDefault ["salvo", _salvoSize])})];
             if (!_isCiws) then {
                 // Measured time per missile when firing back to back (it
                 // includes lost reliability rolls and re-aiming between
@@ -451,7 +453,7 @@ if (!isNull _network) exitWith {
         private _target = _x getOrDefault ["target", objNull];
         if (!isNull _target && {alive _target}) then {
             (_x get "weaponInfo") params ["_turretPath"];
-            private _salvoAway = !_isCiws && {(_x get "roundsFired") >= _salvoSize};
+            private _salvoAway = !_isCiws && {(_x get "roundsFired") >= (_x getOrDefault ["salvo", _salvoSize])};
             if (_isCiws || _salvoAway || {!(_turretPath in _workingTurrets)}) then {
                 if (!_isCiws && {!_salvoAway}) then {
                     _workingTurrets pushBack _turretPath;

@@ -69,6 +69,17 @@ class Cfg3DEN
                             class Control { name = "Full Control"; value = "control"; };
                         };
                     };
+                    class AEGISM_terminalEngage
+                    {
+                        displayName = "Manual Interception";
+                        tooltip = "Gives this terminal the Interception page: a map of what its Site tracks, with each of the Site's weapons. From it a player can order a chosen weapon onto a chosen track -- another missile at a threat, or something the Site would never fire at on its own, a friendly aircraft included -- end those orders, and switch the Site's automation off (its weapons then fire on orders only) or back on. Its reach is what the terminal is synced to, as for its other pages; a vehicle on its own, in no Site, takes no orders. Separate from Terminal Access: a terminal can have either, both or neither.";
+                        property = "AEGISM_terminalEngage";
+                        control = "Checkbox";
+                        expression = "_this setVariable ['AEGISM_terminalEngage', _value, true];";
+                        typeName = "BOOL";
+                        defaultValue = "false";
+                        condition = "(1 - objectBrain) * (1 - objectVehicle)";
+                    };
                 };
             };
         };

@@ -11,6 +11,7 @@ Description:
 Parameters:
     _nodes - [object, label, "site" or "vehicle"] each <ARRAY>
     _access - "status" or "control" <STRING>
+    _engage - the terminal has the Interception page <BOOLEAN, default false>
 
 Returns:
     Nothing
@@ -24,25 +25,41 @@ Author:
 
 #include "..\terminal.hpp"
 
-params [["_nodes", []], ["_access", "status"]];
+params [["_nodes", []], ["_access", "status"], ["_engage", false]];
 
 private _display = uiNamespace getVariable ["AEGISM_terminalDisplay", displayNull];
 private _state = uiNamespace getVariable "AEGISM_terminalState";
 if (isNull _display || {isNil "_state"}) exitWith {};
 _state set ["access", _access];
+_state set ["engage", _engage];
 (_display displayCtrl AEGISM_TERMINAL_BADGE_IDC) ctrlSetStructuredText parseText format [
-    "<t align='right' size='0.8'><t color='%1'>%2</t><t color='%3'>   |   Esc to close</t></t>",
-    [AEGISM_TERMINAL_DIM_HEX, AEGISM_TERMINAL_WARN_HEX] select (_access == "control"),
+    "<t align='right' size='0.8'><t color='%1'>%2%4</t><t color='%3'>   |   Esc to close</t></t>",
+    [AEGISM_TERMINAL_DIM_HEX, AEGISM_TERMINAL_WARN_HEX] select (_access == "control" || {_engage}),
     ["STATUS ONLY", "FULL CONTROL"] select (_access == "control"),
-    AEGISM_TERMINAL_DIM_HEX];
-(_display displayCtrl AEGISM_TERMINAL_TAB_SETTINGS_IDC) ctrlShow (_access == "control");
+    AEGISM_TERMINAL_DIM_HEX,
+    ["", "  +  MANUAL INTERCEPTION"] select _engage];
+// The tabs it has, packed to the left.
+(_state get "tabRow") params ["_tabX", "_tabY", "_tabW", "_tabH", "_tabGap"];
+private _slotX = _tabX + _tabW + _tabGap;
+{
+    _x params ["_idc", "_has", "_width"];
+    private _tab = _display displayCtrl _idc;
+    _tab ctrlShow _has;
+    if (_has) then {
+        _tab ctrlSetPosition [_slotX, _tabY, _width, _tabH];
+        _tab ctrlCommit 0;
+        _slotX = _slotX + _width + _tabGap;
+    };
+} forEach [[AEGISM_TERMINAL_TAB_SETTINGS_IDC, _access == "control", _tabW], [AEGISM_TERMINAL_TAB_INTERCEPT_IDC, _engage, 1.3 * _tabW]];
 
 // The same reach as it shows (the request is repeated every few seconds: a
 // Site handed the Shared Site Coordinator's place, a vehicle lost, a new
 // sync all change it): only its access may have changed.
 private _shown = _state get "nodes";
 if (_shown isNotEqualTo [] && {_nodes isEqualTo _shown}) exitWith {
-    if (_access != "control" && {(_state get "tab") == "settings"}) then { [-1, "status"] call aegism_network_fnc_terminalSelect; };
+    if ((_access != "control" && {(_state get "tab") == "settings"}) || {!_engage && {(_state get "tab") == "intercept"}}) then {
+        [-1, "status"] call aegism_network_fnc_terminalSelect;
+    };
 };
 
 private _list = _display displayCtrl AEGISM_TERMINAL_LIST_IDC;
@@ -51,7 +68,8 @@ if (_nodes isEqualTo []) exitWith {
     _state set ["node", -1];
     lbClear _list;
     (_display displayCtrl AEGISM_TERMINAL_GROUP_IDC) ctrlShow true;
-    { (_display displayCtrl _x) ctrlShow false; } forEach [AEGISM_TERMINAL_FORM_IDC, AEGISM_TERMINAL_APPLY_IDC, AEGISM_TERMINAL_REVERT_IDC];
+    { (_display displayCtrl _x) ctrlShow false; } forEach ([AEGISM_TERMINAL_FORM_IDC, AEGISM_TERMINAL_APPLY_IDC, AEGISM_TERMINAL_REVERT_IDC] + AEGISM_TERMINAL_INTERCEPT_IDCS);
+    _state set ["tab", "status"];
     (_display displayCtrl AEGISM_TERMINAL_BOARD_IDC) ctrlSetStructuredText parseText "<t color='#90A4AE'>This terminal isn't synced to a Site or to an AEGIS-M vehicle.</t>";
 };
 
