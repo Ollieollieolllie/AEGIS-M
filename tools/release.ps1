@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Releases AEGIS-M: sets the version, builds, and publishes a GitHub
-    release with the zipped mod attached.
+    Releases AEGIS-M: sets the version, builds, publishes a GitHub release
+    with the zipped mod attached, and updates the Steam Workshop item.
 
 .DESCRIPTION
     1. Shows the current version (.hemtt\project.toml) and asks for the
@@ -13,6 +13,11 @@
        and nothing has been pushed.
     5. Tags the commit, pushes the branch and the tag.
     6. Creates the GitHub release and uploads the zip.
+    7. Updates the Steam Workshop item (workshop\item-id.txt) with the same
+       build, and a change note made from the commits since the last
+       release. Needs Steam running, logged in as the item's owner, and
+       Arma 3 Tools. Not done for a draft or a pre-release. If this step
+       fails, the GitHub release stands: run again with -WorkshopOnly.
 
     Needs: hemtt, git, the GitHub CLI (winget install GitHub.cli) and an
     "origin" remote (tools\github-setup.cmd). If the GitHub CLI isn't
@@ -38,6 +43,17 @@
 .PARAMETER Yes
     Doesn't ask before publishing.
 
+.PARAMETER NoWorkshop
+    Leaves the Steam Workshop item alone.
+
+.PARAMETER WorkshopOnly
+    Only updates the Steam Workshop item, with a fresh build of what is
+    committed now: no version change, nothing pushed, no GitHub release.
+    For when the GitHub release went through and the Workshop step didn't.
+
+.PARAMETER WorkshopId
+    The Workshop item's ID, instead of the one in workshop\item-id.txt.
+
 .PARAMETER DryRun
     Shows what would be done -- the version, the tag, the [version] section
     as it would be written -- and changes nothing. What a real run needs
@@ -48,6 +64,9 @@
 
 .EXAMPLE
     tools\release.cmd -Bump patch -Draft
+
+.EXAMPLE
+    tools\release.cmd -WorkshopOnly
 #>
 param(
     [ValidateSet("major", "minor", "patch", "build", "keep")]
@@ -57,6 +76,9 @@ param(
     [switch]$Draft,
     [switch]$PreRelease,
     [switch]$Yes,
+    [switch]$NoWorkshop,
+    [switch]$WorkshopOnly,
+    [string]$WorkshopId,
     [switch]$DryRun
 )
 
@@ -92,6 +114,67 @@ function Test-GitHubLogin([string]$Cli) {
     return ($LASTEXITCODE -eq 0)
 }
 
+# Arma 3 Tools' command-line publisher: where Arma 3 Tools says it is
+# installed, or in Steam's own library.
+function Find-PublisherCmd {
+    $folders = @()
+    $tools = Get-ItemProperty "HKCU:\Software\Bohemia Interactive\Arma 3 Tools" -ErrorAction SilentlyContinue
+    if ($tools -and $tools.path) { $folders += $tools.path }
+    $steam = Get-ItemProperty "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue
+    if ($steam -and $steam.SteamPath) { $folders += (Join-Path $steam.SteamPath "steamapps\common\Arma 3 Tools") }
+    foreach ($folder in $folders) {
+        $exe = Join-Path $folder "Publisher\PublisherCmd.exe"
+        if (Test-Path $exe) { return $exe }
+    }
+    return $null
+}
+# The Workshop item's title, from Steam (to show what is about to be
+# updated); "" if Steam can't be asked.
+function Get-WorkshopTitle([string]$Id) {
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $reply = Invoke-RestMethod -Method Post -TimeoutSec 15 -Uri "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/" -Body @{ itemcount = 1; "publishedfileids[0]" = $Id }
+        return [string]$reply.response.publishedfiledetails[0].title
+    } catch {
+        return ""
+    }
+}
+# The Workshop change note for a release: its tag, then the notes given, or
+# the commits since the release before it; and a link to the GitHub release
+# if the repository is public.
+function Get-ChangeNote([string]$Tag, [string]$Since) {
+    $lines = @("AEGIS-M $Tag", "")
+    if ($Notes) {
+        $lines += $Notes
+    } elseif (-not $Since) {
+        # (The first release: not the whole history.)
+        $lines += "Initial release."
+    } else {
+        $subjects = @(git log "$Since..HEAD" --no-merges --format=%s | Where-Object { $_ -notmatch '^Release v' } | Select-Object -First 40)
+        foreach ($subject in $subjects) { $lines += "- $subject" }
+        if ($subjects.Count -eq 0) { $lines += "Rebuilt; no changes to the mod's code." }
+    }
+    if ($script:repoPublic -and $script:repoUrl) { $lines += @("", "Full notes: $($script:repoUrl)/releases/tag/$Tag") }
+    $lines -join "`r`n"
+}
+# Uploads the built mod (.hemttout\release) to the Workshop item.
+function Publish-Workshop([string]$Note) {
+    if (-not (Get-Process steam -ErrorAction SilentlyContinue)) {
+        Write-Host "Steam isn't running: the Workshop item can only be updated with Steam running, logged in as its owner." -ForegroundColor Yellow
+        return $false
+    }
+    $content = (Resolve-Path ".hemttout\release" -ErrorAction SilentlyContinue).Path
+    if (-not $content) {
+        Write-Host "There is no build in .hemttout\release to upload." -ForegroundColor Yellow
+        return $false
+    }
+    $noteFile = Join-Path $env:TEMP "aegism-workshop-changenote.txt"
+    [System.IO.File]::WriteAllText($noteFile, $Note, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "Updating the Steam Workshop item $WorkshopId..." -ForegroundColor Cyan
+    & $publisher update "/id:$WorkshopId" "/changeNoteFile:$noteFile" "/path:$content" /nologo /nosummary
+    return ($LASTEXITCODE -eq 0)
+}
+
 Set-Location (Split-Path $PSScriptRoot -Parent)
 $projectFile = ".hemtt\project.toml"
 
@@ -99,15 +182,42 @@ $projectFile = ".hemtt\project.toml"
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { Stop-Script "git isn't installed (or isn't on the PATH)." }
 if (-not (Get-Command hemtt -ErrorAction SilentlyContinue)) { Stop-Unless-Dry "hemtt isn't installed (or isn't on the PATH)." }
 $gh = Find-GitHubCli
-if (-not $gh) {
-    Stop-Unless-Dry "The GitHub CLI isn't installed. Install it with:  winget install GitHub.cli   and run this again."
-} elseif ($DryRun) {
-    & $gh auth status 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) { Stop-Unless-Dry "the GitHub CLI isn't logged in (a real run starts the login itself)." }
-} elseif (-not (Test-GitHubLogin $gh)) {
-    Stop-Script "Still not logged in to GitHub. Run:  `"$gh`" auth login   and then this again."
+if (-not $WorkshopOnly) {
+    if (-not $gh) {
+        Stop-Unless-Dry "The GitHub CLI isn't installed. Install it with:  winget install GitHub.cli   and run this again."
+    } elseif ($DryRun) {
+        & $gh auth status 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { Stop-Unless-Dry "the GitHub CLI isn't logged in (a real run starts the login itself)." }
+    } elseif (-not (Test-GitHubLogin $gh)) {
+        Stop-Script "Still not logged in to GitHub. Run:  `"$gh`" auth login   and then this again."
+    }
+    if (@(git remote) -notcontains "origin") { Stop-Unless-Dry "This repository has no 'origin' remote yet. Run tools\github-setup.cmd first." }
 }
-if (@(git remote) -notcontains "origin") { Stop-Unless-Dry "This repository has no 'origin' remote yet. Run tools\github-setup.cmd first." }
+
+# The Steam Workshop item: its ID from workshop\item-id.txt (or -WorkshopId),
+# and why it won't be updated, if it won't.
+if (-not $WorkshopId -and (Test-Path "workshop\item-id.txt")) {
+    $WorkshopId = [string](Get-Content "workshop\item-id.txt" | Where-Object { $_ -match '^\s*\d+\s*$' } | Select-Object -First 1)
+    if ($WorkshopId) { $WorkshopId = $WorkshopId.Trim() }
+}
+$publisher = Find-PublisherCmd
+$workshopSkip = ""
+if ($NoWorkshop) { $workshopSkip = "-NoWorkshop was given" }
+elseif (-not $WorkshopId) { $workshopSkip = "there is no item ID in workshop\item-id.txt" }
+elseif (-not $publisher) { $workshopSkip = "Arma 3 Tools' PublisherCmd.exe wasn't found" }
+elseif ($Draft -and -not $WorkshopOnly) { $workshopSkip = "this is a draft release" }
+elseif ($PreRelease -and -not $WorkshopOnly) { $workshopSkip = "this is a pre-release" }
+if ($WorkshopOnly -and $workshopSkip) { Stop-Script "The Workshop item can't be updated: $workshopSkip." }
+$workshopTitle = ""
+if (-not $workshopSkip) { $workshopTitle = Get-WorkshopTitle $WorkshopId }
+# (For the change note's link: only a public repository's is any use.)
+$script:repoUrl = ""
+$script:repoPublic = $false
+if (@(git remote) -contains "origin") { $script:repoUrl = ((git remote get-url origin) -replace '\.git$', '').Trim() }
+if ($gh -and $script:repoUrl) {
+    $visibility = & $gh repo view --json visibility --jq .visibility 2>&1
+    if ($LASTEXITCODE -eq 0 -and "$visibility".Trim() -eq "PUBLIC") { $script:repoPublic = $true }
+}
 # A release is built from what's committed. Anything that isn't: commit it
 # here and now, with a message of your own, or stop.
 $dirty = @(git status --porcelain)
@@ -116,7 +226,7 @@ if ($dirty.Count -gt 0) {
     Write-Host "Not committed yet:" -ForegroundColor Yellow
     $dirty | Select-Object -First 20 | ForEach-Object { Write-Host "   $_" }
     if ($dirty.Count -gt 20) { Write-Host "   ... and $($dirty.Count - 20) more" }
-    if ($DryRun -or $Yes) {
+    if ($DryRun -or $Yes -or $WorkshopOnly) {
         Stop-Unless-Dry "There are uncommitted changes, and a release is built from what's committed. Commit them first."
     } else {
         $message = Read-Host "A release is built from what's committed. Type a commit message to commit all of these now, or just press Enter to stop"
@@ -159,6 +269,37 @@ function Read-Version([string]$typed) {
     @{ major = [int]$match.Groups[1].Value; minor = [int]$match.Groups[2].Value; patch = [int]$match.Groups[3].Value; build = $build }
 }
 
+# --- Only the Workshop item --------------------------------------------------
+if ($WorkshopOnly) {
+    $tag = Format-Tag $now
+    $tags = @(git tag --list "v*" --sort=-creatordate)
+    $since = ""
+    $at = [array]::IndexOf($tags, $tag)
+    if ($at -ge 0 -and $at + 1 -lt $tags.Count) { $since = $tags[$at + 1] }
+    if ($at -lt 0) {
+        Write-Host "Version $(Format-Version $now) has no release tag ($tag): it hasn't been released on GitHub." -ForegroundColor Yellow
+    } elseif ((git rev-parse "$tag^{commit}").Trim() -ne (git rev-parse HEAD).Trim()) {
+        Write-Host "What is committed now isn't the commit released as $tag : the Workshop would get something newer than that release." -ForegroundColor Yellow
+    }
+    $note = Get-ChangeNote $tag $since
+    Write-Host ""
+    Write-Host "About to update the Steam Workshop item $WorkshopId $(if ($workshopTitle) { "($workshopTitle) " })with AEGIS-M $tag :" -ForegroundColor Cyan
+    Write-Host "  - build it (hemtt release)"
+    Write-Host "  - upload .hemttout\release, with this change note:"
+    $note -split "`r`n" | ForEach-Object { Write-Host "      $_" }
+    if ($DryRun) { Write-Host ""; Write-Host "Dry run: nothing was changed." -ForegroundColor Green; exit 0 }
+    if (-not $Yes) {
+        $answer = Read-Host "Go ahead? (y/N)"
+        if ($answer -notmatch '^(y|yes)$') { Stop-Script "Nothing was changed." }
+    }
+    hemtt release
+    if ($LASTEXITCODE -ne 0) { Stop-Script "The build failed (see above). The Workshop item wasn't touched." }
+    if (-not (Publish-Workshop $note)) { Stop-Script "The Workshop update didn't go through (see above)." }
+    Write-Host ""
+    Write-Host "The Steam Workshop item is updated to AEGIS-M $tag." -ForegroundColor Green
+    exit 0
+}
+
 # --- The version to release ------------------------------------------------
 $new = $null
 if ($Version) {
@@ -194,7 +335,9 @@ $versionText = Format-Version $new
 $tag = Format-Tag $new
 $changed = $versionText -ne (Format-Version $now)
 
-if (@(git tag --list $tag).Count -gt 0) { Stop-Script "The tag $tag already exists: that version has been released. Choose another." }
+if (@(git tag --list $tag).Count -gt 0) { Stop-Script "The tag $tag already exists: that version has been released. Choose another. (To send it to the Workshop again: -WorkshopOnly.)" }
+# (The release before this one, for the Workshop change note.)
+$previousTag = [string](git tag --list "v*" --sort=-creatordate | Select-Object -First 1)
 
 # --- Last look before anything leaves this PC ------------------------------
 Write-Host ""
@@ -205,6 +348,11 @@ Write-Host "  - push $branch and the tag $tag to GitHub"
 $kind = "release"
 if ($Draft) { $kind = "DRAFT release" } elseif ($PreRelease) { $kind = "pre-release" }
 Write-Host "  - publish the GitHub $kind $tag with the zipped mod"
+if ($workshopSkip) {
+    Write-Host "  - (the Steam Workshop item is left alone: $workshopSkip)"
+} else {
+    Write-Host "  - update the Steam Workshop item $WorkshopId $(if ($workshopTitle) { "($workshopTitle) " })with it; Steam has to be running"
+}
 if (-not $Yes -and -not $DryRun) {
     $answer = Read-Host "Go ahead? (y/N)"
     if ($answer -notmatch '^(y|yes)$') { Stop-Script "Nothing was changed." }
@@ -225,6 +373,11 @@ if ($changed -or $DryRun) {
         Write-Host ""
         Write-Host "Dry run: nothing was changed. $projectFile would read:" -ForegroundColor Green
         Write-Host ("[version]" + $body.TrimEnd())
+        if (-not $workshopSkip) {
+            Write-Host ""
+            Write-Host "The Workshop change note would be:"
+            (Get-ChangeNote $tag $previousTag) -split "`r`n" | ForEach-Object { Write-Host "    $_" }
+        }
         exit 0
     }
     $text = $text.Substring(0, $section.Groups[1].Index) + $body + $text.Substring($section.Groups[1].Index + $section.Groups[1].Length)
@@ -270,4 +423,13 @@ if ($PreRelease) { $arguments += "--prerelease" }
 if ($LASTEXITCODE -ne 0) { Stop-Script "GitHub didn't create the release (see above). The branch and the tag are pushed; create it by hand with:  gh release create $tag `"$($zip.FullName)`" --generate-notes" }
 
 Write-Host ""
-Write-Host "Released AEGIS-M $tag." -ForegroundColor Green
+Write-Host "Released AEGIS-M $tag on GitHub." -ForegroundColor Green
+
+# --- The Steam Workshop --------------------------------------------------------
+if (-not $workshopSkip) {
+    if (Publish-Workshop (Get-ChangeNote $tag $previousTag)) {
+        Write-Host "The Steam Workshop item is updated to AEGIS-M $tag." -ForegroundColor Green
+    } else {
+        Stop-Script "The GitHub release is done, but the Workshop update didn't go through (see above). When Steam is running, send it with:  tools\release.cmd -WorkshopOnly"
+    }
+}

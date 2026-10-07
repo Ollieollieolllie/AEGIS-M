@@ -30,6 +30,13 @@ if (hasInterface) then {
 // interval's average fps, worst frame and slow frames, rather than
 // diag_fpsMin's last 16 frames at the moment the line is written.
 if (isServer) then {
+    // ACE flies the missiles AEGIS-M fires (a required addon): only while it
+    // guides AI-fired shots, its default.
+    if ((missionNamespace getVariable ["ace_missileguidance_enabled", 0]) < 2) then {
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ACE-GUIDANCE: ace_missileguidance_enabled is %1 -- ACE isn't guiding AI-fired missiles, so the missiles of AEGIS-M's launchers aren't guided as it plans them. Leave it at 2 (player and AI), ACE's default.",
+            missionNamespace getVariable ["ace_missileguidance_enabled", "not set"]];
+    };
+
     [{
         if (missionNamespace getVariable ["aegism_main_perfLog", true]) then { [] call aegism_fnc_perfLog; };
     }, 10, []] call CBA_fnc_addPerFrameHandler;

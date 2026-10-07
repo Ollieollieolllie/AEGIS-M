@@ -29,6 +29,16 @@ params ["_projectile", "_seeker", "_aimPos"];
 
 if (isNull _projectile) exitWith { deleteVehicle _seeker; };
 
+// The game's own guidance only takes a position for a missile with
+// manualControl, which no SAM has: its missile is given the object as its
+// target, forced (see notes). A guidance mod's has it from launch.
+private _forced = (([typeOf _projectile] call aegism_intercept_fnc_missileAgility) select 0) == "engine";
+if (_forced) then {
+    private _taken = _projectile setMissileTarget [_seeker, true];
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " STRIKE: %1 on grid %2 is flown by the game's own guidance -- the object above its point %3 as its target (its state %4).",
+        typeOf _projectile, mapGridPosition _aimPos, if (isNil "_taken") then { "was given" } else { ["was refused", "was taken"] select _taken }, missileState _projectile];
+};
+
 // (For a terminal's map: aegism_network_fnc_terminalPicture.)
 private _flying = missionNamespace getVariable ["AEGISM_strikeMissiles", []];
 _flying = _flying select { !isNull _x && {alive _x} };
@@ -37,13 +47,14 @@ missionNamespace setVariable ["AEGISM_strikeMissiles", _flying];
 
 [{
     params ["_args", "_handle"];
-    _args params ["_projectile", "_seeker", "_aimPos", "_nearest", "_passedAt", "_ammo", "_launchedAt", "_moving"];
+    _args params ["_projectile", "_seeker", "_aimPos", "_nearest", "_passedAt", "_ammo", "_launchedAt", "_moving", "_forced", "_lockState"];
 
     if (isNull _projectile || {!alive _projectile}) exitWith {
         [_handle] call CBA_fnc_removePerFrameHandler;
         deleteVehicle _seeker;
-        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " STRIKE: %1 on grid %2 ended %3s after launch, having come within %4m of its point.",
-            _ammo, mapGridPosition _aimPos, (CBA_missionTime - _launchedAt) toFixed 1, round _nearest];
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " STRIKE: %1 on grid %2 ended %3s after launch, having come within %4m of its point.%5",
+            _ammo, mapGridPosition _aimPos, (CBA_missionTime - _launchedAt) toFixed 1, round _nearest,
+            ["", format [" The game last reported its lock as %1.", [_lockState, "none"] select (_lockState == "")]] select _forced];
     };
 
     private _position = getPosASLVisual _projectile;
@@ -67,7 +78,12 @@ missionNamespace setVariable ["AEGISM_strikeMissiles", _flying];
     // (A radar seeker's: kept moving along the line to the missile, toward
     // it -- up, off the ground. aegism_intercept_fnc_surfaceStrike.)
     if (_moving) then { _seeker setVelocity ((_chase vectorFromTo _position) vectorMultiply AEGISM_STRIKE_SEEKER_SPEED); };
-    // (The game's own guidance takes a position; a guidance mod's follows
-    // the object it was given at launch.)
+    // (Taken only by a missile with manualControl; every other follows
+    // the object.)
     _projectile setMissileTargetPos (ASLToAGL _chase);
-}, 0, [_projectile, _seeker, _aimPos, 1e10, -1, typeOf _projectile, CBA_missionTime, (typeOf _seeker) isKindOf ["Default", configFile >> "CfgAmmo"]]] call CBA_fnc_addPerFrameHandler;
+    // (The game's own guidance: the object, given again if it has let go.)
+    if (_forced) then {
+        if ((missileTarget _projectile) != _seeker) then { _projectile setMissileTarget [_seeker, true]; };
+        _args set [9, (missileState _projectile) param [1, ""]];
+    };
+}, 0, [_projectile, _seeker, _aimPos, 1e10, -1, typeOf _projectile, CBA_missionTime, (typeOf _seeker) isKindOf ["Default", configFile >> "CfgAmmo"], _forced, ""]] call CBA_fnc_addPerFrameHandler;

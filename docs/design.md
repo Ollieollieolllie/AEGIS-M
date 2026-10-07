@@ -471,7 +471,9 @@ follows another incoming munition the Site is tracking if that's what its
 seeker took. Otherwise it self-destructs where it is (`INTERCEPTOR-LOST`).
 Left free, such missiles found
 the next thing in their seeker's view and shot down an aircraft the Site
-wasn't allowed to engage. Between targets, and before its first, a launcher
+wasn't allowed to engage. A missile the game itself guides is also asked for
+its lock every frame: reported lost, it is ended as soon as it has passed
+its target. Between targets, and before its first, a launcher
 or gun stays pointed at the contact it's most likely to get next -- one no
 weapon of its kind has yet, soonest impact first -- rather than going back
 to its crew, which turned it away between the rockets of a salvo and left
@@ -501,7 +503,9 @@ comes down). A high-arc rocket falls back into a RAM's reach only in its
 last seconds; planned to the RAMs there, it left the Patriots no second
 chance. A kill that's only that late because the cheaper tier is working
 through its queue stays with the cheaper tier, so its launchers empty their
-magazines before the long-range ones are spent.
+magazines before the long-range ones are spent. A launcher isn't counted in
+the plan while a gun on its own turret holds another target (a Cheetah's
+missiles while its gun is firing): it can't be given a round meanwhile.
 
 Guns are matched by warhead size, then distance. A gun is only given an
 incoming munition it has its **Minimum Firing Window** on (CIWS setting, 3 s
@@ -588,6 +592,30 @@ in the RPT, once per missile):
 - A missile ACE hands to its own guidance (`maneuvrability` 0) can't be
   steered at all when ACE isn't guiding AI shots, so it's only launched
   straight.
+
+**ACE's missile guidance is required** (`ace_missileguidance`, with
+`ace_missile_sam` and `ace_missile_manpad`, which put the game's own SAMs
+under it). AEGIS-M was built and proven with it: a salvo of 46 rockets on a
+Site of two RIM-116 launchers, a Cheetah and four MIM-145s was stopped 46 of
+46 with one MIM-145 fired, and surface strikes land within a few metres
+(RIM-116 1-4 m, MIM-145 0-1 m). Two runs of the same Site without it, on
+2026-10-07, showed what the game's own guidance does instead:
+- The RIM-116 reaches 4 km, not 5, so its first kills come with about 4 s
+  less in hand, and the Cheetah's missile is a 4.5 km Titan in a tier of its
+  own instead of a 5 km Stinger beside the RIM-116s.
+- The MIM-145 hit every rocket it met 4.3 km out or more (13) and missed
+  every one it met nearer (3 at about 3.6-3.9 km, 1 at about 2.6 km, by the
+  missiles' logged speeds). The logs don't show why: the game reports it
+  locked half a second after launch. So there is no second shot behind a
+  4 km RIM-116. The first run let one rocket of 43 through; in the second
+  the reserve fired all 16 MIM-145s to stop 47 of 47, three of them in
+  their last 3.3 s.
+- A RIM-116 the game guides onto a strike point comes down 22-24 m off.
+
+ACE guides AI-fired missiles by default; a mission that switches that off
+(`ace_missileguidance_enabled` under 2) gets one line in the RPT
+(`ACE-GUIDANCE`). Another mod's missile that ACE doesn't guide (POOK's) is
+still flown by the game.
 
 With a turn rate, the flight is modelled as a turn onto the intercept at
 that rate, then a straight run: honest flight times, and a minimum range
@@ -820,7 +848,7 @@ Verbose adds the step-by-step detail:
 - each weapon's wait: `REACTING`, `SLEWING`, `CUED`, `RANGE-HOLD`, `LOCKING`;
 - CIWS bursts: `SPOTTING`, `BURST-END`, `SELF-DESTRUCT`, `LAST-DITCH`;
 - missile launches: `MISSILE-TURN`, `MISSILE-SPEED`, `OFFBORE-LAUNCH`,
-  `LOCK-ON`, `LOCK`;
+  `LOCK-ON`, `LOCK`, `MISSILE-TARGET`;
 - per-weapon calibration: `KINEMATICS`, `MISSILE-PROFILE`, `AGILITY`, `TURRET-RATE`,
   `TARGET-SIZE`, `OPEN-FIRE-RANGE`, `FIRE-RATE`, `RELOAD-TIME`, and measurements thrown
   away as glitches (`LEAD-SAMPLE-REJECT`; see **Learning in play**);
@@ -959,11 +987,13 @@ Interception page. Switched on, a click on the map where no track is puts a
 Nothing of this is automatic: the Site never fires at the ground on its
 own, a strike doesn't sound its alarm, and its rounds and missile are left
 to the game -- no AEGIS-M fuse, no self-destruct. `STRIKE` in the RPT says
-how each one ended and how near its missile came. A missile guided by the
-game is given the point directly; one guided by a mod (ACE) is given an
-object to chase there -- for a radar seeker, which only keeps munitions and
-aircraft, a chemlight held above the point and kept moving along the
-missile's line of sight (an infrared one where there is one).
+how each one ended and how near its missile came. A missile is given an
+object to chase there: one guided by a mod (ACE) from launch -- for a radar
+seeker, which only keeps munitions and aircraft, a chemlight held above the
+point and kept moving along the missile's line of sight (an infrared one
+where there is one) -- and one the game guides (another mod's) as its forced
+target: the game only takes a position for a missile with `manualControl`,
+which no SAM has.
 
 The server builds the board and the picture, applies the changes and takes
 the orders, so all of it works on a dedicated server. It takes a change only

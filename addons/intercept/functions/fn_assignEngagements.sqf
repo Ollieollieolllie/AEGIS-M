@@ -835,6 +835,17 @@ private _fnPickWeapon = {
     [_weaponIndex, _readyIn, _inTime]
 };
 
+// Whether a gun on a launcher's own turret holds another contact: the
+// launcher isn't given this one meanwhile (the eligibility check below), so
+// the reserve plan doesn't count on it for it either (see notes).
+private _fnGunHolds = {
+    params ["_candSystem", "_turretPath", "_contactKey"];
+    ((_busy getOrDefault [[netId _candSystem, _turretPath], []]) findIf {
+        _x params ["_bKey", "_bRole", "_bHolding"];
+        _bRole == "ciws" && {_bHolding} && {_bKey != _contactKey}
+    }) != -1
+};
+
 // Layered reserve plan (see above), munition key -> reach of the cheapest
 // launcher tier predicted to kill it in time.
 private _coveredReach = createHashMap;
@@ -1080,7 +1091,8 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                     _x params ["_candSystem", "_candInfo", "_candSettings", "_nextFree", "_rounds", "", "", "_reaction", "_bounds"];
                     if (_rounds > 0
                         && {(_planEntry get "class") in (_candSettings getOrDefault ["targetClassAllowlist", []])}
-                        && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) == -1}) then {
+                        && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) == -1}
+                        && {!([_candSystem, _candInfo select 0, _key] call _fnGunHolds)}) then {
                         private _shot = [_candSystem, _candInfo, _bounds, _object, _ballistic, _nextFree max _reaction, _tti, _key] call _fnPlanShot;
                         if (_shot isNotEqualTo [] && {_best isEqualTo [] || {(_shot select 1) < (_best select 1)}}) then {
                             _best = [_forEachIndex, _shot select 0, _shot select 1];
@@ -1099,6 +1111,7 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                         (_candInfo select 5) > _tierReach
                             && {(_planEntry get "class") in ((_candSystem call _fnSettings) getOrDefault ["targetClassAllowlist", []])}
                             && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) == -1}
+                            && {!([_candSystem, _candInfo select 0, _key] call _fnGunHolds)}
                             && {([_candSystem, _candInfo, [_candSystem call _fnSettings, _candInfo, "launcher"] call aegism_intercept_fnc_envelopeBounds,
                                 _object, _ballistic, _relookAt, _tti, _key] call _fnPlanShot) isNotEqualTo []}
                     }) != -1
@@ -1124,6 +1137,7 @@ if (count _tierReaches > 1 && {_anyFree}) then {
                             && {_nextFree > _reaction}
                             && {(_planEntry get "class") in (_candSettings getOrDefault ["targetClassAllowlist", []])}
                             && {(_avoid findIf { (_x select 0) == _candSystem && {(_x select 1) isEqualTo (_candInfo select 0)} }) == -1}
+                            && {!([_candSystem, _candInfo select 0, _key] call _fnGunHolds)}
                             && {
                                 private _free = [_candSystem, _candInfo, _bounds, _object, _ballistic, _reaction, _tti, _key] call _fnPlanShot;
                                 _free isNotEqualTo [] && {(_free select 1) call _fnSecondShot}

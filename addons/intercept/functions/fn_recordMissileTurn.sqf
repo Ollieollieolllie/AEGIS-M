@@ -14,6 +14,8 @@ Parameters:
     _flightTime - seconds from launch to intercept; -1 if AEGIS-M's fuse
         didn't see one <NUMBER>
     _retargeted - optional, its seeker changed target in flight <BOOLEAN>
+    _lock - optional, its lock as the game reported it in flight (aegism_
+        intercept_fnc_interceptorPFH) <ARRAY>
 
 Returns:
     Nothing
@@ -31,7 +33,7 @@ Author:
 // aegism_intercept_fnc_launchSolution's own on-bore tolerance.
 #define AEGISM_LAUNCH_ON_BORE 2
 
-params ["_ammoClass", "_launch", "_peakRate", "_flightTime", ["_retargeted", false]];
+params ["_ammoClass", "_launch", "_peakRate", "_flightTime", ["_retargeted", false], ["_lock", []]];
 _launch params [["_offBore", 0], ["_predictedFlight", -1]];
 
 private _table = missionNamespace getVariable "AEGISM_missileTurn";
@@ -59,7 +61,12 @@ if (_turned && {_rejected == ""}) then {
 _table set [_ammoClass, [_flights, _turnedFlights, _rate, _peaks]];
 
 if (AEGISM_RPT_VERBOSE) then {
-    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSILE-TURN: %1 launched %2 deg off the intercept -- fastest sustained turn %3 deg/s; %4. %5",
+    _lock params [["_engineGuided", false], ["_lockStates", []], ["_profile", ""]];
+    private _lockText = if (_engineGuided && {_lockStates isNotEqualTo []}) then {
+        format [" Its lock by the game (%1): %2.", _profile,
+            (_lockStates apply { format ["%1 from %2s", [_x select 0, "none"] select ((_x select 0) == ""), (_x select 1) toFixed 1] }) joinString ", "]
+    } else { "" };
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSILE-TURN: %1 launched %2 deg off the intercept -- fastest sustained turn %3 deg/s; %4. %5%6",
         _ammoClass, round (_offBore * 10) / 10, round (_peakRate * 10) / 10,
         if (_flightTime >= 0) then {
             format ["intercepted after %1s (predicted %2s)", round (_flightTime * 10) / 10, round (_predictedFlight * 10) / 10]
@@ -73,5 +80,5 @@ if (AEGISM_RPT_VERBOSE) then {
                     ["its one turning flight so far", "the second fastest, confirmed by a faster one"] select (count _peaks > 1), _turnedFlights, _flights]
             };
             default { format ["Launched straight, so it doesn't set the turn rate (%1 flight(s), none turning yet).", _flights] };
-        }];
+        }, _lockText];
 };

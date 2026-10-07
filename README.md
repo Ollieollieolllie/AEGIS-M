@@ -29,6 +29,9 @@ Early development.
 ## Dependencies
 
 - [CBA_A3](https://github.com/CBATeam/CBA_A3) (hard dependency)
+- [ACE3](https://github.com/acemod/ACE3) (hard dependency: its missile
+  guidance flies the missiles AEGIS-M fires -- `ace_missileguidance`,
+  `ace_missile_sam` and `ace_missile_manpad`)
 - [Zeus Enhanced](https://github.com/zen-mod/ZEN) (optional: needed to edit
   Site settings, vehicle overrides and a terminal laptop's options from Zeus)
 - Arma 3 2.18 or later (the `ProjectileCreated` mission event; the POOK
@@ -187,7 +190,8 @@ for a munition close to impact).
 - **A missile that loses its target** follows another incoming munition
   the Site is tracking if its seeker took one; otherwise it self-destructs
   (`INTERCEPTOR-LOST`), so it can't find something the Site wasn't allowed
-  to engage.
+  to engage. One the game reports as having lost its lock is ended once it
+  has passed its target.
 - Between targets a turret stays pointed at the contact it is most likely
   to get next.
 
@@ -535,9 +539,10 @@ A launcher that readies its next missile more slowly than its config says
 is timed from the game's own reload state and planned on that
 (`RELOAD-TIME`); one loading a new magazine isn't fired until it's ready.
 
-If a third-party scripted missile guidance mod is loaded and the fired ammo
-uses it, AEGIS-M hands the target to that mod's guidance as well. That mod's
-own setting must allow AI-fired shots.
+ACE's missile guidance flies the missiles of the game's own launchers, and
+has to be left guiding AI-fired shots (its default; `ACE-GUIDANCE` in the RPT
+if it isn't). AEGIS-M hands it each missile's target. A missile of another
+mod that ACE doesn't guide is flown by the game's own guidance.
 
 **POOK's SAM pack** gets its own compatibility addon
 (`aegism_compat_pook`, loaded only with it). It gives POOK's 20, 23 and
@@ -558,10 +563,16 @@ from a terminal in the repository (or by double-click):
 - **`tools\release.cmd`**: shows the current version and asks for the new
   one (patch, minor, major, build, one you type, or unchanged), asks before
   anything leaves the PC, then commits the version, builds with
-  `hemtt release`, pushes the branch and a `vX.Y.Z` tag, and publishes a
-  GitHub release with the zipped mod attached. `-DryRun` shows what it
-  would do and changes nothing; `-Draft` publishes it as a draft;
-  `-Bump patch` or `-Version 1.2.3` skip the question.
+  `hemtt release`, pushes the branch and a `vX.Y.Z` tag, publishes a
+  GitHub release with the zipped mod attached, and updates the Steam
+  Workshop item (its ID is in `workshop/item-id.txt`) with the same build
+  and a change note made from the commits since the last release. The
+  Workshop step needs Steam running, logged in as the item's owner, and
+  Arma 3 Tools; if it fails the GitHub release stands, and
+  `-WorkshopOnly` sends it later. `-DryRun` shows what it would do and
+  changes nothing; `-Draft` publishes a draft (and leaves the Workshop
+  alone, as does `-NoWorkshop`); `-Bump patch` or `-Version 1.2.3` skip
+  the question.
 
 They need [HEMTT](https://github.com/BrettMayson/HEMTT) and the GitHub
 CLI (`winget install GitHub.cli`); if it isn't logged in yet, the script

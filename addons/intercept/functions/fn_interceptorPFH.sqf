@@ -38,6 +38,8 @@ if (_hitRadius <= 0 && {!_isMunitionTarget}) exitWith {};
 
 private _armDistance = getNumber (_ammoCfg >> "fuseDistance");
 private _isGuided = (toLower getText (_ammoCfg >> "simulation")) == "shotmissile";
+// Only the game's own guidance has a lock of the game's to lose (see notes).
+private _engineGuided = _isGuided && {(([typeOf _projectile] call aegism_intercept_fnc_missileAgility) select 0) == "engine"};
 private _launchPos = getPosASLVisual _projectile;
 
 [{
@@ -74,10 +76,10 @@ private _launchPos = getPosASLVisual _projectile;
         if (_isGuided && {_launch isNotEqualTo []}) then {
             private _flown = CBA_missionTime - (_launch param [2, CBA_missionTime]);
             if (_miss >= 0) then {
-                [_ammoClass, _launch, _peakRate, _flown, _retargeted] call aegism_intercept_fnc_recordMissileTurn;
+                [_ammoClass, _launch, _peakRate, _flown, _retargeted, _args select 19] call aegism_intercept_fnc_recordMissileTurn;
                 [_launch param [3, ""], _launch param [4, ""], _flown, _pathFlown, _speeds, "", _launchPos distance _at] call aegism_intercept_fnc_recordMissileSpeed;
             } else {
-                [_ammoClass, _launch, _peakRate, -1, _retargeted] call aegism_intercept_fnc_recordMissileTurn;
+                [_ammoClass, _launch, _peakRate, -1, _retargeted, _args select 19] call aegism_intercept_fnc_recordMissileTurn;
                 [_launch param [3, ""], _launch param [4, ""], _flown, -1, _speeds,
                     "ended out of reach of its target (it missed, or its life ran out)"] call aegism_intercept_fnc_recordMissileSpeed;
             };
@@ -114,15 +116,17 @@ private _launchPos = getPosASLVisual _projectile;
             };
         };
     };
-    if (_why != "") exitWith {
+    // Lost, for the reason given: its flight recorded, and it's set off.
+    private _fnLost = {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         if (_isGuided && {_launch isNotEqualTo []}) then {
-            [_ammoClass, _launch, _peakRate, -1, _args select 15] call aegism_intercept_fnc_recordMissileTurn;
+            [_ammoClass, _launch, _peakRate, -1, _args select 15, _args select 19] call aegism_intercept_fnc_recordMissileTurn;
             [_launch param [3, ""], _launch param [4, ""], CBA_missionTime - (_launch param [2, CBA_missionTime]), -1, _speeds,
-                format ["self-destructed: %1", _why]] call aegism_intercept_fnc_recordMissileSpeed;
+                format ["self-destructed: %1", _this]] call aegism_intercept_fnc_recordMissileSpeed;
         };
-        if (_isGuided) then { [_projectile, _target, _why] call aegism_intercept_fnc_interceptorLost; };
+        if (_isGuided) then { [_projectile, _target, _this] call aegism_intercept_fnc_interceptorLost; };
     };
+    if (_why != "") exitWith { _why call _fnLost; };
 
     if (_isGuided) then {
         private _dir = vectorDirVisual _projectile;
@@ -165,7 +169,7 @@ private _launchPos = getPosASLVisual _projectile;
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
         if (_isGuided && {_launch isNotEqualTo []}) then {
             private _flown = CBA_missionTime - (_launch param [2, CBA_missionTime]);
-            [_ammoClass, _launch, _peakRate, _flown, _args select 15] call aegism_intercept_fnc_recordMissileTurn;
+            [_ammoClass, _launch, _peakRate, _flown, _args select 15, _args select 19] call aegism_intercept_fnc_recordMissileTurn;
             [_launch param [3, ""], _launch param [4, ""], _flown, _pathFlown, _speeds, "", _launchPos distance _projPos] call aegism_intercept_fnc_recordMissileSpeed;
         };
         [_projectile, _target, _isMunitionTarget, _minDistance, _hitRadius] call aegism_intercept_fnc_interceptHit;
@@ -175,6 +179,22 @@ private _launchPos = getPosASLVisual _projectile;
     if (!_isGuided && {_hasClosed} && {_separation > _lastSeparation}) exitWith {
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
     };
+    // Its lock, as the game reports it (missileState, the game's own
+    // guidance only): lost, it flies straight on -- ended once it has passed
+    // its target and is going away (see notes). [the game's own guidance,
+    // lock states seen, flight profile]
+    (_args select 19) params ["_engineGuided", "_lockStates"];
+    if (_engineGuided) then {
+        (missileState _projectile) params ["", ["_lockState", ""], ["_flightState", ""]];
+        if (((_args select 19) select 2) == "") then { (_args select 19) set [2, _flightState]; };
+        if (_lockStates isEqualTo [] || {((_lockStates select -1) select 0) != _lockState}) then {
+            _lockStates pushBack [_lockState, CBA_missionTime - (_launch param [2, CBA_missionTime])];
+        };
+        if (_lockState == "LOST" && {_hasClosed} && {_separation > _lastSeparation}) then {
+            _why = format ["the game reports its lock on %1 lost, and it has passed it", _args select 14];
+        };
+    };
+    if (_why != "") exitWith { _why call _fnLost; };
     _args set [7, _projPos];
     _args set [8, _targetPos];
     _args set [9, _separation];
@@ -182,4 +202,5 @@ private _launchPos = getPosASLVisual _projectile;
     // Its velocity, for the stretch it was on if it's gone next frame.
     _args set [18, velocity _projectile];
 }, 0, [_projectile, _target, _hitRadius, _armDistance, _isGuided, _launchPos, _isMunitionTarget, _launchPos, getPosWorldVisual _target, _launchPos distance (getPosWorldVisual _target), false,
-    typeOf _projectile, _launch, [vectorDirVisual _projectile, CBA_missionTime, 0, 0, 0], str _target, false, [], 0, velocity _projectile]] call CBA_fnc_addPerFrameHandler;
+    typeOf _projectile, _launch, [vectorDirVisual _projectile, CBA_missionTime, 0, 0, 0], str _target, false, [], 0, velocity _projectile,
+    [_engineGuided, [], ""]]] call CBA_fnc_addPerFrameHandler;

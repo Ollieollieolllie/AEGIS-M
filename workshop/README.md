@@ -12,7 +12,7 @@ packed into the mod.
 | Preview image | [preview.png](preview.png) (1024 x 1024, 72 KB; Steam wants it square and under 1 MB). |
 | Mod content | `.hemttout\release` after `hemtt release` (or `tools\release.cmd`): `addons`, `keys`, `mod.cpp`, the logos, `README.md`, `LICENSE`. |
 | Tags | Data type **Mod**; mod type **Mechanics** and **Modules** (pick what Publisher offers). |
-| Required items | **CBA_A3** (450814997). Zeus Enhanced (1779063631) is optional, so it is only named in the description. |
+| Required items | **CBA_A3** (450814997) and **ACE3** (463939057). Zeus Enhanced (1779063631) is optional, so it is only named in the description. |
 | Visibility | **Private** or **Unlisted** for the first upload, to check the page; then Public. |
 | First change note | `Initial release (v0.1.0).` |
 
@@ -35,18 +35,29 @@ first upload is done in the app.
 4. Name, a one-line description (the full one is pasted on Steam after),
    the preview image, the tags, visibility, the change note. Publish.
 5. On the item's Steam page: **Edit title & description** and paste
-   `description.bbcode`; **Add/Remove Required Items** and add CBA_A3.
-6. Note the item's ID: the number after `?id=` in its address.
+   `description.bbcode`; **Add/Remove Required Items** and add CBA_A3 and ACE3.
+6. Note the item's ID: the number after `?id=` in its address. (Done:
+   3815260246, in [item-id.txt](item-id.txt).)
 
-## Updates (can be scripted)
+## Updates
 
-With Steam running and logged in as the owner:
+`tools\release.cmd` does it as the last step of a release: it uploads
+`.hemttout\release` to the item in [item-id.txt](item-id.txt), with a
+change note made from the commits since the release before (or `-Notes`),
+and a link to the GitHub release while the repository is public. Steam has
+to be running, logged in as the item's owner.
+
+- `tools\release.cmd -WorkshopOnly` updates only the Workshop item, with a
+  fresh build of what is committed: for when the GitHub release went
+  through and the Workshop step didn't.
+- `-NoWorkshop` leaves the item alone; so does a `-Draft` or `-PreRelease`.
+- `-DryRun` shows the change note without sending anything.
+
+By hand, it is:
 
 ```
-"D:\Steam Library\steamapps\common\Arma 3 Tools\Publisher\PublisherCmd.exe" update /id:<ITEM ID> /changeNote:"v0.1.1: ..." /path:"C:\GitHub\AEGIS-M\.hemttout\release"
+"D:\Steam Library\steamapps\common\Arma 3 Tools\Publisher\PublisherCmd.exe" update /id:3815260246 /changeNote:"v0.1.1: ..." /path:"C:\GitHub\AEGIS-M\.hemttout\release"
 ```
 
-`/changeNoteFile:<text file>` instead of `/changeNote` for a longer note.
-It returns 0 when the upload worked. Once the item has an ID,
-`tools\release.cmd` can be given a step that does this after the GitHub
-release, with the same notes.
+The description on Steam isn't touched by an update: edit it on the item's
+page, from [description.bbcode](description.bbcode).

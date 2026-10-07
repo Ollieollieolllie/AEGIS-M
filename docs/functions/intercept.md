@@ -274,6 +274,16 @@ the cheaper tier could only kill too late for the longer-reach launchers
 to have a second shot (RESERVE-RELEASED); a kill that's only that late
 because of the cheaper tier's queue stays with it.
 
+A launcher isn't counted in the plan -- as its tier's cover for a
+munition, or as the longer-reach second shot behind a cheaper tier --
+while a gun on its own turret holds another contact (_fnGunHolds): the
+eligibility check won't give it that munition meanwhile. A Cheetah's gun
+held its turret from the first rocket in its reach to the end of a
+salvo. Its Titans (4.5 km: a tier of their own beside 4 km RIM-116s)
+were the plan's cover for one rocket of 43 (RESERVE: "the 4500m launcher
+tier") and could count as the second shot behind the RAMs; none was ever
+fired (15:09 RPT 2026-10-07).
+
 Threat re-assessment: after AEGISM_RETRY_THREAT_ASSESSMENT_THRESHOLD
 launcher attempts on a still-living contact, further launcher shots only
 go to it if no unassigned contact outranks it (aegism_intercept_fnc_
@@ -1313,6 +1323,20 @@ self-destructs (aegism_intercept_fnc_interceptorLost). Left free, its
 seeker took the next thing it found, which shot down an aircraft the
 Site wasn't allowed to engage.
 
+Lost lock: a missile the game itself guides is also asked for its lock
+every frame (missileState). Reported LOST -- the game then flies it
+straight on -- it's ended once it has passed its target and is going
+away; the hit test comes first, so a pass inside the fuse on that frame
+is still a hit. Its lock states, with the second each began, go into its
+MISSILE-TURN line. Seen without ACE (18:14 RPT 2026-10-07): a RIM-116 on
+a target forced onto it (setMissileTarget [target, true]) reports SEEKING,
+then LOCKED within 0.4 s, and stays LOCKED to the hit (32 of 32); the
+three MIM-145s and the one Titan that missed were reported LOST as they
+passed their rocket, not before. So LOST marks a miss, and waiting for
+the pass costs nothing. (Before this a MIM-145 that missed flew on for
+5 s, until the rocket itself was gone: 15:09 RPT.) ACE's missiles aren't
+asked: the game doesn't guide them.
+
 Turn rate: a guided missile's body direction is followed every frame,
 and its rotation summed over AEGISM_TURN_WINDOW s windows -- the fastest
 window is the flight's fastest SUSTAINED turn (a window that long
@@ -1489,6 +1513,12 @@ target after launch.
             unset; 180 if neither -- the same fallback as aegism_
             intercept_fnc_weaponKinematics)
 Logged once per missile (AGILITY).
+
+ACE's guidance is a required addon of aegism_intercept since 2026-10-07
+(ace_missileguidance, with ace_missile_sam and ace_missile_manpad, which
+put the game's own SAMs under it; the reasons are in docs/design.md), so
+"engine" is now another mod's missile, and "none" a mission that has
+switched ACE's guidance of AI shots off (ACE-GUIDANCE in the RPT, once).
 ```
 
 ## aegism_intercept_fnc_missileFlightKey
@@ -1651,6 +1681,9 @@ the same weapon took each other's rounds.)
         queue (aegism_intercept_fnc_ciwsSelfDestruct).
 
 Rounds from other weapons, or after the context expired, are ignored.
+
+A target the game refuses for a missile it guides itself (setMissile
+Target returning false) is logged under Verbose (MISSILE-TARGET).
 ```
 
 ## aegism_intercept_fnc_openFireRange
@@ -1843,7 +1876,9 @@ no unit), so this is where aegism_intercept_fnc_missileAgility gets it.
 For an ACE-guided missile it's a check on ACE's own configured rate.
 
 Logged per flight (MISSILE-TURN), with the predicted flight time against
-the real one.
+the real one. For a missile the game guides the line ends with its lock
+as the game reported it through the flight (missileState): its flight
+profile, then each lock state with the second after launch it began.
 ```
 
 ## aegism_intercept_fnc_selectTarget
@@ -2298,4 +2333,22 @@ It's set off when it has passed the point (came within 300 m and is going
 away) having come within 20 m; a miss is set off 2 s after passing, as a
 lost interceptor is. Otherwise the ground does it. The missile is listed
 in "AEGISM_strikeMissiles" for the terminals' map.
+
+What steers it: a guidance mod's missile follows the object from launch
+(aegism_intercept_fnc_surfaceStrike). One the game guides is given the
+object as its target, forced (setMissileTarget [object, true]), at
+launch and again whenever it has let go -- as an interceptor is given
+its munition. setMissileTargetPos is still called every frame, but the
+game only takes a position for a missile with manualControl (BI wiki),
+and no SAM has it: MissileBase sets manualControl = 0, and only wire-
+and laser-guided anti-tank missiles set 1. Until 2026-10-07 the position
+was all the game's own guidance was given, and a MIM-145 without ACE
+flew straight on (15:09 RPT; every strike seen to work before that was
+an ACE missile). Logged at launch (STRIKE: whether the game took the
+object, and the missile's state) and in the ending line (the lock it
+last reported). Seen once (18:14 RPT 2026-10-07, no ACE): two RIM-116s
+took the object and came down 22 m and 24 m from their point with the
+lock reported LOST; under ACE the same missile lands within 1-4 m, and
+its blast radius is 10 m. Left there: ACE's guidance has been a required
+addon since, so this is only what another mod's missile gets.
 ```

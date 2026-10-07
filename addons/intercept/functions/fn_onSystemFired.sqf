@@ -22,6 +22,8 @@ Author:
     Snow(Dryden)
 ---------------------------------------------------------------------------- */
 
+#include "..\..\main\rpt.hpp"
+
 // Rounds measured for spotting: one in this many. A burst still gives the
 // estimator dozens of samples.
 #define AEGISM_SPOT_EVERY 3
@@ -98,7 +100,10 @@ if (_role == "launcher") exitWith {
     // Forced: set even if the target is outside the missile's own seeker
     // cone as it leaves (an off-bore launch turns onto it).
     if (!isNull _target && {alive _target}) then {
-        _projectile setMissileTarget [_target, true];
+        private _taken = _projectile setMissileTarget [_target, true];
+        if (!isNil "_taken" && {!_taken} && {AEGISM_RPT_VERBOSE} && {(([typeOf _projectile] call aegism_intercept_fnc_missileAgility) select 0) == "engine"}) then {
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " MISSILE-TARGET: the game didn't take %1 as the target of %2 from %3 (setMissileTarget returned false).", _target, typeOf _projectile, _vehicle];
+        };
     };
     _interceptors pushBack _projectile;
     [_projectile, _target, _launch] call aegism_intercept_fnc_interceptorPFH;
