@@ -29,8 +29,15 @@ params [["_terminal", objNull], ["_anchor", objNull], ["_reply", false]];
 
 if (!isServer) exitWith { [] };
 
-private _synced = if (isNull _terminal) then { [] } else { +(synchronizedObjects _terminal) };
+// What it's synced to, and what it's connected to wherever it has been
+// carried since (aegism_network_fnc_terminalData). A unit carrying one: only
+// that -- what the unit itself is synced to is nothing of the laptop's.
+([_terminal] call aegism_network_fnc_terminalData) params ["_access", "_engage", "_surface", "_link"];
+private _synced = if (isNull _terminal || {_terminal isKindOf "CAManBase"}) then { [] } else { +(synchronizedObjects _terminal) };
 if (!isNull _terminal && {!isNull _anchor} && {_terminal in (synchronizedObjects _anchor)}) then { _synced pushBackUnique _anchor; };
+{ _synced pushBackUnique _x; } forEach _link;
+// (One carried is its carrier's alone.)
+if (isMultiplayer && {_reply} && {_terminal isKindOf "CAManBase"} && {!(remoteExecutedOwner in [0, owner _terminal])}) then { _synced = []; };
 
 private _sites = [];
 private _vehicles = [];
@@ -72,11 +79,9 @@ private _listed = [];
 } forEach _vehicles;
 
 if (_reply) then {
-    private _access = if (isNull _terminal) then { "status" } else { _terminal getVariable ["AEGISM_terminalAccess", "status"] };
     private _owner = remoteExecutedOwner;
-    // (And whether it has the Interception page, its own attribute.)
-    private _engage = !isNull _terminal && {_terminal getVariable ["AEGISM_terminalEngage", false]};
-    private _surface = _engage && {_terminal getVariable ["AEGISM_terminalSurface", false]};
+    // (Surface Strike goes with the Interception page.)
+    _surface = _engage && {_surface};
     if (!isMultiplayer || {_owner in [0, clientOwner]}) then {
         [_nodes, _access, _engage, _surface] call aegism_network_fnc_terminalFill;
     } else {

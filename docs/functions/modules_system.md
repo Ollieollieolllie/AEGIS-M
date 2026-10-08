@@ -271,6 +271,15 @@ fnc_projectileCreated). Either is re-added if something removed it
 
 The list is the vehicles this machine set up ("AEGISM_guardedSystems",
 aegism_system_fnc_moduleInit); gone ones are dropped.
+
+With Infinite Ammo on (a Site's setting or the vehicle's override), every
+weapon AEGIS-M uses on the vehicle is also brought back to what it
+carried, each pass (aegism_intercept_fnc_infiniteAmmo) -- fired or not,
+so switching it on in mid-mission refills the lot within a couple of
+seconds. It used to be given back only as each weapon fired, and the
+user found "infininte ammo enabled mid mission does not refill
+everything" (2026-10-07). A gun in the middle of a burst is left alone:
+its rounds are being counted, and its next burst starts topped up.
 ```
 
 ## aegism_system_fnc_moduleInit

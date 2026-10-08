@@ -51,6 +51,10 @@ private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 if (_ts getOrDefault ["fireHold", false]) exitWith { -1 };
 if (isNull _target || {!alive _target}) exitWith { -1 };
 
+// (Infinite Ammo: every fire command starts from what the turret carried.)
+if ((_system getVariable ["AEGISM_resolvedEngagementSettings", createHashMap]) getOrDefault ["infiniteAmmo", false]) then {
+    [_system, _turretPath, _magazineClass, _weaponClass] call aegism_intercept_fnc_infiniteAmmo;
+};
 private _ammoBefore = _system magazineTurretAmmo [_magazineClass, _turretPath];
 if (_ammoBefore <= 0) exitWith { -1 };
 

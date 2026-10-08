@@ -70,14 +70,26 @@ private _fnSounds = {
     _cached
 };
 
+// How far the game lets a sound played this way be heard at volume 1,
+// whatever distance it's given (see notes): the user's measure, m.
+#define AEGISM_ALARM_CARRY 600
+
 // Starts one cycle at a speaker: its sound id.
 private _fnPlay = {
     params ["_speaker", "_sound"];
     _sound params ["_file", "_volume", "_pitch", "_reach"];
+    // Heard to its reach: played from a point on the line to the speaker,
+    // as far off as the camera's share of that reach is of the carry -- at
+    // the edge of its reach it sounds as it does at the edge of the carry
+    // (see notes).
+    private _at = getPosASL _speaker;
+    if (_reach > 0) then {
+        _at = _camera vectorAdd ((_camera vectorFromTo _at) vectorMultiply ((((_camera distance _at) * AEGISM_ALARM_CARRY) / _reach) max 1));
+    };
     // The player's own vehicle as the source (its position is given): an
     // empty source muffled the sound for a player in first person in a
     // vehicle (playSound3D, BI wiki).
-    playSound3D [_file, vehicle player, false, getPosASL _speaker, _volume min 5, _pitch, _reach, 0, true]
+    playSound3D [_file, vehicle player, false, _at, _volume min 5, _pitch, 0, 0, true]
 };
 
 private _camera = AGLToASL (positionCameraToWorld [0, 0, 0]);

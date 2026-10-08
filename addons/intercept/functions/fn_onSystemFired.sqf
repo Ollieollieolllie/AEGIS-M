@@ -11,6 +11,7 @@ Parameters:
     _weapon - fired weapon class <STRING>
     _projectile - the fired projectile <OBJECT>
     _gunner - the Fired event's gunner <OBJECT>
+    _magazine - optional, the Fired event's magazine class <STRING>
 
 Returns:
     Nothing
@@ -28,9 +29,19 @@ Author:
 // estimator dozens of samples.
 #define AEGISM_SPOT_EVERY 3
 
-params ["_vehicle", "_weapon", "_projectile", ["_gunner", objNull]];
+params ["_vehicle", "_weapon", "_projectile", ["_gunner", objNull], ["_magazine", ""]];
 
 if (isNull _projectile) exitWith {};
+
+// Infinite Ammo (its vehicle's setting): what it has just fired is given
+// back (aegism_intercept_fnc_infiniteAmmo) -- after every missile; for a
+// gun, whose bursts each start topped up, when its magazine runs out.
+if (_magazine != "" && {!isNull _gunner} && {(_vehicle getVariable ["AEGISM_resolvedEngagementSettings", createHashMap]) getOrDefault ["infiniteAmmo", false]}) then {
+    private _firedTurret = _vehicle unitTurret _gunner;
+    if (_projectile isKindOf "MissileCore" || {_projectile isKindOf "RocketCore"} || {(_vehicle magazineTurretAmmo [_magazine, _firedTurret]) <= 0}) then {
+        [_vehicle, _firedTurret, _magazine, _weapon] call aegism_intercept_fnc_infiniteAmmo;
+    };
+};
 // None yet on a vehicle AEGIS-M hasn't worked a turret of: no fire command
 // of its, then.
 private _turrets = _vehicle getVariable ["AEGISM_turrets", createHashMap];

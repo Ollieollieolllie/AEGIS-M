@@ -21,4 +21,6 @@ Author:
 
 params ["_object"];
 
-((toLower typeOf _object) find "laptop") >= 0
+// (Or what a terminal laptop was put down into: aegism_network_fnc_
+// terminalTrack.)
+((toLower typeOf _object) find "laptop") >= 0 || {(_object getVariable ["AEGISM_terminalItem", ""]) != ""}

@@ -105,7 +105,7 @@ _logic setVariable ["AEGISM_ringsApplied", [_logic getVariable ["threatRings", f
 // anyone joining later. One synced or unsynced later is the poll's (below).
 if (isServer) then {
     {
-        if ([_x] call aegism_network_fnc_isTerminal) then { [_x, _logic] remoteExec ["aegism_network_fnc_terminalAction", 0, _x]; };
+        if ([_x] call aegism_network_fnc_isTerminal) then { [_x, _logic] call aegism_network_fnc_terminalLink; };
     } forEach (synchronizedObjects _logic);
 };
 
@@ -115,7 +115,7 @@ if (isServer) then {
         params ["_object", "_data"];
         _object = vehicle _object;
         if ([_object] call aegism_network_fnc_isTerminal) exitWith {
-            [_object, _data get "logic"] remoteExec ["aegism_network_fnc_terminalAction", 0, _object];
+            [_object, _data get "logic"] call aegism_network_fnc_terminalLink;
         };
         if (!(_object isKindOf "AllVehicles") || {_object isKindOf "CAManBase"}) exitWith {};
         private _siteLogic = _data get "logic";
@@ -142,7 +142,7 @@ if (isServer) then {
         params ["_object", "_data"];
         _object = vehicle _object;
         if ([_object] call aegism_network_fnc_isTerminal) exitWith {
-            [_object, objNull] remoteExec ["aegism_network_fnc_terminalAction", 0, _object];
+            [_object, _data get "logic", false] call aegism_network_fnc_terminalLink;
         };
         if (!(_object isKindOf "AllVehicles") || {_object isKindOf "CAManBase"}) exitWith {};
         private _siteLogic = _data get "logic";

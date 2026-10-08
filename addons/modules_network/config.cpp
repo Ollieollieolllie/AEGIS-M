@@ -91,6 +91,17 @@ class Cfg3DEN
                         defaultValue = "false";
                         condition = "(1 - objectBrain) * (1 - objectVehicle)";
                     };
+                    class AEGISM_terminalFixed
+                    {
+                        displayName = "Fixed in Place";
+                        tooltip = "For a laptop that is an inventory item (one players could pick up). Off (default): it can be picked up, carried and put down somewhere else, and keeps its connection -- whoever carries it has the terminal on their action menu, and it works again wherever it is dropped. On: it can't be taken; its inventory is locked, and one taken anyway is put straight back.";
+                        property = "AEGISM_terminalFixed";
+                        control = "Checkbox";
+                        expression = "_this setVariable ['AEGISM_terminalFixed', _value, true];";
+                        typeName = "BOOL";
+                        defaultValue = "false";
+                        condition = "(1 - objectBrain) * (1 - objectVehicle)";
+                    };
                 };
             };
         };
@@ -410,6 +421,16 @@ class CfgVehicles
                 property = "costValueJudgment";
                 control = "Checkbox";
                 expression = "_this setVariable ['costValueJudgment', _value];";
+                typeName = "BOOL";
+                defaultValue = "false";
+            };
+            class InfiniteAmmo
+            {
+                displayName = "Infinite Ammo";
+                tooltip = "The Site's launchers and guns never run out. A magazine that still has rounds is topped up after every missile and at the start of every burst; one that is used up is replaced, and the weapon loads the new one in its own time. The time between shots doesn't change. Off by default.";
+                property = "infiniteAmmo";
+                control = "Checkbox";
+                expression = "_this setVariable ['infiniteAmmo', _value];";
                 typeName = "BOOL";
                 defaultValue = "false";
             };

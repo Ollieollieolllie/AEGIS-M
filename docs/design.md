@@ -480,6 +480,15 @@ to its crew, which turned it away between the rockets of a salvo and left
 it 40-70 degrees off the first one; it's handed back once there's nothing
 left to engage.
 
+**Infinite Ammo** (Site setting and vehicle override, off by default) gives
+a vehicle's launchers and guns back what they fire: a magazine that still has
+rounds is topped up after every missile and at the start of every burst, and
+one that is used up is replaced, which the weapon loads in its own time. The
+time between shots is the weapon's own, as before, and the reserve plans
+such a launcher as never running out. While it's on, every weapon of the
+vehicle is brought back to what it carried every couple of seconds, so
+switching it on in mid-mission refills what was already fired.
+
 **Layered reserve.** Against incoming munitions, long-range launchers hold
 their missiles while the cheaper, shorter-range layer can cope. Every half
 second the Site plays each launcher tier forward (shortest reach first):

@@ -1236,6 +1236,44 @@ aegism_intercept_fnc_selectTarget, so networked and standalone Systems
 can never disagree about what's in range.
 ```
 
+## aegism_intercept_fnc_infiniteAmmo
+
+`addons/intercept/functions/fn_infiniteAmmo.sqf`
+
+```text
+The Infinite Ammo setting (a Site's, or a vehicle's override; off by
+default): gives a turret back what it has fired of one magazine class.
+
+  - A magazine for each one of that class the turret has used up since
+    set-up: aegism_intercept_fnc_firedHandler keeps what the vehicle
+    carried when its Fired handler was first added ("AEGISM_magazines
+    AtStart"), and the count of its magazines that still hold a round is
+    brought back up to that (addMagazineTurret).
+  - Its loaded magazine topped up to its config count (setMagazineTurret
+    Ammo), while it still has a round. One that has run out is left to
+    the weapon's own change of magazine, so a launcher of single-round
+    magazines still takes its reload between missiles (POOK's take
+    minutes) -- it just never runs out of magazines. A weapon left with
+    nothing loaded is told to load the new one (loadMagazine).
+
+Called: after every missile or rocket an AEGIS-M vehicle fires, and for
+a gun when a round empties its magazine (aegism_intercept_fnc_onSystem
+Fired); before every fire command, so a gun's burst starts topped up
+(aegism_intercept_fnc_fireWeapon); for a weapon found dry by its
+engagement loop; and for every weapon of the vehicle every couple of
+seconds while the setting is on (aegism_system_fnc_guardSystems), so that
+switching it on in mid-mission refills what was fired before. Only where
+the turret is local.
+
+The time between shots doesn't change: nothing here touches the
+weapon's reload. The coordinator counts such a launcher as having
+AEGISM_ROUNDS_UNLIMITED missiles (aegism_intercept_fnc_assign
+Engagements), so the layered reserve doesn't plan it as running out
+after one magazine.
+
+Not yet run in game (2026-10-07).
+```
+
 ## aegism_intercept_fnc_interceptHit
 
 `addons/intercept/functions/fn_interceptHit.sqf`

@@ -291,6 +291,7 @@ envelope, and all threat classes are engaged.
 | Reaction Once in Combat (%) | 50 | Once the Site is in combat (it fired within Warning Lasts After Last Shot, 10 s by default), crews are at their stations, weapons free, and take this percentage of their reaction on each new target -- about one skill tier quicker (Regular 2.5 s becomes 1.25 s; a CIWS's 1 s cap becomes 0.5 s). The first target of an engagement always gets the full reaction. 100 = no change. |
 | Crew Skill on Automated Systems | Off | Off: automated systems (crewed by UAV AI -- Phalanx, RAM, MIM-145, radars) ignore Crew Skill and Temperament -- no reaction delay, no skipped fire cycles, no interval scaling. On: they get the same crew model as manned systems. |
 | Save Ammo for Bigger Threats | Off | Hold fire if firing would leave fewer rounds than tracked higher-value contacts. |
+| Infinite Ammo | Off | The Site's launchers and guns never run out: a magazine that still has rounds is topped up after every missile and at the start of every burst, and one that is used up is replaced (the weapon loads the new one in its own time). The time between shots doesn't change. |
 | Shared Site Coordinator | Off | For linked Sites (see **Linked Sites**): this Site coordinates the group, and its settings apply to every vehicle of it while linked. Ticking it unticks it on every Site synced or linked to this one, in Eden and Zeus. |
 | Threat Rings on Map | Off | When the Site starts, draws the reach of each of its weapons and sensors on the map, in its side's channel, as markers players can delete: launchers red, CIWS orange, sensors blue. Similar rings on vehicles close together are drawn as one, labelled with every system on it; linked Sites are drawn as one set. Drawn once: they don't move with the vehicles. In Zeus, ticking it draws them and unticking deletes them. Logged as `THREAT-RINGS`. |
 
@@ -347,7 +348,7 @@ envelope, and all threat classes are engaged.
 | Going-Live Warning | Base alarm | Sounds from the moment the Site commits a weapon to a target (before its first shot) until the time below after its last shot. |
 | Incoming Alarm | Auto | Sounds while a munition threatening a Site vehicle is inbound (seen by a Site radar in the last 3 s -- the pool's own contact expiry), and replaces the warning meanwhile. Auto: BLUFOR the NATO helicopter warning, OPFOR the CSAT one, anyone else the Klaxon. |
 | All Clear Sound | Off | Played once from every speaker when the Site goes quiet (both alarms over), heard by players within the Alarm Range at that moment. Any of the tones below. |
-| Alarm Range | 400 m | How far the alarms are heard from each speaker: 200 m, 400 m (vanilla's own alarm), 800 m, 1.5 km, 3 km or 5 km. A custom sound keeps its own range. |
+| Alarm Range | 400 m | How far the alarms are heard from each speaker: 200 m, 400 m (vanilla's own alarm), 800 m, 1.5 km, 3 km or 5 km. They fade out toward that range, from the speaker's direction. A custom sound keeps its own range. |
 | Warning Lasts After Last Shot (s) | 10 | How long the warning keeps going after the last missile or gun round. |
 | Custom Warning / Incoming / All Clear Sound | blank | Any sound source class (CfgVehicles, like vanilla's `Sound_Alarm`) -- e.g. from a sound mod with a real national siren or a spoken "incoming" -- replacing that state's tone. A custom All Clear plays even with the tone set to Off. |
 
@@ -404,8 +405,8 @@ Eden (same names, tooltips and choices, current values filled in):
 - **Either:** right-click it for **AEGIS-M Settings**, or place the module
   **AEGIS-M > Edit Air Defence** on it (or within 50 m of a Site).
 - **A terminal laptop:** the same right-click or button sets its Terminal
-  Access (Status Only or Full Control), Manual Interception and Surface
-  Strike (see **Site terminal**).
+  Access (Status Only or Full Control), Manual Interception, Surface
+  Strike and Fixed in Place (see **Site terminal**).
 
 An edit reaches every machine, including players who join later, and the
 Site's vehicles pick it up at once (`SITE-SETTINGS` / `OVERRIDES` in the
@@ -423,7 +424,7 @@ action on it. What it reaches follows what it is synced to:
 | a Site | that Site and each of its vehicles |
 | the Shared Site Coordinator of linked Sites | every linked Site and each of their vehicles |
 
-What players can do at it is set by three attributes of the laptop itself
+What players can do at it is set by four attributes of the laptop itself
 (Eden: under *AEGIS-M: Terminal*; Zeus, with Zeus Enhanced: its *AEGIS-M
 Settings*):
 
@@ -432,6 +433,14 @@ Settings*):
 | Terminal Access | Status Only | **Status Only**: the live status board of the Site or vehicle picked, refreshed once a second. **Full Control**: a Settings tab as well, with the Site's settings or the vehicle's overrides as in Eden; Apply sends them to the server. |
 | Manual Interception | Off | An **Interception** tab: a map, the tracks, the weapons and the radars, for ordering them yourself. |
 | Surface Strike | Off | With Manual Interception: a **Surface** switch on that tab, for firing at a point on the ground. |
+| Fixed in Place | Off | For a laptop that is an inventory item. **Off**: it can be picked up and keeps its connection (below). **On**: it can't be taken. |
+
+**Carrying it off.** A laptop that is an inventory item (one a player can
+pick up) keeps its connection when it's taken: whoever carries it has
+**AEGIS-M: Site Terminal (carried)** on the action menu, and it is a
+terminal again wherever it's put down. In a crate, a vehicle or a body it
+stays connected until it's taken out. A prop laptop can't be picked up at
+all.
 
 **Interception.** The map shows the weapons' vehicles, the radars, every
 track, the Site's own missiles in flight and which weapon is on which

@@ -167,6 +167,13 @@ class Cfg3DEN
                         property = "AEGISM_ovr_crewOnAutomated";
                         expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_crewOnAutomated', _value == 'on']};";
                     };
+                    class AEGISM_ovr_infiniteAmmo: AEGISM_ovr_costValueJudgment
+                    {
+                        displayName = "Infinite Ammo";
+                        tooltip = "On: this vehicle's launchers and guns never run out -- a magazine that still has rounds is topped up, one that is used up is replaced. The time between shots doesn't change.";
+                        property = "AEGISM_ovr_infiniteAmmo";
+                        expression = "if (_value != '') then {_this setVariable ['AEGISM_ovr_infiniteAmmo', _value == 'on']};";
+                    };
 
                     // ----------------------------------- Interception targets
                     class AEGISM_ovr_section_targets

@@ -58,6 +58,7 @@ private _allowlist = [];
         // (A mission saved with the old Last Resort Only checkbox.)
         ["ciwsMode", _logic getVariable ["ciwsMode", ["overlap", "lastResort"] select (_logic getVariable ["ciwsLastResort", false])]],
         ["ciwsSelfDestruct", _logic getVariable ["ciwsSelfDestruct", false]],
+        ["infiniteAmmo", _logic getVariable ["infiniteAmmo", false]],
         ["emcon", _logic getVariable ["emcon", "auto"]],
         ["emconHold", _logic getVariable ["emconHold", 10]],
         ["emconBurstOn", _logic getVariable ["emconBurstOn", 5]],

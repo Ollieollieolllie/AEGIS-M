@@ -43,6 +43,20 @@ private _gone = [];
         } forEach ((_system getOrDefault ["launcherWeapons", []]) + (_system getOrDefault ["ciwsWeapons", []]));
         if (isServer && {((_system getOrDefault ["launcherWeapons", []]) + (_system getOrDefault ["ciwsWeapons", []])) isNotEqualTo []}) then {
             [_vehicle] call aegism_intercept_fnc_firedHandler;
+            // Infinite Ammo: every weapon it has is kept at what it carried,
+            // fired or not -- so switching it on mid-mission refills the lot
+            // (aegism_intercept_fnc_infiniteAmmo). Not a gun in the middle of
+            // a burst, whose rounds are being counted (aegism_intercept_fnc_
+            // ciwsBurst): its next burst starts topped up.
+            if ((_vehicle getVariable ["AEGISM_resolvedEngagementSettings", createHashMap]) getOrDefault ["infiniteAmmo", false]) then {
+                {
+                    _x params ["_turretPath", "_weaponClass", "_magazineClass"];
+                    private _burstEnds = ((([_vehicle, _turretPath] call aegism_intercept_fnc_turretState) getOrDefault ["burst", [-1]]) select 0);
+                    if (CBA_missionTime >= _burstEnds) then {
+                        [_vehicle, _turretPath, _magazineClass, _weaponClass] call aegism_intercept_fnc_infiniteAmmo;
+                    };
+                } forEach ((_system getOrDefault ["launcherWeapons", []]) + (_system getOrDefault ["ciwsWeapons", []]));
+            };
         };
     };
 } forEach _guarded;

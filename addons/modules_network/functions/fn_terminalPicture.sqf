@@ -30,7 +30,7 @@ Author:
 params [["_terminal", objNull], ["_anchor", objNull], ["_node", objNull], ["_selected", ""]];
 
 if (!isServer) exitWith {};
-if (isNull _terminal || {isNull _node} || {!(_terminal getVariable ["AEGISM_terminalEngage", false])}) exitWith {};
+if (isNull _terminal || {isNull _node} || {!(([_terminal] call aegism_network_fnc_terminalData) select 1)}) exitWith {};
 
 private _owner = remoteExecutedOwner;
 private _local = !isMultiplayer || {_owner in [0, clientOwner]};
@@ -117,7 +117,7 @@ private _ownSide = if (_groupMembers isEqualTo []) then { sideUnknown } else { s
 // a track is picked, it has a shot at it, why not]
 // (Against the track picked -- or the strike point, on a terminal that
 // has Surface Strike: aegism_intercept_fnc_surfaceShot.)
-private _strikePoint = if (_selected isEqualType [] && {count _selected == 3} && {_terminal getVariable ["AEGISM_terminalSurface", false]}) then { _selected } else { [] };
+private _strikePoint = if (_selected isEqualType [] && {count _selected == 3} && {([_terminal] call aegism_network_fnc_terminalData) select 2}) then { _selected } else { [] };
 private _target = if (_selected isEqualType "") then { _objects getOrDefault [_selected, objNull] } else { objNull };
 private _weapons = [];
 {

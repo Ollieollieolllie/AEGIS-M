@@ -43,13 +43,18 @@ if ([_entity] call aegism_network_fnc_isTerminal) exitWith {
             ["CHECKBOX", ["Manual Interception", "Gives this laptop the Interception page: a map of what its Site tracks and its weapons, from which a player can order a chosen weapon onto a chosen track (a friendly included), end those orders, and switch the Site's automation off or on."],
                 _entity getVariable ["AEGISM_terminalEngage", false], true],
             ["CHECKBOX", ["Surface Strike", "With Manual Interception: lets this laptop order the Site's launchers and guns to fire at a point on the ground, picked on the Interception page's map."],
-                _entity getVariable ["AEGISM_terminalSurface", false], true]
+                _entity getVariable ["AEGISM_terminalSurface", false], true],
+            ["CHECKBOX", ["Fixed in Place", "On: this laptop can't be picked up. Off: it can be carried off and used wherever it's put down, or from the action menu of whoever carries it."],
+                _entity getVariable ["AEGISM_terminalFixed", false], true]
         ], {
             params ["_values", "_terminal"];
             if (!isNull _terminal) then {
                 _terminal setVariable ["AEGISM_terminalAccess", _values select 0, true];
                 _terminal setVariable ["AEGISM_terminalEngage", _values select 1, true];
                 _terminal setVariable ["AEGISM_terminalSurface", _values select 2, true];
+                _terminal setVariable ["AEGISM_terminalFixed", _values select 3, true];
+                // (Its action again on every machine, which locks or unlocks it.)
+                [_terminal, objNull] remoteExecCall ["aegism_network_fnc_terminalLink", 2];
             };
         }, {}, _entity] call zen_dialog_fnc_create;
     };

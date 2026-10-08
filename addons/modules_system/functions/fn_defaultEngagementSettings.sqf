@@ -70,6 +70,8 @@ Returns:
         ciwsSelfDestruct - a CIWS round that hits nothing detonates just
             before its lifetime runs out (aegism_intercept_fnc_
             ciwsSelfDestruct) <BOOLEAN>
+        infiniteAmmo - its launchers and guns are given back what they fire
+            (aegism_intercept_fnc_infiniteAmmo) <BOOLEAN>
         emcon - Radar Emission: "auto" (Automatic) | "ai" (the AI
             decides) | "on" | "cued" (silent until cued) | "intermittent"
             (aegism_system_fnc_emconUpdate) <STRING>
@@ -116,6 +118,7 @@ createHashMapFromArray [
     ["targetClassAllowlist", ["missile", "rocket", "bomb", "artilleryShell", "fixedWing", "helicopter", "drone"]],
     ["ciwsMode", "overlap"],
     ["ciwsSelfDestruct", false],
+    ["infiniteAmmo", false],
     ["emcon", "auto"],
     ["emconHold", 10],
     ["emconBurstOn", 5],

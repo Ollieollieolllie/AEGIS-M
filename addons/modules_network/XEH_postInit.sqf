@@ -32,6 +32,26 @@ if (isServer) then {
     }, 5, []] call CBA_fnc_addPerFrameHandler;
 };
 
+// A terminal laptop keeps its connection when it's picked up: the server
+// follows the item once a second (aegism_network_fnc_terminalTrack), and a
+// player carrying one has it on the action menu.
+if (isServer) then {
+    [{
+        [] call aegism_network_fnc_terminalTrack;
+    }, 1, []] call CBA_fnc_addPerFrameHandler;
+};
+if (hasInterface) then {
+    [[
+        "<t color='#4FC3F7'>AEGIS-M: Site Terminal (carried)</t>",
+        {
+            (([player] call aegism_network_fnc_terminalData) select 3) params [["_anchor", objNull]];
+            [_anchor, player] call aegism_network_fnc_terminalOpen;
+        },
+        // (The action sits on whatever the player is in: asked of the player.)
+        [], 1.5, false, true, "", "alive player && {(player getVariable ['AEGISM_terminalCarried', []]) isNotEqualTo []}"
+    ]] call CBA_fnc_addPlayerAction;
+};
+
 // Editing Site settings and vehicle overrides from Zeus (needs Zeus Enhanced
 // for the dialogs) -- see aegism_network_fnc_zeusInit.
 [] call aegism_network_fnc_zeusInit;

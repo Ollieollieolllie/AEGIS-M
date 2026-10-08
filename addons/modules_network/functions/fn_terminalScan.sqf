@@ -35,7 +35,7 @@ private _seen = createHashMap;
                 private _id = netId _x;
                 if !(_id in _seen) then {
                     _seen set [_id, [_x, _vehicle]];
-                    if !(_id in _known) then { [_x, _vehicle] remoteExec ["aegism_network_fnc_terminalAction", 0, _x]; };
+                    if !(_id in _known) then { [_x, _vehicle] call aegism_network_fnc_terminalLink; };
                 };
             };
         } forEach (synchronizedObjects _vehicle);
@@ -43,9 +43,9 @@ private _seen = createHashMap;
 } forEach vehicles;
 
 {
-    _y params ["_terminal"];
+    _y params ["_terminal", "_vehicle"];
     if (!(_x in _seen) && {!isNull _terminal} && {((synchronizedObjects _terminal) findIf { _x isKindOf "AEGISM_Module_Site" }) == -1}) then {
-        [_terminal, objNull] remoteExec ["aegism_network_fnc_terminalAction", 0, _terminal];
+        [_terminal, _vehicle, false] call aegism_network_fnc_terminalLink;
     };
 } forEach _known;
 missionNamespace setVariable ["AEGISM_vehicleTerminals", _seen];

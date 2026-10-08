@@ -35,6 +35,23 @@ delay], one picked by probability for each cycle). A file named without
 its extension, as CfgSFX allows (playSound3D needs it), is found as .wss,
 .ogg or .wav. Resolved once per class ("AEGISM_cacheAlarmSound"); a class
 with nothing playable is logged once (ALARM-SOUND).
+
+Heard to its reach: the game fades a sound played this way out by about
+600 m at volume 1 whatever distance it's given (the user, 2026-10-07:
+"audio still not audible past 600m Max", with longer Alarm Ranges set;
+AEGISM_ALARM_CARRY). So each cycle is played not at the speaker but from
+a point on the line from the camera to it, as far off as
+
+    distance to the speaker x 600 / the sound's reach
+
+-- at the edge of its reach it sounds as it does at the edge of that
+carry, and nearer in proportion, from the speaker's direction. A 400 m
+alarm is played from further off than its speaker, a 5 km one from much
+nearer. playSound3D's own distance is left at 0 (no cut-off): whether the
+camera is within reach is checked here. The point is fixed for the cycle
+(1.4 to 6.6 s for AEGIS-M's tones) and worked out again for the next, so a
+fast-moving listener hears it drift a little within a cycle. Not yet
+heard in game.
 ```
 
 ## aegism_network_fnc_drawThreatRings
@@ -135,7 +152,9 @@ Whether an object synced to a Site is one of its status terminals
 (aegism_network_fnc_terminalAction) rather than an alarm speaker: a
 laptop -- any object whose class name has "laptop" in it (vanilla's
 Land_Laptop_F, Land_Laptop_unfolded_F, Land_Laptop_device_F,
-Land_Laptop_02_unfolded_F...).
+Land_Laptop_02_unfolded_F...). Or whatever a terminal laptop has been put
+down into since ("AEGISM_terminalItem", aegism_network_fnc_terminalTrack):
+the holder a dropped one lies in has no "laptop" in its class.
 ```
 
 ## aegism_network_fnc_linkSites
@@ -389,6 +408,119 @@ a vehicle, from the server's scan (aegism_network_fnc_terminalScan).
 The anchor is the Site or vehicle the action was made for. It only backs
 up what the terminal itself lists as synced when the server works out
 what it reaches (aegism_network_fnc_terminalScope).
+
+One with Fixed in Place ("AEGISM_terminalFixed") also has its inventory
+locked here (lockInventory, each machine's own), and unlocked if that's
+switched off again.
+```
+
+## aegism_network_fnc_terminalLink
+
+`addons/modules_network/functions/fn_terminalLink.sqf`
+
+```text
+Server: connects a laptop to a Site or vehicle, or takes that connection
+away, and sends every machine its action (aegism_network_fnc_terminal
+Action, one JIP entry per laptop). What used to be read from the sync
+alone is now also kept on the laptop, public ("AEGISM_terminalLink", the
+Sites and vehicles), so that it can go with the laptop when it's carried
+off -- an inventory item taken from the ground leaves no object behind to
+be synced to anything. Also records which inventory item the laptop is
+("AEGISM_terminalItem": the first thing in its cargo; "" for a prop,
+which can't be picked up), lists one that is an item among the laptops
+the server follows ("AEGISM_terminalBodies", aegism_network_fnc_terminal
+Track), and logs each laptop once as it becomes a terminal (TERMINAL).
+
+Called where the action used to be sent from: a Site's setup and its
+live-resync poll (aegism_network_fnc_moduleInit), the scan for laptops
+synced to a single vehicle (aegism_network_fnc_terminalScan), a laptop put
+down again (aegism_network_fnc_terminalTrack), and a Zeus edit of one
+(with no anchor: published again as it is).
+```
+
+## aegism_network_fnc_terminalData
+
+`addons/modules_network/functions/fn_terminalData.sqf`
+
+```text
+What a terminal may do and what it's connected to -- its access, manual
+interception, surface strike and the Sites and vehicles of its connection
+-- for either kind of terminal: a laptop on the ground (its own
+variables), or a unit carrying one (the first record in its "AEGISM_
+terminalCarried" whose item it still has on it; none for a dead unit).
+Everything on the server that used to read a laptop's variables goes
+through this (aegism_network_fnc_terminalScope, terminalApply,
+terminalOrder, terminalPicture).
+```
+
+## aegism_network_fnc_terminalTrack
+
+`addons/modules_network/functions/fn_terminalTrack.sqf`
+
+```text
+Server, once a second (this addon's XEH_postInit): a terminal laptop's
+connection follows the item. The user (2026-10-07): "get the laptop to
+keep its connection, such that it could be picked up and stolen, taken
+else where, dropped then used, perhaps having it in your inventory
+allows you to scroll wheel to use it".
+
+A record -- [item class, connected to, access, manual interception,
+surface strike, fixed in place] -- belongs to whatever holds the laptop:
+    - a laptop on the ground: its own variables, as ever. The server
+      keeps a copy with where it lies ("AEGISM_terminalBodies", from
+      aegism_network_fnc_terminalLink, read again each pass), because
+      the game removes an emptied holder and nothing could be read then;
+    - a unit carrying it: "AEGISM_terminalCarried" on the unit (public).
+      A player carrying one has "AEGIS-M: Site Terminal (carried)" on
+      the action menu (CBA_fnc_addPlayerAction, so in vehicles and after
+      a respawn too), and to the server the unit is the terminal:
+      nobody else can use it, and it's always "at" it;
+    - a crate, a vehicle, a body: the same variable on that. It keeps
+      its connection there and is a terminal again once taken out.
+
+Each pass counts, it doesn't listen:
+    1. a laptop on the ground whose holder is gone or no longer has the
+       item in it has left where it lay;
+    2. a unit or crate with fewer of the item than records has let the
+       last one it took up go;
+    3. each connection so freed goes to the nearest thing within 10 m
+       (AEGISM_TERMINAL_REACH) of where it was that has one more of the
+       item than it's known to hold: a unit first, alive or dead; else a
+       holder on the ground, which becomes a terminal again there with
+       its action on every machine; else a crate or vehicle. None found
+       for 10 s (AEGISM_TERMINAL_LOOSE_FOR, mine), it's dropped and
+       logged.
+A laptop moved between a unit's own uniform, vest and pack changes none
+of these counts. A laptop that isn't a terminal, carried beside one that
+is, can't be told apart from it.
+
+Fixed in Place: the laptop's inventory is locked on every machine
+(aegism_network_fnc_terminalAction). Should one be taken anyway, it's
+taken off the unit and put back as it was -- same class, place and
+facing -- and the player is told.
+
+Why counting: the first version listened for each unit's Take and Put
+(CBA class events) and read the laptop's variables from the container the
+event named. In its first test (19:36 RPT 2026-10-07, 68 s) nothing came
+of a pick-up and nothing was logged -- the server was never told -- and
+the log couldn't say which step had failed. This needs no event, no
+reading of a holder that is about to go, and says what it does: TERMINAL
+for a laptop made a terminal, taken up, put down, kept in something, put
+back, or lost.
+
+First run (19:53 RPT 2026-10-07, 22 s): the laptop was logged as a
+terminal at the start, and its leaving the ground was seen about 7 s in;
+then nobody was found with it and its connection was dropped after the
+10 s. The game's own laptop item (Laptop_Unfolded, from the Old Man
+content) is a magazine in config (CfgMagazines, OM_Magazine), though its
+holder lists it under TransportItems: on a unit it's among "magazines",
+and only "items" was counted. A unit's count is now both, and a fixed
+one is taken off its taker with removeMagazine.
+
+Not yet seen working in game: a pick-up found on its taker, the carried
+action, a drop becoming a terminal again, whether lockInventory stops
+the Take of a single item on the ground, and whether the action shows on
+the holder a dropped laptop lies in.
 ```
 
 ## aegism_network_fnc_terminalOpen

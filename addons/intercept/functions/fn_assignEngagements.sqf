@@ -40,6 +40,9 @@ Author:
 #define AEGISM_RETRY_THREAT_ASSESSMENT_THRESHOLD 3
 // _fnLauncherEta: the launcher has no missile left for this contact.
 #define AEGISM_NO_ROUND 1e10
+// A launcher with Infinite Ammo: the missiles the plan counts it as having
+// (never reached; aegism_intercept_fnc_infiniteAmmo keeps it supplied).
+#define AEGISM_ROUNDS_UNLIMITED 1e6
 // A launcher's claim its turret is already working keeps its place on the
 // queue ahead of contacts impacting up to this many seconds sooner.
 #define AEGISM_WORKING_LEAD 5
@@ -700,7 +703,8 @@ private _fnLauncherTiming = {
     // made it look slower than it was.
     private _reaction = _mods get "reactionTime";
     if (_inCombat) then { _reaction = _reaction * (_mods getOrDefault ["combatReactionMult", 1]); };
-    _cached = [_reaction, (_readyAt - CBA_missionTime) max 0, _spacing, _candSystem magazineTurretAmmo [_magClass, _turretPath], (_settings getOrDefault ["salvoSize", 1]) max 1];
+    private _rounds = [_candSystem magazineTurretAmmo [_magClass, _turretPath], AEGISM_ROUNDS_UNLIMITED] select (_settings getOrDefault ["infiniteAmmo", false]);
+    _cached = [_reaction, (_readyAt - CBA_missionTime) max 0, _spacing, _rounds, (_settings getOrDefault ["salvoSize", 1]) max 1];
     _timingCache set [_cacheKey, _cached];
     _cached
 };
@@ -825,7 +829,7 @@ private _fnPickWeapon = {
             _x params ["_bKey", "_bRole", "_bHolding", "_bRounds"];
             if (_bRole == "launcher" && {_bHolding} && {_bKey != _contactKey}) then { _committed = _committed + _bRounds; };
         } forEach (_busy getOrDefault [[netId _candSystem, _turretPath], []]);
-        private _rounds = (_candSystem magazineTurretAmmo [_magClass, _turretPath]) - _committed;
+        private _rounds = ([_candSystem magazineTurretAmmo [_magClass, _turretPath], AEGISM_ROUNDS_UNLIMITED] select ((_candSystem call _fnSettings) getOrDefault ["infiniteAmmo", false])) - _committed;
         [[1, 0] select _inTime, [_readyIn + _flightTime, _reach] select _inTime, -_rounds, _readyIn, abs (_size - _contactSize), (getPosASL _candSystem) distance _targetPos, _weaponIndex, _inTime]
     };
     _scored = _scored select { (_x select 3) < AEGISM_NO_ROUND };

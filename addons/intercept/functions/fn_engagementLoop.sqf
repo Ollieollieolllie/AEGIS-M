@@ -173,6 +173,10 @@ private _fnExecute = {
 
     // Each exit below records where this engagement stands ("status", for the
     // debug overlays, aegism_fnc_statusStyle).
+    // (Infinite Ammo: one that ran dry before it was switched on.)
+    if ((_system magazineTurretAmmo [_magClass, _turretPath]) <= 0 && {_engagementSettings getOrDefault ["infiniteAmmo", false]}) then {
+        [_system, _turretPath, _magClass, _weaponClass] call aegism_intercept_fnc_infiniteAmmo;
+    };
     if ((_system magazineTurretAmmo [_magClass, _turretPath]) <= 0) exitWith { _state set ["status", "noAmmo"]; };
 
     // A launcher whose salvo is away has nothing left to do for this target

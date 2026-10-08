@@ -299,7 +299,8 @@ _note ctrlCommit 0;
     _args params ["_anchor", "_terminal", "_display", "_count"];
     _args set [3, _count + 1];
     if (isNull _display) exitWith { [_pfhHandle] call CBA_fnc_removePerFrameHandler; };
-    if (isNull _terminal) exitWith {
+    // Its laptop gone -- or, one it carries, no longer on it.
+    if (isNull _terminal || {_terminal isKindOf "CAManBase" && {!alive _terminal || {(_terminal getVariable ["AEGISM_terminalCarried", []]) isEqualTo []}}}) exitWith {
         _display closeDisplay 2;
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
     };

@@ -31,6 +31,13 @@ if (_previous >= 0) then {
     _terminal removeAction _previous;
     _terminal setVariable ["AEGISM_terminalAction", nil];
 };
+// One fixed in place can't be opened or taken from (lockInventory is each
+// machine's own); it's unlocked again if that's switched off.
+private _lock = !isNull _anchor && {_terminal getVariable ["AEGISM_terminalFixed", false]};
+if (_lock || {_terminal getVariable ["AEGISM_terminalLocked", false]}) then {
+    _terminal lockInventory _lock;
+    _terminal setVariable ["AEGISM_terminalLocked", _lock];
+};
 if (isNull _anchor) exitWith {};
 
 _terminal setVariable ["AEGISM_terminalAction", _terminal addAction [

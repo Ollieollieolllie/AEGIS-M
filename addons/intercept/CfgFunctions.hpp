@@ -50,6 +50,7 @@ class CfgFunctions
             class assignEngagements {};
             class engagementLoop {};
             class fireWeapon {};
+            class infiniteAmmo {};
             class ciwsGate {};
             class ciwsTrack {};
             class ciwsBurst {};

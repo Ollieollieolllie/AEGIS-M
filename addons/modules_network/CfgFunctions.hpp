@@ -14,6 +14,9 @@ class CfgFunctions
             class drawThreatRings {};
             class isTerminal {};
             class terminalAction {};
+            class terminalData {};
+            class terminalLink {};
+            class terminalTrack {};
             class terminalScan {};
             class terminalOpen {};
             class terminalScope {};
