@@ -9,7 +9,7 @@ packed into the mod.
 |---|---|
 | Title | `AEGIS-M - Integrated Air Defence Framework` |
 | Description | The whole of [description.bbcode](description.bbcode), pasted into the item's description on Steam (it is Steam's own formatting). |
-| Preview image | [preview.png](preview.png) (1024 x 1024, 72 KB; Steam wants it square and under 1 MB). |
+| Preview image | [preview.png](preview.png) (1024 x 1024, 80 KB; Steam wants it square and under 1 MB). The thumbnail on the Steam page and the picture in the Arma 3 launcher; set with `tools\workshop-preview.cmd` (below). |
 | Mod content | `.hemttout\release` after `hemtt release` (or `tools\release.cmd`): `addons`, `keys`, `mod.cpp`, the logos, `README.md`, `LICENSE`. |
 | Tags | Data type **Mod**; mod type **Mechanics** and **Modules** (pick what Publisher offers). |
 | Required items | **CBA_A3** (450814997) and **ACE3** (463939057). Zeus Enhanced (1779063631) is optional, so it is only named in the description. |
