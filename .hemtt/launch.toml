@@ -4,11 +4,11 @@
 [minimal]
 workshop = [
     "450814997", # CBA_A3
-    "463939057", # ACE3
 ]
 
 [normal]
 extends = "minimal"
 workshop = [
+    "463939057", # ACE3 (heavily recommended)
     "1779063631", # Zeus Enhanced
 ]

@@ -27,6 +27,7 @@ class CfgFunctions
             class turretCanPoint {};
             class turretSlewTime {};
             class missileAgility {};
+            class lockAfterLaunch {};
             class launchSolution {};
             class recordMissileTurn {};
             class recordMissileSpeed {};

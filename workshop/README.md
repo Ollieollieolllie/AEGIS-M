@@ -9,10 +9,10 @@ packed into the mod.
 |---|---|
 | Title | `AEGIS-M - Integrated Air Defence Framework` |
 | Description | The whole of [description.bbcode](description.bbcode), pasted into the item's description on Steam (it is Steam's own formatting). |
-| Preview image | [preview.png](preview.png) (1024 x 1024, 80 KB; Steam wants it square and under 1 MB). The thumbnail on the Steam page and the picture in the Arma 3 launcher; set with `tools\workshop-preview.cmd` (below). |
+| Preview image | [preview.png](preview.png) (1024 x 1024, 80 KB; Steam wants it square and under 1 MB). The thumbnail on the Steam page and the picture in the Arma 3 launcher: both are the item's preview image on Steam, changed from Arma 3 Tools' Publisher window (the command-line publisher can't). |
 | Mod content | `.hemttout\release` after `hemtt release` (or `tools\release.cmd`): `addons`, `keys`, `mod.cpp`, the logos, `README.md`, `LICENSE`. |
 | Tags | Data type **Mod**; mod type **Mechanics** and **Modules** (pick what Publisher offers). |
-| Required items | **CBA_A3** (450814997) and **ACE3** (463939057). Zeus Enhanced (1779063631) is optional, so it is only named in the description. |
+| Required items | **CBA_A3** (450814997). ACE3 (463939057) is heavily recommended and Zeus Enhanced (1779063631) optional, so they are only named in the description. |
 | Visibility | **Private** or **Unlisted** for the first upload, to check the page; then Public. |
 | First change note | `Initial release (v0.1.0).` |
 
@@ -35,7 +35,7 @@ first upload is done in the app.
 4. Name, a one-line description (the full one is pasted on Steam after),
    the preview image, the tags, visibility, the change note. Publish.
 5. On the item's Steam page: **Edit title & description** and paste
-   `description.bbcode`; **Add/Remove Required Items** and add CBA_A3 and ACE3.
+   `description.bbcode`; **Add/Remove Required Items** and add CBA_A3.
 6. Note the item's ID: the number after `?id=` in its address. (Done:
    3815260246, in [item-id.txt](item-id.txt).)
 

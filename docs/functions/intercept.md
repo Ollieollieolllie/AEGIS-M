@@ -1480,6 +1480,40 @@ Logs the interval (and where it came from) whenever it changes for a
 turret (FIRE-RATE).
 ```
 
+## aegism_intercept_fnc_lockAfterLaunch
+
+`addons/intercept/functions/fn_lockAfterLaunch.sqf`
+
+```text
+Whether a launcher's missile is fired to lock on after launch AND isn't
+flown by ACE's guidance. Used for one thing: such a launcher takes no
+surface strike (aegism_intercept_fnc_surfaceShot).
+
+Read from config: the weapon's first fire mode (CfgWeapons modes[])
+names a flight profile beginning "Loal" that its ammo has (CfgAmmo
+flightProfiles[]). In the game's own config that is the MIM-145, the
+S-750 and the RIM-162 (modes[] = {"LoalDistance"} and nothing else); the
+RIM-116 has no flight profile. A mod's launcher set up the same way is
+treated the same. With ACE flying the missile (aegism_intercept_fnc_
+missileAgility says "ace") the answer is no: ACE has the strike's object
+as the missile's target from launch.
+
+Why: the one such strike tried without ACE, a MIM-145's (15:09 RPT
+2026-10-07), flew straight on past its point. It had only been given a
+position then; it hasn't been tried with the object forced on it as its
+target, as the RIM-116's has.
+
+History: built 2026-10-07, taken out the same day when ACE was made a
+required addon, put back 2026-10-09 after ACE went back to optional. The
+first version also gave the launcher a minimum intercept range
+(lockSeekDistanceFromParent + missileLockMinDistance, 3 km for the
+MIM-145), on the reading that it flies its first 2 km blind. The 18:14
+RPT showed it LOCKED 0.5-0.7 s after launch on a forced target, so that
+part stays out.
+
+Logged once per weapon: LOCK-AFTER-LAUNCH.
+```
+
 ## aegism_intercept_fnc_lockTurret
 
 `addons/intercept/functions/fn_lockTurret.sqf`
@@ -1552,11 +1586,13 @@ target after launch.
             intercept_fnc_weaponKinematics)
 Logged once per missile (AGILITY).
 
-ACE's guidance is a required addon of aegism_intercept since 2026-10-07
-(ace_missileguidance, with ace_missile_sam and ace_missile_manpad, which
-put the game's own SAMs under it; the reasons are in docs/design.md), so
-"engine" is now another mod's missile, and "none" a mission that has
-switched ACE's guidance of AI shots off (ACE-GUIDANCE in the RPT, once).
+ACE's guidance is heavily recommended, not required (ace_missileguidance,
+with ace_missile_sam and ace_missile_manpad, which put the game's own
+SAMs under it; what the game's own guidance does instead is in
+docs/design.md). Without it every guided missile here is "engine"; with
+it, "engine" is another mod's missile, and "none" a mission that has
+switched ACE's guidance of AI shots off. Either is said once in the RPT
+(ACE-GUIDANCE, the main addon's XEH_postInit).
 ```
 
 ## aegism_intercept_fnc_missileFlightKey
@@ -2340,6 +2376,13 @@ the Stinger and the RIM-116. Within its envelope's reach and not under
 max(its minimum range, 300 m); the turret is pointed at the first loft
 point, or as near as it reaches (the missile turns).
 
+Not a missile fired to lock on after launch that ACE's guidance doesn't
+fly (aegism_intercept_fnc_lockAfterLaunch: the MIM-145, S-750 and
+RIM-162 without ACE): "its missile locks on after launch: only a
+guidance mod (ACE) can send it to a point". Every other guided missile
+still takes a strike without ACE, on the game's own guidance
+(strikeMissile below).
+
 Gun: within the weapon's reach; aimed by aegism_intercept_fnc_compute
 LeadPoint exactly as at an air target -- so its drag and drop are the
 solver's -- on a server-local object moved to the point
@@ -2387,6 +2430,8 @@ object, and the missile's state) and in the ending line (the lock it
 last reported). Seen once (18:14 RPT 2026-10-07, no ACE): two RIM-116s
 took the object and came down 22 m and 24 m from their point with the
 lock reported LOST; under ACE the same missile lands within 1-4 m, and
-its blast radius is 10 m. Left there: ACE's guidance has been a required
-addon since, so this is only what another mod's missile gets.
+its blast radius is 10 m. Left there: it's what a missile that locks
+before launch gets without ACE, which is heavily recommended for this.
+One that locks on after launch isn't offered at all without ACE
+(aegism_intercept_fnc_lockAfterLaunch).
 ```

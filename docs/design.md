@@ -602,9 +602,13 @@ in the RPT, once per missile):
   steered at all when ACE isn't guiding AI shots, so it's only launched
   straight.
 
-**ACE's missile guidance is required** (`ace_missileguidance`, with
-`ace_missile_sam` and `ace_missile_manpad`, which put the game's own SAMs
-under it). AEGIS-M was built and proven with it: a salvo of 46 rockets on a
+**ACE's missile guidance is heavily recommended, not required**
+(`ace_missileguidance`, with `ace_missile_sam` and `ace_missile_manpad`,
+which put the game's own SAMs under it). It was made a required addon on
+2026-10-07 and taken back the next day (the user: "Lets not make ace
+mandatory, just heavily recommended"): AEGIS-M loads and runs without it,
+on the game's own guidance, and says so once in the RPT. AEGIS-M was built
+and proven with it: a salvo of 46 rockets on a
 Site of two RIM-116 launchers, a Cheetah and four MIM-145s was stopped 46 of
 46 with one MIM-145 fired, and surface strikes land within a few metres
 (RIM-116 1-4 m, MIM-145 0-1 m). Two runs of the same Site without it, on
@@ -616,15 +620,22 @@ Site of two RIM-116 launchers, a Cheetah and four MIM-145s was stopped 46 of
   every one it met nearer (3 at about 3.6-3.9 km, 1 at about 2.6 km, by the
   missiles' logged speeds). The logs don't show why: the game reports it
   locked half a second after launch. So there is no second shot behind a
-  4 km RIM-116. The first run let one rocket of 43 through; in the second
-  the reserve fired all 16 MIM-145s to stop 47 of 47, three of them in
-  their last 3.3 s.
-- A RIM-116 the game guides onto a strike point comes down 22-24 m off.
+  4 km RIM-116. The first run let one rocket of 43 through. In the second,
+  with a 3 km minimum range for the MIM-145 that has since been taken out
+  again (the reason given for it turned out wrong), the reserve fired all
+  16 MIM-145s to stop 47 of 47, three of them in their last 3.3 s. Nothing
+  in AEGIS-M now makes up for the MIM-145's misses close in: without ACE a
+  salvo like that can let a rocket through.
+- A RIM-116 the game guides onto a strike point comes down 22-24 m off (its
+  blast radius is 10 m). A MIM-145 flew straight on past its point, so a
+  launcher whose missile locks on after launch (by its config: the MIM-145,
+  S-750 and RIM-162) takes no surface strike unless ACE flies the missile.
 
-ACE guides AI-fired missiles by default; a mission that switches that off
-(`ace_missileguidance_enabled` under 2) gets one line in the RPT
-(`ACE-GUIDANCE`). Another mod's missile that ACE doesn't guide (POOK's) is
-still flown by the game.
+The RPT says once when ACE isn't what guides the missiles (`ACE-GUIDANCE`):
+its addons not loaded, or a mission that has switched its guidance of
+AI-fired shots off (`ace_missileguidance_enabled` under 2; its default is
+on). Another mod's missile that ACE doesn't guide (POOK's) is flown by the
+game either way.
 
 With a turn rate, the flight is modelled as a turn onto the intercept at
 that rate, then a straight run: honest flight times, and a minimum range
@@ -985,6 +996,10 @@ Interception page. Switched on, a click on the map where no track is puts a
   point from above. Not nearer than 300 m, nor beyond the launcher's reach.
   Small missiles aren't offered: one whose warhead's blast radius is under
   8 m (a Stinger or Titan AA has 6; the RIM-116 has 10, the Patriot 30).
+  Nor is a missile fired to lock on after launch unless ACE's guidance
+  flies it (the MIM-145, S-750 and RIM-162 without ACE, or with ACE's
+  guidance of AI-fired shots switched off): its launcher is refused, in
+  the weapons list and on an order (`its missile locks on after launch`).
 - **A gun** fires one burst (its shortest Burst Length) along its own
   ballistic path. It needs a turret that can point there and a line to the
   point clear of the ground; trees and buildings don't count.
@@ -1000,9 +1015,9 @@ how each one ended and how near its missile came. A missile is given an
 object to chase there: one guided by a mod (ACE) from launch -- for a radar
 seeker, which only keeps munitions and aircraft, a chemlight held above the
 point and kept moving along the missile's line of sight (an infrared one
-where there is one) -- and one the game guides (another mod's) as its forced
-target: the game only takes a position for a missile with `manualControl`,
-which no SAM has.
+where there is one) -- and one the game guides (no ACE, or another mod's)
+as its forced target: the game only takes a position for a missile with
+`manualControl`, which no SAM has.
 
 The server builds the board and the picture, applies the changes and takes
 the orders, so all of it works on a dedicated server. It takes a change only

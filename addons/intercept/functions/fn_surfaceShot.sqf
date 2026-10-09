@@ -47,6 +47,12 @@ if (_role == "launcher") exitWith {
     if (_blast < AEGISM_STRIKE_MIN_BLAST) exitWith {
         [false, format ["its warhead is too small for the ground (%1m blast, under %2m)", _blast, AEGISM_STRIKE_MIN_BLAST], [], 0, _distance]
     };
+    // Nor one fired to lock on after launch that ACE's guidance doesn't
+    // fly (the MIM-145 without ACE): the game doesn't send it to a point
+    // (aegism_intercept_fnc_lockAfterLaunch).
+    if (([_weaponClass, _magazineClass] call aegism_intercept_fnc_lockAfterLaunch) select 0) exitWith {
+        [false, "its missile locks on after launch: only a guidance mod (ACE) can send it to a point", [], 0, _distance]
+    };
     ([_settings, _weaponInfo, "launcher"] call aegism_intercept_fnc_envelopeBounds) params ["_minRange", "_maxRange"];
     if (_maxRange > 0 && {_distance > _maxRange}) exitWith { [false, format ["beyond reach (%1m of %2m)", round _distance, round _maxRange], [], 0, _distance] };
     private _closest = _minRange max AEGISM_STRIKE_MIN_RANGE;

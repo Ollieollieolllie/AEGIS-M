@@ -30,11 +30,18 @@ if (hasInterface) then {
 // interval's average fps, worst frame and slow frames, rather than
 // diag_fpsMin's last 16 frames at the moment the line is written.
 if (isServer) then {
-    // ACE flies the missiles AEGIS-M fires (a required addon): only while it
-    // guides AI-fired shots, its default.
-    if ((missionNamespace getVariable ["ace_missileguidance_enabled", 0]) < 2) then {
-        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ACE-GUIDANCE: ace_missileguidance_enabled is %1 -- ACE isn't guiding AI-fired missiles, so the missiles of AEGIS-M's launchers aren't guided as it plans them. Leave it at 2 (player and AI), ACE's default.",
-            missionNamespace getVariable ["ace_missileguidance_enabled", "not set"]];
+    // ACE's missile guidance: heavily recommended, not required. Said once
+    // when it isn't what flies the missiles AEGIS-M fires -- not loaded, or
+    // not guiding AI-fired shots (its default is to).
+    private _aceMissing = ["ace_missileguidance", "ace_missile_sam", "ace_missile_manpad"] select { !isClass (configFile >> "CfgPatches" >> _x) };
+    if (_aceMissing isNotEqualTo []) then {
+        diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ACE-GUIDANCE: ACE's %1 isn't loaded -- the game guides the missiles of its own launchers itself. AEGIS-M is built and tested with ACE's missile guidance, and it's heavily recommended: in its tests without it the RIM-116 reached 4 km instead of 5, the MIM-145 missed every rocket it met inside about 4 km, and a RIM-116 sent at a point on the ground came down some 20 m off it. A launcher whose missile locks on after launch (the MIM-145, S-750 and RIM-162) takes no surface strike without it.",
+            _aceMissing joinString ", "];
+    } else {
+        if ((missionNamespace getVariable ["ace_missileguidance_enabled", 0]) < 2) then {
+            diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " ACE-GUIDANCE: ace_missileguidance_enabled is %1 -- ACE is loaded but isn't guiding AI-fired missiles, so the game guides the missiles of AEGIS-M's launchers. Leave it at 2 (player and AI), ACE's default.",
+                missionNamespace getVariable ["ace_missileguidance_enabled", "not set"]];
+        };
     };
 
     [{

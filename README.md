@@ -29,9 +29,13 @@ Early development.
 ## Dependencies
 
 - [CBA_A3](https://github.com/CBATeam/CBA_A3) (hard dependency)
-- [ACE3](https://github.com/acemod/ACE3) (hard dependency: its missile
-  guidance flies the missiles AEGIS-M fires -- `ace_missileguidance`,
-  `ace_missile_sam` and `ace_missile_manpad`)
+- [ACE3](https://github.com/acemod/ACE3) (heavily recommended, not
+  required: AEGIS-M is built and tested with ACE's missile guidance flying
+  its missiles. Without it the game guides them, and does it worse: the
+  RIM-116 reaches 4 km, not 5, the MIM-145 missed every rocket it met
+  inside about 4 km, and a RIM-116's surface strike came down some 20 m
+  off its point; the MIM-145 takes no surface strike at all without it.
+  `ACE-GUIDANCE` in the RPT says when ACE isn't guiding)
 - [Zeus Enhanced](https://github.com/zen-mod/ZEN) (optional: needed to edit
   Site settings, vehicle overrides and a terminal laptop's options from Zeus)
 - Arma 3 2.18 or later (the `ProjectileCreated` mission event; the POOK
@@ -480,6 +484,10 @@ track is puts a strike point on the ground; pick a weapon and Engage.
   between and comes down on the point from above. Not nearer than 300 m,
   nor beyond the launcher's reach, nor a small missile (a warhead under
   8 m blast radius: a Stinger has 6, the RIM-116 10, the Patriot 30).
+  A missile that locks on after launch (the MIM-145, S-750, RIM-162)
+  needs ACE's guidance for it: without, its launcher is refused and the
+  weapons list says why. The others strike on the game's own guidance
+  without ACE, less accurately (a RIM-116 came down some 20 m off).
 - **A gun** fires one burst on its own ballistic path. It needs a turret
   that can point there and a line to the point clear of the ground; trees
   and buildings don't count.
@@ -548,10 +556,12 @@ A launcher that readies its next missile more slowly than its config says
 is timed from the game's own reload state and planned on that
 (`RELOAD-TIME`); one loading a new magazine isn't fired until it's ready.
 
-ACE's missile guidance flies the missiles of the game's own launchers, and
-has to be left guiding AI-fired shots (its default; `ACE-GUIDANCE` in the RPT
-if it isn't). AEGIS-M hands it each missile's target. A missile of another
-mod that ACE doesn't guide is flown by the game's own guidance.
+With ACE loaded (heavily recommended, see **Dependencies**), its missile
+guidance flies the missiles of the game's own launchers, and has to be left
+guiding AI-fired shots (its default). AEGIS-M hands it each missile's
+target. Without ACE, and for a missile of another mod that ACE doesn't
+guide, the game's own guidance flies it. `ACE-GUIDANCE` in the RPT says
+once when ACE isn't guiding.
 
 **POOK's SAM pack** gets its own compatibility addon
 (`aegism_compat_pook`, loaded only with it). It gives POOK's 20, 23 and
