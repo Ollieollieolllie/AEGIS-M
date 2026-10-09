@@ -24,7 +24,8 @@ reasoning and the test results behind it, is in
 
 ## Status
 
-Early development.
+Version 1.0, the first full release. What changed in each version is in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Dependencies
 
