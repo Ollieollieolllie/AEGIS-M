@@ -68,14 +68,17 @@ private _listed = [];
     private _site = _x;
     private _name = [_site] call aegism_fnc_siteName;
     if (count _sites > 1 && {_site getVariable ["sharedCoordinator", false]}) then { _name = _name + "  (coordinator)"; };
-    _nodes pushBack [_site, _name, "site"];
+    // (Linked Sites are listed as one group: aegism_network_fnc_terminalFill.)
+    private _linkedSites = (_site getVariable ["AEGISM_linkSites", [_site]]) select { !isNull _x };
+    private _group = if (count _linkedSites > 1) then { "linked:" + netId (_site getVariable ["AEGISM_linkLead", _site]) } else { "site:" + netId _site };
+    _nodes pushBack [_site, _name, "site", _group];
     {
-        _nodes pushBack [_x, _x call _fnVehicleLabel, "vehicle"];
+        _nodes pushBack [_x, _x call _fnVehicleLabel, "vehicle", _group];
         _listed pushBack _x;
     } forEach ((_site getVariable ["AEGISM_networkMembers", []]) select { !isNull _x && {alive _x} });
 } forEach _sites;
 {
-    if !(_x in _listed) then { _nodes pushBack [_x, _x call _fnVehicleLabel, "vehicle"]; };
+    if !(_x in _listed) then { _nodes pushBack [_x, _x call _fnVehicleLabel, "vehicle", "vehicles"]; };
 } forEach _vehicles;
 
 if (_reply) then {

@@ -451,6 +451,45 @@ terminalCarried" whose item it still has on it; none for a dead unit).
 Everything on the server that used to read a laptop's variables goes
 through this (aegism_network_fnc_terminalScope, terminalApply,
 terminalOrder, terminalPicture).
+
+Since 2026-10-10 a unit can also carry an AEGIS-M Tablet (CfgWeapons
+AEGISM_Tablet, in any arsenal): its connection is every Site whose
+Remote Connections setting ("remoteAccess": off, status, engage,
+control, strike) isn't off and that has a member vehicle of the unit's side --
+so a looted tablet doesn't open the enemy's Sites (the user's choice).
+The Sites are listed at most once a second ("AEGISM_remoteSites").
+Rights then differ by Site, so the callers pass the Site or vehicle
+they're about to act on (_node): the carried laptop's rights where the
+laptop reaches it (its link, and the Sites linked to those), else what
+that Site gives a tablet. Without a node (the screen's own tabs,
+aegism_network_fnc_terminalScope) it's the most any of them gives; the
+server refuses per Site. No range limit: the user asked for none.
+
+## aegism_network_fnc_terminalTake
+
+`addons/modules_network/functions/fn_terminalTake.sqf`
+
+```text
+The dedicated laptop (user, 2026-10-10: a placeable laptop that doesn't
+stack or get lost in inventories, Land_Laptop_03_sand_F, its name
+showing it's connected). The prop is an ordinary terminal where it
+stands, with one more action, "AEGIS-M: Take Laptop" (aegism_network_
+fnc_terminalAction; not when Fixed in Place). Taken, the server deletes
+the prop and gives the player one of 30 numbered items (laptops.hpp,
+AEGISM_Laptop_1..30, "AEGIS-M Laptop N (connected)"; 30 is my figure):
+the first no connection is kept under. An inventory groups identical
+items and an item has no identity or name of its own, so a class per
+laptop is what keeps two apart -- as radio mods do.
+
+The connection isn't handed over here: its record is left loose at the
+player's position, and the next aegism_network_fnc_terminalTrack pass
+finds the item on the player, as for any laptop picked up. From there on
+it's a carried laptop like any other; put down, it's a ground holder
+showing the laptop's model, a terminal again.
+
+The item's name can't carry the Site's own name (config text is fixed).
+Not run in game as of 2026-10-10.
+```
 ```
 
 ## aegism_network_fnc_terminalTrack

@@ -95,8 +95,10 @@ _list ctrlSetPosition [_x0 + _padX, _bodyY, _listW, _bodyH];
 _list ctrlSetBackgroundColor [0, 0, 0, 0];
 _list ctrlCommit 0;
 _list ctrlAddEventHandler ["LBSelChanged", {
-    params ["", "_index"];
-    [_index] call aegism_network_fnc_terminalSelect;
+    params ["_list", "_row"];
+    // (A row's value is its node; a heading or a gap has none.)
+    private _index = if (_row >= 0) then { _list lbValue _row } else { -1 };
+    if (_index >= 0) then { [_index] call aegism_network_fnc_terminalSelect; };
 }];
 
 // The tabs, and what's picked.
@@ -299,8 +301,8 @@ _note ctrlCommit 0;
     _args params ["_anchor", "_terminal", "_display", "_count"];
     _args set [3, _count + 1];
     if (isNull _display) exitWith { [_pfhHandle] call CBA_fnc_removePerFrameHandler; };
-    // Its laptop gone -- or, one it carries, no longer on it.
-    if (isNull _terminal || {_terminal isKindOf "CAManBase" && {!alive _terminal || {(_terminal getVariable ["AEGISM_terminalCarried", []]) isEqualTo []}}}) exitWith {
+    // Its laptop gone -- or, one it carries (or its tablet), no longer on it.
+    if (isNull _terminal || {_terminal isKindOf "CAManBase" && {!alive _terminal || {(_terminal getVariable ["AEGISM_terminalCarried", []]) isEqualTo [] && {!("aegism_tablet" in ((items _terminal) apply { toLower _x }))}}}}) exitWith {
         _display closeDisplay 2;
         [_pfhHandle] call CBA_fnc_removePerFrameHandler;
     };

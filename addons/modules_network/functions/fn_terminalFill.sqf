@@ -91,11 +91,32 @@ private _index = (_nodes findIf { (_x select 0) isEqualTo _picked }) max 0;
 _state set ["nodes", _nodes];
 _state set ["node", -1];
 lbClear _list;
+// Grouped: linked Sites under one heading, each other Site and the
+// vehicles in no Site apart, a gap between groups. A row's value is its
+// node; a heading's or a gap's is -1.
+private _lastGroup = "";
+private _pickRow = 0;
 {
-    _x params ["", "_label", "_kind"];
+    _x params ["", "_label", "_kind", ["_group", ""]];
+    if (_group != _lastGroup) then {
+        if (_lastGroup != "") then { _list lbSetValue [_list lbAdd "", -1]; };
+        private _heading = switch (true) do {
+            case ((_group find "linked:") == 0): { "LINKED SITES" };
+            case (_group == "vehicles"): { "VEHICLES IN NO SITE" };
+            default { "" };
+        };
+        if (_heading != "") then {
+            private _headRow = _list lbAdd _heading;
+            _list lbSetValue [_headRow, -1];
+            _list lbSetColor [_headRow, [0.56, 0.64, 0.68, 1]];
+        };
+        _lastGroup = _group;
+    };
     private _row = _list lbAdd ([format ["    %1", _label], _label] select (_kind == "site"));
+    _list lbSetValue [_row, _forEachIndex];
     _list lbSetColor [_row, [[0.85, 0.88, 0.9, 1], AEGISM_TERMINAL_ACCENT] select (_kind == "site")];
+    if (_forEachIndex == _index) then { _pickRow = _row; };
 } forEach _nodes;
 // (Selecting a row picks its node: the list's own event.)
-_list lbSetCurSel _index;
+_list lbSetCurSel _pickRow;
 if ((_state get "node") != _index) then { [_index] call aegism_network_fnc_terminalSelect; };

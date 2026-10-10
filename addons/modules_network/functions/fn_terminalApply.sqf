@@ -42,7 +42,7 @@ private _userName = if (isNull _user) then { "an unknown player" } else { name _
 
 private _refusal = switch (true) do {
     case (isNull _terminal || {isNull _target}): { "the terminal or what it changes is gone" };
-    case ((([_terminal] call aegism_network_fnc_terminalData) select 0) != "control"): { "this terminal is status only" };
+    case ((([_terminal, _target] call aegism_network_fnc_terminalData) select 0) != "control"): { "this terminal is status only here" };
     case (!isNull _user && {_terminal isKindOf "CAManBase"} && {_terminal != _user}): { "that terminal is someone else's to use" };
     case (!isNull _user && {(_user distance _terminal) > AEGISM_TERMINAL_REACH}): { "you're not at the terminal" };
     case ((([_terminal, _anchor] call aegism_network_fnc_terminalScope) findIf { (_x select 0) == _target }) == -1): { "that isn't within this terminal's reach" };

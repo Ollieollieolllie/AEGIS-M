@@ -16,6 +16,7 @@ class CfgFunctions
             class terminalAction {};
             class terminalData {};
             class terminalLink {};
+            class terminalTake {};
             class terminalTrack {};
             class terminalScan {};
             class terminalOpen {};

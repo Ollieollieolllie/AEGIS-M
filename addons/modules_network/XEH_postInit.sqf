@@ -50,6 +50,13 @@ if (hasInterface) then {
         // (The action sits on whatever the player is in: asked of the player.)
         [], 1.5, false, true, "", "alive player && {(player getVariable ['AEGISM_terminalCarried', []]) isNotEqualTo []}"
     ]] call CBA_fnc_addPlayerAction;
+    // And one carrying an AEGIS-M Tablet: the Sites of their side that allow
+    // Remote Connections (the server lists them, aegism_network_fnc_terminalData).
+    [[
+        "<t color='#4FC3F7'>AEGIS-M: Site Tablet</t>",
+        { [objNull, player] call aegism_network_fnc_terminalOpen; },
+        [], 1.5, false, true, "", "alive player && {'aegism_tablet' in ((items player) apply { toLower _x })}"
+    ]] call CBA_fnc_addPlayerAction;
 };
 
 // Editing Site settings and vehicle overrides from Zeus (needs Zeus Enhanced

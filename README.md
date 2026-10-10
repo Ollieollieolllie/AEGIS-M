@@ -419,7 +419,8 @@ RPT) rather than at their next 5-second refresh.
 
 ## Site terminal
 
-Sync a laptop (any object with "laptop" in its class name) to a Site or to
+Sync an **AEGIS-M Laptop** (in Eden under Things, by that name; no other
+laptop is a terminal) to a Site or to
 a single air-defence vehicle, and players get an **AEGIS-M: Site Terminal**
 action on it. What it reaches follows what it is synced to:
 
@@ -438,14 +439,32 @@ Settings*):
 | Terminal Access | Status Only | **Status Only**: the live status board of the Site or vehicle picked, refreshed once a second. **Full Control**: a Settings tab as well, with the Site's settings or the vehicle's overrides as in Eden; Apply sends them to the server. |
 | Manual Interception | Off | An **Interception** tab: a map, the tracks, the weapons and the radars, for ordering them yourself. |
 | Surface Strike | Off | With Manual Interception: a **Surface** switch on that tab, for firing at a point on the ground. |
-| Fixed in Place | Off | For a laptop that is an inventory item. **Off**: it can be picked up and keeps its connection (below). **On**: it can't be taken. |
+| Fixed in Place | Off | **Off**: it can be taken along and keeps its connection (below). **On**: it can't be taken. |
 
-**Carrying it off.** A laptop that is an inventory item (one a player can
-pick up) keeps its connection when it's taken: whoever carries it has
-**AEGIS-M: Site Terminal (carried)** on the action menu, and it is a
-terminal again wherever it's put down. In a crate, a vehicle or a body it
-stays connected until it's taken out. A prop laptop can't be picked up at
-all.
+**Carrying it off.** Unless it's Fixed in Place, the laptop has **AEGIS-M:
+Take Laptop** on the action menu. Taken, it becomes an inventory item,
+**AEGIS-M Laptop 1 (connected)**, **2** and so on: each laptop has its own
+number, so two never stack with each other or with anything else. Whoever
+carries it has **AEGIS-M: Site Terminal (carried)** on the action menu,
+and it is a terminal again wherever it's put down. In a crate, a vehicle
+or a body it stays connected until it's taken out. Up to 30 can be carried
+at once in a mission.
+
+**The tablet.** **AEGIS-M Tablet** is an item in the arsenal. Whoever
+carries one has **AEGIS-M: Site Tablet** on the action menu: the terminal
+of every Site of their own side whose **Remote Connections** setting
+allows it, from anywhere.
+
+| Remote Connections (Site setting) | A tablet gets |
+|---|---|
+| Off (default) | Nothing: the Site isn't listed. |
+| Status Only | Its status board. |
+| Status and Manual Interception | Also the Interception tab, but not its settings. |
+| Full Control | Its settings as well. |
+| Full Control with Surface Strike | Also surface strikes. |
+
+Where Sites give different rights, the tablet shows every tab and the
+server refuses what a Site doesn't allow.
 
 **Interception.** The map shows the weapons' vehicles, the radars, every
 track, the Site's own missiles in flight and which weapon is on which

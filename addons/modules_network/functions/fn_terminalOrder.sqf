@@ -55,7 +55,7 @@ private _isSite = !isNull _node && {_node isKindOf "AEGISM_Module_Site"};
 private _site = if (_isSite) then { _node } else { _node getVariable ["AEGISM_network", objNull] };
 private _refusal = switch (true) do {
     case (isNull _terminal || {isNull _node}): { "the terminal or what it controls is gone" };
-    case !(([_terminal] call aegism_network_fnc_terminalData) select 1): { "this terminal has no manual interception" };
+    case !(([_terminal, _node] call aegism_network_fnc_terminalData) select 1): { "this terminal has no manual interception here" };
     case (!isNull _user && {_terminal isKindOf "CAManBase"} && {_terminal != _user}): { "that terminal is someone else's to use" };
     case (!isNull _user && {(_user distance _terminal) > AEGISM_TERMINAL_REACH}): { "you're not at the terminal" };
     case ((([_terminal, _anchor] call aegism_network_fnc_terminalScope) findIf { (_x select 0) == _node }) == -1): { "that isn't within this terminal's reach" };
@@ -194,7 +194,7 @@ switch (_command) do {
     case "strike": {
         _args params [["_point", []], ["_candidates", objNull], ["_turretPath", []], ["_weaponClass", ""]];
         if !(_candidates isEqualType []) then { _candidates = [_candidates]; };
-        if !(([_terminal] call aegism_network_fnc_terminalData) select 2) exitWith { "this terminal has no surface strike" call _fnRefuse; };
+        if !(([_terminal, _node] call aegism_network_fnc_terminalData) select 2) exitWith { "this terminal has no surface strike here" call _fnRefuse; };
         if !(_point isEqualType [] && {count _point == 3}) exitWith { "there's no strike point" call _fnRefuse; };
 
         private _why = "that weapon isn't within this terminal's reach";

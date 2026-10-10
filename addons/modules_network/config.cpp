@@ -2,12 +2,26 @@ class CfgPatches
 {
     class aegism_modules_network
     {
-        units[] = {"AEGISM_Module_Site"};
-        weapons[] = {};
+        units[] = {"AEGISM_Module_Site", "AEGISM_Laptop"};
+        weapons[] = {"AEGISM_Tablet"};
         author = "Snow(Dryden)";
         requiredVersion = 2.10;
-        requiredAddons[] = {"aegism_main", "aegism_intercept", "aegism_modules_system", "A3_Modules_F", "A3_Sounds_F"};
+        requiredAddons[] = {"aegism_main", "aegism_intercept", "aegism_modules_system", "A3_Modules_F", "A3_Sounds_F", "cba_common", "A3_Props_F_Enoch", "A3_Props_F_Exp_A"};
         #include "version.hpp"
+    };
+};
+
+// Zeus only lists modules of addons the mission has activated, and a mission
+// with no Site placed in Eden never activates this one: preloaded, so
+// addCuratorAddons (XEH_postInit) has something to add.
+class CfgAddons
+{
+    class PreloadAddons
+    {
+        class aegism_modules_network
+        {
+            list[] = {"aegism_modules_network"};
+        };
     };
 };
 
@@ -56,7 +70,7 @@ class Cfg3DEN
                     class AEGISM_terminalAccess
                     {
                         displayName = "Terminal Access";
-                        tooltip = "For a laptop synced to an AEGIS-M Site or air-defence vehicle (any object with 'laptop' in its class name): what players can do at it. Status Only (default): see the live status board. Full Control: also change settings from it. What it reaches follows what it is synced to -- a vehicle: that vehicle's overrides only; a Site: that Site's settings and each of its vehicles' overrides; the Shared Site Coordinator of linked Sites: every one of them. Does nothing on any other object.";
+                        tooltip = "For an AEGIS-M Laptop synced to an AEGIS-M Site or air-defence vehicle: what players can do at it. Status Only (default): see the live status board. Full Control: also change settings from it. What it reaches follows what it is synced to -- a vehicle: that vehicle's overrides only; a Site: that Site's settings and each of its vehicles' overrides; the Shared Site Coordinator of linked Sites: every one of them. Does nothing on any other object.";
                         property = "AEGISM_terminalAccess";
                         control = "Combo";
                         expression = "_this setVariable ['AEGISM_terminalAccess', _value, true];";
@@ -94,7 +108,7 @@ class Cfg3DEN
                     class AEGISM_terminalFixed
                     {
                         displayName = "Fixed in Place";
-                        tooltip = "For a laptop that is an inventory item (one players could pick up). Off (default): it can be picked up, carried and put down somewhere else, and keeps its connection -- whoever carries it has the terminal on their action menu, and it works again wherever it is dropped. On: it can't be taken; its inventory is locked, and one taken anyway is put straight back.";
+                        tooltip = "Off (default): the AEGIS-M Laptop can be taken along (AEGIS-M: Take Laptop), carried and put down somewhere else, and keeps its connection -- whoever carries it has the terminal on their action menu, and it works again wherever it is dropped. On: it can't be taken.";
                         property = "AEGISM_terminalFixed";
                         control = "Checkbox";
                         expression = "_this setVariable ['AEGISM_terminalFixed', _value, true];";
@@ -199,6 +213,17 @@ class CfgSFX
 
 class CfgVehicles
 {
+    // The Site terminal: the one laptop that is one (aegism_network_fnc_
+    // isTerminal). Synced to a Site or an air-defence vehicle.
+    class Land_Laptop_03_sand_F;
+    class AEGISM_Laptop: Land_Laptop_03_sand_F
+    {
+        author = "Snow(Dryden)";
+        scope = 2;
+        scopeCurator = 2;
+        displayName = "AEGIS-M Laptop";
+    };
+
     class Sound;
     class AEGISM_Alarm_Base: Sound
     {
@@ -433,6 +458,24 @@ class CfgVehicles
                 expression = "_this setVariable ['infiniteAmmo', _value];";
                 typeName = "BOOL";
                 defaultValue = "false";
+            };
+            class RemoteAccess
+            {
+                displayName = "Remote Connections";
+                tooltip = "What a player carrying an AEGIS-M Tablet can do with this Site from anywhere, with no laptop. Off (default): nothing; the Site isn't listed on tablets. Status Only: see its live status board. Status and Manual Interception: also use the Interception page (manual orders, automation, radars), but not change its settings. Full Control: the Interception page and its settings. Full Control with Surface Strike: also order surface strikes. Only tablets carried by the Site's own side see it.";
+                property = "remoteAccess";
+                control = "Combo";
+                expression = "_this setVariable ['remoteAccess', _value, true];";
+                typeName = "STRING";
+                defaultValue = "'off'";
+                class Values
+                {
+                    class Off { name = "Off (default)"; value = "off"; };
+                    class Status { name = "Status Only"; value = "status"; };
+                    class Engage { name = "Status and Manual Interception"; value = "engage"; };
+                    class Control { name = "Full Control"; value = "control"; };
+                    class Strike { name = "Full Control with Surface Strike"; value = "strike"; };
+                };
             };
             class SharedCoordinator
             {
@@ -1011,8 +1054,45 @@ class CfgVehicles
 
         class ModuleDescription: ModuleDescription
         {
-            description = "The one AEGIS-M module: sync it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a site to link them into one battery under these settings, with a shared coordinator assigning each detected threat to the best-fit weapon. Roles are discovered automatically from each vehicle's real sensors and loaded ammo. Any vehicle can override these settings for itself in its own attributes (AEGIS-M: Vehicle Overrides). A qualifying vehicle still works standalone with default settings if never synced to a Site. Sync non-vehicle objects (a loudspeaker, a lamp post, a Game Logic) to make them the Site's alarm speakers (see Alarms). A vehicle synced to two Sites, a vehicle of one synced to a vehicle of another, or two Site modules synced to each other -- as many links as you like -- link them into one: one coordinator (the Site ticked Shared Site Coordinator, whose settings then apply to all), shared contacts and assignments. Sync a laptop (any object with 'laptop' in its class name) to make it the Site's status terminal: players get an 'AEGIS-M: Site Status' action on it showing the Site's live status board -- every vehicle, its target and ammo, and every contact it tracks. In Zeus (with Zeus Enhanced): double-click the Site, or right-click it or a vehicle for AEGIS-M Settings.";
+            description = "The one AEGIS-M module: sync it to every radar, launcher, SHORAD, and CIWS vehicle that makes up a site to link them into one battery under these settings, with a shared coordinator assigning each detected threat to the best-fit weapon. Roles are discovered automatically from each vehicle's real sensors and loaded ammo. Any vehicle can override these settings for itself in its own attributes (AEGIS-M: Vehicle Overrides). A qualifying vehicle still works standalone with default settings if never synced to a Site. Sync non-vehicle objects (a loudspeaker, a lamp post, a Game Logic) to make them the Site's alarm speakers (see Alarms). A vehicle synced to two Sites, a vehicle of one synced to a vehicle of another, or two Site modules synced to each other -- as many links as you like -- link them into one: one coordinator (the Site ticked Shared Site Coordinator, whose settings then apply to all), shared contacts and assignments. Sync an AEGIS-M Laptop (in Eden under Things, by that name) to make it the Site's terminal: players get an 'AEGIS-M: Site Status' action on it showing the Site's live status board -- every vehicle, its target and ammo, and every contact it tracks. In Zeus (with Zeus Enhanced): double-click the Site, or right-click it or a vehicle for AEGIS-M Settings.";
             sync[] = {"AnyVehicle"};
         };
     };
+};
+
+// The AEGIS-M Tablet (any arsenal): its carrier reaches every Site of their
+// side that allows Remote Connections. And the dedicated laptop as it's
+// carried: one numbered item per laptop, so two never stack and each keeps
+// its own connection (aegism_network_fnc_terminalTake).
+class CfgWeapons
+{
+    class CBA_MiscItem;
+    class CBA_MiscItem_ItemInfo;
+    class AEGISM_Tablet: CBA_MiscItem
+    {
+        scope = 2;
+        author = "Snow(Dryden)";
+        displayName = "AEGIS-M Tablet";
+        descriptionShort = "Opens the AEGIS-M terminal of every Site of your side that allows Remote Connections.";
+        picture = "\A3\EditorPreviews_F_Enoch\Data\CfgVehicles\Land_Tablet_02_sand_F.jpg";
+        model = "\A3\Props_F_Exp_A\Military\Equipment\Tablet_02_F.p3d";
+        class ItemInfo: CBA_MiscItem_ItemInfo
+        {
+            mass = 10;
+        };
+    };
+    class AEGISM_Laptop_Base: CBA_MiscItem
+    {
+        scope = 1;
+        author = "Snow(Dryden)";
+        displayName = "AEGIS-M Laptop";
+        descriptionShort = "A Site terminal laptop. It keeps its connection while it's carried: open it from the action menu, or put it down to use it there.";
+        picture = "\A3\EditorPreviews_F_Enoch\Data\CfgVehicles\Land_Laptop_03_sand_F.jpg";
+        model = "\a3\Props_F_Enoch\Military\Equipment\Laptop_03_F.p3d";
+        class ItemInfo: CBA_MiscItem_ItemInfo
+        {
+            mass = 40;
+        };
+    };
+    #include "laptops.hpp"
 };

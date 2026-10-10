@@ -2,7 +2,7 @@
 
 What changed in each released version of AEGIS-M, newest first.
 
-## 1.0.0 (2026-10-09)
+## 1.0.0 (2026-10-10)
 
 The first full release.
 
@@ -16,6 +16,15 @@ The first full release.
   until it is taken out.
 - **Fixed in Place**, a laptop option in Eden and Zeus (off by default):
   the laptop can't be picked up.
+- **AEGIS-M Laptop**, a placeable object of its own (Eden and Zeus). It
+  can be taken along (**AEGIS-M: Take Laptop**) and becomes its own
+  numbered item, **AEGIS-M Laptop 1 (connected)** and so on, so it never
+  stacks with anything or gets lost among other items.
+- **AEGIS-M Tablet**, an arsenal item: its carrier opens the terminal of
+  every Site of their side that allows it, from anywhere. Each Site
+  decides with its new **Remote Connections** setting: Off (default),
+  Status Only, Status and Manual Interception, Full Control, or Full
+  Control with Surface Strike.
 - **Infinite Ammo**, a Site setting and a vehicle override (off by
   default): launchers and guns are kept topped up. Switched on in
   mid-mission, it refills what was already fired. The time between shots
@@ -25,6 +34,9 @@ The first full release.
 
 ### Changed
 
+- **Only the AEGIS-M Laptop is a Site terminal.** Before, any object with
+  "laptop" in its class name was. A mission made with 0.1.0 needs its
+  terminal laptops replaced with the AEGIS-M Laptop.
 - **ACE3 is heavily recommended, not required.** AEGIS-M is built and
   tested with ACE's missile guidance. Without it the game's own guidance
   flies the missiles, with less reach and accuracy.
@@ -36,6 +48,8 @@ The first full release.
 
 ### Fixed
 
+- **AEGIS-M: Site** wasn't in Zeus's module list unless a Site had been
+  placed in Eden.
 - A launcher that shares its turret with a gun (the Cheetah's missiles)
   was counted as cover for an incoming munition while the gun held another
   target, and then never fired. It isn't counted while the gun holds one.

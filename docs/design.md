@@ -903,10 +903,12 @@ and which weapons are on each (coloured the same way) -- the longest
 section, so it's the one a full hint box cuts off. It shows data wherever AEGIS-M runs its engagement
 logic: singleplayer, Eden Preview, or a hosted game's host.
 
-**Site terminal.** Sync a laptop (any object with "laptop" in its class
-name -- `Land_Laptop_unfolded_F`, `Land_Laptop_device_F`...) to a Site or to
-a single air-defence vehicle, and players get an **AEGIS-M: Site Terminal**
-action on it (within 3 m). A laptop is never an alarm speaker.
+**Site terminal.** Sync an **AEGIS-M Laptop** (`AEGISM_Laptop`, the sand
+`Land_Laptop_03` under its own name; since 1.0 no other laptop is a
+terminal) to a Site or to a single air-defence vehicle, and players get an
+**AEGIS-M: Site Terminal** action on it (within 3 m). It is never an alarm
+speaker. Taken along it becomes a numbered inventory item, and an
+**AEGIS-M Tablet** reaches Sites remotely: both are in the README.
 
 What a terminal reaches follows what it is synced to:
 

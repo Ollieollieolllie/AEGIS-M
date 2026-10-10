@@ -48,3 +48,19 @@ _terminal setVariable ["AEGISM_terminalAction", _terminal addAction [
     },
     _anchor, 1.5, true, true, "", "true", 3
 ]];
+
+// The AEGIS-M Laptop can be taken along, unless
+// it's fixed in place: the server makes it an item (aegism_network_fnc_
+// terminalTake).
+private _previousTake = _terminal getVariable ["AEGISM_terminalTakeAction", -1];
+if (_previousTake >= 0) then {
+    _terminal removeAction _previousTake;
+    _terminal setVariable ["AEGISM_terminalTakeAction", nil];
+};
+if (_terminal isKindOf "AEGISM_Laptop" && {!(_terminal getVariable ["AEGISM_terminalFixed", false])}) then {
+    _terminal setVariable ["AEGISM_terminalTakeAction", _terminal addAction [
+        "<t color='#4FC3F7'>AEGIS-M: Take Laptop</t>",
+        { [_this select 0, player] remoteExecCall ["aegism_network_fnc_terminalTake", 2]; },
+        [], 1.4, false, true, "", "true", 3
+    ]];
+};

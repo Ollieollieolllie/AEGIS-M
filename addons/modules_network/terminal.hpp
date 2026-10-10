@@ -54,6 +54,8 @@
 // A player has to be this close to a terminal for the server to take a
 // change from it, m.
 #define AEGISM_TERMINAL_REACH 10
+// How many numbered laptop items there are (laptops.hpp).
+#define AEGISM_LAPTOP_ITEMS 30
 
 // How long a vehicle's read of the aircraft its sensors see besides the
 // Site's own contacts stays good for the Interception page, s.

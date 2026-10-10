@@ -23,4 +23,4 @@ params ["_object"];
 
 // (Or what a terminal laptop was put down into: aegism_network_fnc_
 // terminalTrack.)
-((toLower typeOf _object) find "laptop") >= 0 || {(_object getVariable ["AEGISM_terminalItem", ""]) != ""}
+_object isKindOf "AEGISM_Laptop" || {(_object getVariable ["AEGISM_terminalItem", ""]) != ""}
