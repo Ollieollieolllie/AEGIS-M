@@ -460,7 +460,8 @@ allows it, from anywhere.
 | Off (default) | Nothing: the Site isn't listed. |
 | Status Only | Its status board. |
 | Status and Manual Interception | Also the Interception tab, but not its settings. |
-| Full Control | Its settings as well. |
+| Status, Manual Interception and Surface Strike | Also surface strikes; still no settings. |
+| Full Control | The Interception tab and its settings; no surface strikes. |
 | Full Control with Surface Strike | Also surface strikes. |
 
 Where Sites give different rights, the tablet shows every tab and the

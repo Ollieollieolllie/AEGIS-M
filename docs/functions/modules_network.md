@@ -455,7 +455,7 @@ terminalOrder, terminalPicture).
 Since 2026-10-10 a unit can also carry an AEGIS-M Tablet (CfgWeapons
 AEGISM_Tablet, in any arsenal): its connection is every Site whose
 Remote Connections setting ("remoteAccess": off, status, engage,
-control, strike) isn't off and that has a member vehicle of the unit's side --
+engageStrike, control, strike) isn't off and that has a member vehicle of the unit's side --
 so a looted tablet doesn't open the enemy's Sites (the user's choice).
 The Sites are listed at most once a second ("AEGISM_remoteSites").
 Rights then differ by Site, so the callers pass the Site or vehicle

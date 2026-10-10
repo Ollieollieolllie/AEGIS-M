@@ -462,7 +462,7 @@ class CfgVehicles
             class RemoteAccess
             {
                 displayName = "Remote Connections";
-                tooltip = "What a player carrying an AEGIS-M Tablet can do with this Site from anywhere, with no laptop. Off (default): nothing; the Site isn't listed on tablets. Status Only: see its live status board. Status and Manual Interception: also use the Interception page (manual orders, automation, radars), but not change its settings. Full Control: the Interception page and its settings. Full Control with Surface Strike: also order surface strikes. Only tablets carried by the Site's own side see it.";
+                tooltip = "What a player carrying an AEGIS-M Tablet can do with this Site from anywhere, with no laptop. Off (default): nothing; the Site isn't listed on tablets. Status Only: see its live status board. Status and Manual Interception: also use the Interception page (manual orders, automation, radars), but not change its settings. Status, Manual Interception and Surface Strike: the same, with surface strikes. Full Control: the Interception page and its settings. Full Control with Surface Strike: also order surface strikes. Only tablets carried by the Site's own side see it.";
                 property = "remoteAccess";
                 control = "Combo";
                 expression = "_this setVariable ['remoteAccess', _value, true];";
@@ -473,6 +473,7 @@ class CfgVehicles
                     class Off { name = "Off (default)"; value = "off"; };
                     class Status { name = "Status Only"; value = "status"; };
                     class Engage { name = "Status and Manual Interception"; value = "engage"; };
+                    class EngageStrike { name = "Status, Manual Interception and Surface Strike"; value = "engageStrike"; };
                     class Control { name = "Full Control"; value = "control"; };
                     class Strike { name = "Full Control with Surface Strike"; value = "strike"; };
                 };

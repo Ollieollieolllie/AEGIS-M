@@ -2,6 +2,13 @@
 
 What changed in each released version of AEGIS-M, newest first.
 
+## Unreleased
+
+### Added
+
+- **Remote Connections** has a level with surface strikes but no settings:
+  Status, Manual Interception and Surface Strike.
+
 ## 1.0.0 (2026-10-10)
 
 The first full release.

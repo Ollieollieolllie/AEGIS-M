@@ -63,6 +63,7 @@ if ("aegism_tablet" in _held) then {
 private _fnRemote = {
     switch (_this getVariable ["remoteAccess", "off"]) do {
         case "engage": { ["status", true, false] };
+        case "engageStrike": { ["status", true, true] };
         case "control": { ["control", true, false] };
         case "strike": { ["control", true, true] };
         default { ["status", false, false] };
