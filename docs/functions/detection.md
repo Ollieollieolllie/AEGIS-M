@@ -292,13 +292,22 @@ vehicle.
 
 Where it is: the shot reached this machine as late as the server's
 message does, so its copy here is where the server's was when it was
-sent -- except on the machine that fired it, whose copy left first and
-is up to a round trip ahead along its path. So the copy taken is the one
-nearest the stretch of path from AEGISM_COPY_SLACK s behind where the
-server's was to twice the message's delay (CBA_missionTime then and
-now, at most AEGISM_COPY_MAX_LAG s) plus AEGISM_COPY_SLACK s ahead of
-it, and no farther off it than AEGISM_COPY_TOLERANCE m. The rounds of a
-salvo from one launcher are farther apart along their path than that.
+sent -- except on the machine that fired it (the shooter is local
+there), whose copy left first and is a round trip further on: twice
+the message's delay (CBA_missionTime then and now, at most
+AEGISM_COPY_MAX_LAG s) along its velocity. The copy taken is the one
+nearest that point, within AEGISM_COPY_NEAR m plus AEGISM_COPY_NEAR_TIME
+s of its flight -- the rounds of a salvo from one launcher, on one path,
+are farther apart than that, so it's the right one. A copy already set
+off by an earlier message ("AEGISM_detonated") isn't taken again.
+
+None that near: so that nothing flies on (the user, 2026-10-15: "every
+round is killed and no ghosts"), the one nearest that point anywhere on
+the wider stretch of its path -- AEGISM_COPY_SLACK s behind where the
+server's was to twice the delay plus AEGISM_COPY_SLACK s ahead, no
+farther off it than AEGISM_COPY_TOLERANCE m. (The first version took the
+nearest to that stretch's line only, which in a salvo could be any of
+them.) All the figures are mine.
 
 What it can't help: a round intercepted less than a round trip before it
 lands has already landed on the machine that fired it.
@@ -516,7 +525,9 @@ list reaches AEGISM_COPIES_PRUNE_AT. What a carrier releases is listed
 too (its "SubmunitionCreated" event, in case the mission event doesn't
 report it), unless the server has set the carrier off.
 
-Anything else: a round of an AEGIS-M gun with Self-Destruct Rounds on
+Anything else, once any AEGIS-M gun has Self-Destruct Rounds on (the
+public "AEGISM_selfDestructOn"; until then a bullet costs only the
+cached lookup): a round of an AEGIS-M gun with Self-Destruct Rounds on
 is set off here at the server's fuze time after it was created, the same
 age at which the server sets off its own copy (the vehicle's
 "AEGISM_selfDestructFuzes", [ammo, seconds] pairs published by aegism_

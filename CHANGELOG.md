@@ -2,7 +2,7 @@
 
 What changed in each released version of AEGIS-M, newest first.
 
-## Unreleased
+## 1.1.0 (2026-10-15)
 
 ### Added
 
@@ -14,6 +14,9 @@ What changed in each released version of AEGIS-M, newest first.
 
 ### Fixed
 
+- **Surface strikes from a launcher crewed on another machine** (a headless
+  client, a player's group) were guided only now and then. Its AI crew is
+  now brought to the server first; a crew with a player in it is refused.
 - **Intercepts on a dedicated server.** An intercepted shell, rocket or
   missile only went off on the server: players saw it fly on and land,
   and one fired from a player's machine or a headless client came down

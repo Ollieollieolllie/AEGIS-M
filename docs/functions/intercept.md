@@ -2309,6 +2309,17 @@ magazineReloadTime is 900 s).
 `addons/intercept/functions/fn_surfaceStrike.sqf`
 
 ```text
+Crew on another machine (2026-10-15): a launcher's strike missile is
+only flown onto its point where it's local, and the server's Fired event
+for a vehicle simulated elsewhere only comes when that vehicle is near
+the server's camera -- so strikes from a headless client's or a player
+group's launcher were guided only now and then (the user: "only seemed
+to guide munitions if the launcher was local to the server"). As for any
+AEGIS-M launch (aegism_intercept_fnc_fireWeapon), an AI crew is moved to
+the server first and the missile is held until it's there (ended if
+that takes past AEGISM_STRIKE_AIM_TIMEOUT); a crew with a player in it
+can't be moved, and the order is refused. Logged as NONLOCAL.
+
 Surface strikes (2026-10-07). From the user: "It was more for launchers
 and CIWS, setMissileTargetPos should work for the launchers, just need
 CIWS and sams to account for LOFT, ballistic trajectories and the like,

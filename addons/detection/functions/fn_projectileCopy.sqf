@@ -33,6 +33,7 @@ private _ammo = typeOf _projectile;
 // Destruct Rounds bursts at the same age as the server's copy (aegism_
 // intercept_fnc_ciwsSelfDestruct publishes the fuze per vehicle and ammo).
 if (_class == "" && {!_isCarrier}) exitWith {
+    if !(missionNamespace getVariable ["AEGISM_selfDestructOn", false]) exitWith {};
     private _fuzes = ((getShotParents _projectile) param [0, objNull]) getVariable ["AEGISM_selfDestructFuzes", []];
     if (_fuzes isEqualTo []) exitWith {};
     private _index = _fuzes findIf { (_x select 0) == _ammo };

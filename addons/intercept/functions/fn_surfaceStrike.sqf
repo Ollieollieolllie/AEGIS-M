@@ -35,6 +35,22 @@ if !(_shot select 0) exitWith { [false, _shot select 1] };
 private _ts = [_system, _turretPath] call aegism_intercept_fnc_turretState;
 if (CBA_missionTime < (_ts getOrDefault ["strikeUntil", -1])) exitWith { [false, "it's on another strike"] };
 
+// A launcher's missile is only flown onto its point where it's local -- its
+// crew's machine. A crew simulated elsewhere (a headless client, a player's
+// group) is brought to the server first, as for any AEGIS-M launch (aegism_
+// intercept_fnc_fireWeapon); one with a player in it can't be.
+private _gunner = _system turretUnit _turretPath;
+if (_role == "launcher" && {!isNull _gunner} && {!local _gunner}) then {
+    private _playerCrew = ((units group _gunner) findIf { isPlayer _x }) != -1;
+    diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " NONLOCAL: %1 turret %2 crew (%3) is simulated on machine %4, not the server -- %5",
+        _system, _turretPath, _gunner, owner _gunner,
+        ["its AI group is being moved to the server for a surface strike.", "a player is in that group, so it can't be moved: the surface strike is refused."] select _playerCrew];
+    if (!_playerCrew) then { (group _gunner) setGroupOwner clientOwner; };
+};
+if (_role == "launcher" && {!isNull _gunner} && {!local _gunner} && {((units group _gunner) findIf { isPlayer _x }) != -1}) exitWith {
+    [false, "its crew runs on a player's machine, so its missile can't be flown onto the point"]
+};
+
 // "strikeUntil", kept a second ahead while this runs: the vehicle's own loop
 // leaves the turret alone meanwhile (aegism_intercept_fnc_engagementLoop).
 _ts set ["strikeUntil", CBA_missionTime + 1];
@@ -94,6 +110,11 @@ _ts set ["strikeUntil", CBA_missionTime + 1];
         private _ready = ([_system, _turretPath, _weaponClass] call aegism_intercept_fnc_weaponReload) select 0;
         private _late = CBA_missionTime - _startedAt > AEGISM_STRIKE_AIM_TIMEOUT;
         if (_late && {!_ready}) exitWith { "ended -- its weapon wasn't ready in time" call _fnEnd; };
+        // (A launcher's crew still on its way to the server: not fired yet.)
+        private _gunner = _system turretUnit _turretPath;
+        if (!_isGun && {!isNull _gunner} && {!local _gunner}) exitWith {
+            if (_late) then { "ended -- its crew didn't come to the server in time" call _fnEnd; };
+        };
         if (_late && {_isGun} && {!_on}) exitWith { (format ["ended -- its barrel didn't come onto it (%1 deg off)", round (_off * 10) / 10]) call _fnEnd; };
         if (!_ready || {!_on && {!_late}}) exitWith {};
 

@@ -94,6 +94,10 @@ if (isMultiplayer) then {
         _published = _published select { (_x select 0) != _ammo };
         if (_wanted > 0) then { _published pushBack [_ammo, _wanted]; };
         _system setVariable ["AEGISM_selfDestructFuzes", _published, true];
+        // (Until one has, the other machines don't look at gun rounds at all.)
+        if (_wanted > 0 && {!(missionNamespace getVariable ["AEGISM_selfDestructOn", false])}) then {
+            missionNamespace setVariable ["AEGISM_selfDestructOn", true, true];
+        };
     };
 };
 
