@@ -677,6 +677,14 @@ already hit something, or was fuzed on its target (aegism_intercept_fnc_
 interceptHit), is gone by then and skipped. When the queue empties, how
 many rounds self-destructed and how many were already gone is logged
 (SELF-DESTRUCT).
+
+Every other machine flies its own copy of each round, which this queue
+can't reach: in a multiplayer game the fuze time is published on the
+vehicle ("AEGISM_selfDestructFuzes", [ammo, seconds] pairs, broadcast
+only when one changes by over 0.01 s), and each machine sets off its own
+copies at that age (aegism_detect_fnc_projectileCopy). Switched off, the
+list is emptied on the vehicle's next round (aegism_intercept_fnc_
+onSystemFired).
 ```
 
 ## aegism_intercept_fnc_ciwsSpot
@@ -1280,8 +1288,8 @@ Not yet run in game (2026-10-07).
 
 ```text
 Detonates an interceptor that has reached its target (triggerAmmo: real
-splash), and a MUNITION target with it (aegism_detect_fnc_
-destroyMunition) -- the engine has no projectile-vs-projectile
+splash, on every machine: aegism_detect_fnc_detonate), and a MUNITION
+target with it (aegism_detect_fnc_destroyMunition) -- the engine has no projectile-vs-projectile
 collision, so an incoming round has no hitpoints for the splash to act
 on. An aircraft target is left to real splash damage.
 
@@ -1311,8 +1319,9 @@ turned to something else. Left to fly, its seeker takes whatever it finds
 next -- a missile fired at a rocket killed by another weapon went on to
 shoot down the aircraft that fired the rocket, a target the Site wasn't
 allowed to engage. As a real SAM that loses its target does, it
-detonates where it is (triggerAmmo) -- and any tracked munition within
-its blast goes with it (aegism_detect_fnc_blastMunitions).
+detonates where it is (triggerAmmo, on every machine: aegism_detect_fnc_
+detonate) -- and any tracked munition within its blast goes with it
+(aegism_detect_fnc_blastMunitions).
 
 Logged as INTERCEPTOR-LOST.
 ```

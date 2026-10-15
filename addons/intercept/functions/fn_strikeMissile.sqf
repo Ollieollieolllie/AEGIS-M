@@ -69,7 +69,7 @@ missionNamespace setVariable ["AEGISM_strikeMissiles", _flying];
     };
     _args set [3, _nearest];
     _args set [4, _passedAt];
-    if (_passedAt >= 0 && {_nearest <= AEGISM_STRIKE_FUZE || {CBA_missionTime - _passedAt > AEGISM_STRIKE_OVERFLY}}) exitWith { triggerAmmo _projectile; };
+    if (_passedAt >= 0 && {_nearest <= AEGISM_STRIKE_FUZE || {CBA_missionTime - _passedAt > AEGISM_STRIKE_OVERFLY}}) exitWith { [_projectile] call aegism_detect_fnc_detonate; };
 
     // What it's told to fly at: above the point by the loft, less as the
     // ground still to cover shrinks.

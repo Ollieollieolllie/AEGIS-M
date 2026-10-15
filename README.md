@@ -211,6 +211,11 @@ real damage. A carrier round (an MLRS rocket and its warhead, a cluster
 round) goes with what it would have released. Any other tracked munition
 inside the blast goes too (`BLAST-KILL`). Each hit is logged as `INTERCEPT`.
 
+In multiplayer every machine flies its own copy of a shell or a rocket,
+so the server has each of them set off its own copy too: players see it
+go off where it was hit, and the machine that fired it (whose copy does
+the damage) loses it as well.
+
 ### CIWS guns
 
 - A gun tracks its target every frame and solves its full aim 20 times a
@@ -265,9 +270,12 @@ away, and one odd measurement can't move what's learned far (limits in
 ### Server load
 
 All detection and engagement work runs on the server. Other machines only
-switch off the AI targeting of crews they simulate, and nothing is
-broadcast but a Site alarm's change of state, Zeus edits and what an open
-terminal asks for.
+switch off the AI targeting of crews they simulate, set off their own
+copies of what the server sets off, and keep a list of the munitions they
+fly. Nothing is broadcast but a Site alarm's change of state, Zeus edits,
+what an open terminal asks for, each munition the server sets off, a
+gun's self-destruct fuze time when it changes, and the debug views to
+whoever asked for them.
 
 - An idle weapon costs a quick check ten times a second. Config values are
   read once per class and cached.
@@ -527,6 +535,13 @@ reach, from a player within 10 m of it. RPT: `TERMINAL`, `MANUAL`,
 All of these are CBA settings under "AEGIS-M > Debug", or debug-console
 calls on the server.
 
+The Site Status Hint and the 3D draw show what the server works out. On a
+client of a dedicated or hosted server, the server sends them to a player
+who switches them on, as **Debug Views for Clients** allows: Nobody,
+Admins and Zeus (default: a logged-in admin or a player assigned to a
+Zeus), or Everyone. They show every Site's picture, an enemy's too.
+Someone it doesn't allow is told why (`DEBUG-VIEWS` in the server's RPT).
+
 - **Site Status Hint:** a live board in the hint box for the nearest Site:
   its vehicles with their roles (`R` radar, `I` IR, `V` visual, `L`
   launcher, `C` CIWS), what each weapon is doing, each radar's emission
@@ -554,6 +569,9 @@ calls on the server.
   `RELOADING`, `FIRE-FAILED`, or `ASSIGN-CLEAR` with its reason. A threat
   10 s from impact with no weapon on it is logged once (`UNENGAGED`) with
   each weapon's reason.
+- **Site check:** `[] call aegism_fnc_debugCheckSite` (or with a Site)
+  checks each Site's vehicles are linked and recognised, in a hint; run
+  on a client, the server checks and sends it back.
 - **Benchmark:** `[cursorObject, heli1] call
   aegism_intercept_fnc_debugBenchmark` times the hot paths (`BENCHMARK`).
   **Munition probe:** `[] call aegism_intercept_fnc_debugProbeMunitions`

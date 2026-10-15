@@ -121,8 +121,11 @@ if (_role == "launcher") exitWith {
 };
 
 // Every round of the burst, whatever it's aimed at (Self-Destruct Rounds).
+// Switched off: the other machines stop bursting their copies of its rounds.
 if ((_vehicle getVariable ["AEGISM_resolvedEngagementSettings", createHashMap]) getOrDefault ["ciwsSelfDestruct", false]) then {
     [_vehicle, _turretPath, _ts, _projectile, _weapon] call aegism_intercept_fnc_ciwsSelfDestruct;
+} else {
+    if ((_vehicle getVariable ["AEGISM_selfDestructFuzes", []]) isNotEqualTo []) then { _vehicle setVariable ["AEGISM_selfDestructFuzes", [], true]; };
 };
 
 if (isNull _target || {!alive _target}) exitWith {};

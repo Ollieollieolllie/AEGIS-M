@@ -3,7 +3,8 @@ Function: aegism_fnc_debugCheckSite
 
 Description:
     On-demand sync and capability check of a Site or vehicle, run from the
-    debug console.
+    debug console. On a client, the server checks and sends back what it
+    finds.
     Full notes: docs/functions/main.md
 
 Parameters:
@@ -23,6 +24,21 @@ Author:
 
 params [["_site", objNull]];
 
+// A client has none of it: asked of the server.
+if (!isServer) exitWith { [_site] remoteExecCall ["aegism_fnc_debugCheckSite", 2]; };
+
+// Said here, and to the machine that asked, if another (aegism_fnc_
+// debugAllowed: only one the debug views are sent to).
+private _owner = remoteExecutedOwner;
+private _remote = isMultiplayer && {!(_owner in [0, clientOwner])};
+private _refused = if (_remote) then { ([_owner] call aegism_fnc_debugAllowed) select 1 } else { "" };
+if (_refused != "") exitWith { ["[AEGIS-M] DEBUG CHECK: " + _refused] remoteExecCall ["hint", _owner]; };
+private _fnSay = {
+    hint _this;
+    diag_log text _this;
+    if (_remote) then { [_this] remoteExecCall ["hint", _owner]; };
+};
+
 private _allOwners = missionNamespace getVariable ["AEGISM_allPoolOwners", []];
 // A Site is any pool owner with NO "AEGISM_system" variable of its own --
 // that's exactly how the rest of the codebase (e.g. aegism_fnc_debugDraw)
@@ -36,9 +52,7 @@ private _sites = if (isNull _site) then {
 };
 
 if (_sites isEqualTo []) exitWith {
-    private _msg = "[AEGIS-M] DEBUG CHECK: no Site found -- either none is placed/activated yet, or AEGISM_allPoolOwners is empty (nothing has registered at all, which itself would mean no AEGISM_Module_Site has run its init).";
-    hint _msg;
-    diag_log text _msg;
+    "[AEGIS-M] DEBUG CHECK: no Site found -- either none is placed/activated yet, or AEGISM_allPoolOwners is empty (nothing has registered at all, which itself would mean no AEGISM_Module_Site has run its init)." call _fnSay;
 };
 
 {
@@ -70,7 +84,5 @@ if (_sites isEqualTo []) exitWith {
     private _claims = _thisSite getVariable ["AEGISM_claims", createHashMap];
     _lines pushBack format ["Pooled contacts: %1 -- Active assignments: %2", count _pool, count _claims];
 
-    private _fullMsg = _lines joinString "\n";
-    hint _fullMsg;
-    diag_log text _fullMsg;
+    (_lines joinString "\n") call _fnSay;
 } forEach _sites;

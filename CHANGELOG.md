@@ -8,6 +8,20 @@ What changed in each released version of AEGIS-M, newest first.
 
 - **Remote Connections** has a level with surface strikes but no settings:
   Status, Manual Interception and Surface Strike.
+- **Debug Views for Clients**, a CBA setting under AEGIS-M > Debug: who
+  the server sends the Site Status Hint and the 3D draw to. Nobody, Admins
+  and Zeus (default), or Everyone.
+
+### Fixed
+
+- **Intercepts on a dedicated server.** An intercepted shell, rocket or
+  missile only went off on the server: players saw it fly on and land,
+  and one fired from a player's machine or a headless client came down
+  and did its damage there. Every machine now sets off its own copy. A
+  gun's self-destructing rounds burst on every machine too.
+- **Site Status Hint and Debug 3D Draw** showed nothing on a client of a
+  dedicated server. The server now sends them to the players it allows.
+  `aegism_fnc_debugCheckSite` run on a client asks the server.
 
 ## 1.0.0 (2026-10-10)
 

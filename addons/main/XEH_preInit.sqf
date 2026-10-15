@@ -47,7 +47,7 @@
 [
     "aegism_main_debugDraw",
     "CHECKBOX",
-    ["Enable Debug 3D Draw", "Draws pooled contacts, claims, engagement envelopes, and each System's acquired target/LOS check. Client-side only, no effect on gameplay."],
+    ["Enable Debug 3D Draw", "Draws pooled contacts, claims, engagement envelopes, and each System's acquired target/LOS check. Client-side only, no effect on gameplay. On a client of a dedicated or hosted server, the server sends it, if Debug Views for Clients allows."],
     ["AEGIS-M", "Debug"],
     false,
     0
@@ -88,8 +88,20 @@ AEGISM_perfCounts resize [PERF_COUNT, 0];
 [
     "aegism_main_debugHint",
     "CHECKBOX",
-    ["Site Status Hint", "Live status board in the hint box: the nearest Site's vehicles (roles, colour-coded status, target, ammo) and contacts, other Sites and standalone Systems in summary. Shows data only where AEGIS-M runs its engagement logic: singleplayer, Eden Preview, or a hosted game's host."],
+    ["Site Status Hint", "Live status board in the hint box: the nearest Site's vehicles (roles, colour-coded status, target, ammo) and contacts, other Sites and standalone Systems in summary. On a client of a dedicated or hosted server, the server sends it, if Debug Views for Clients allows."],
     ["AEGIS-M", "Debug"],
     false,
     0
+] call CBA_fnc_addSetting;
+
+// Global (isGlobal=1): the server's decides. Who the server sends its debug
+// views to (aegism_fnc_debugAllowed): what they show is a Site's whole
+// picture, an enemy's too.
+[
+    "aegism_main_debugClients",
+    "LIST",
+    ["Debug Views for Clients", "Who the server sends Site Status Hint and Debug 3D Draw to, on a dedicated or hosted server (each player still switches them on for themselves): Nobody, a logged-in admin or a Zeus, or Everyone. They show every Site's picture and engagements, an enemy Site's too. The server's own screen (singleplayer, a hosted game's host) always has them."],
+    ["AEGIS-M", "Debug"],
+    [[0, 1, 2], ["Nobody", "Admins and Zeus", "Everyone"], 1],
+    1
 ] call CBA_fnc_addSetting;

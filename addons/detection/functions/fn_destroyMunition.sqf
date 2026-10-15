@@ -3,7 +3,7 @@ Function: aegism_detect_fnc_destroyMunition
 
 Description:
     Destroys an incoming munition where it is (triggerAmmo: it detonates in
-    the air).
+    the air), on every machine (aegism_detect_fnc_detonate).
     Full notes: docs/functions/detection.md
 
 Parameters:
@@ -23,11 +23,6 @@ params ["_munition"];
 
 if (isNull _munition || {!alive _munition}) exitWith {};
 
-if ((toLower getText (configOf _munition >> "simulation")) == "shotsubmunitions") then {
-    _munition setVariable ["AEGISM_intercepted", true];
-    _munition addEventHandler ["SubmunitionCreated", {
-        params ["", "_submunitionProjectile"];
-        deleteVehicle _submunitionProjectile;
-    }];
-};
-triggerAmmo _munition;
+private _isCarrier = (toLower getText (configOf _munition >> "simulation")) == "shotsubmunitions";
+if (_isCarrier) then { _munition setVariable ["AEGISM_intercepted", true]; };
+[_munition, _isCarrier] call aegism_detect_fnc_detonate;

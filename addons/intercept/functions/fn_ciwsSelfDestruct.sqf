@@ -80,6 +80,23 @@ if (_fuze isEqualTo [] || {(_fuze select 0) != _ammo} || {CBA_missionTime - (_fu
     _ts set ["selfDestructFuze", _fuze];
 };
 private _seconds = _fuze select 1;
+
+// Every other machine flies its own copy of each round: it bursts them at
+// the same age itself (aegism_detect_fnc_projectileCopy), from the fuze
+// times published per vehicle and ammo. Sent only when one changes.
+if (isMultiplayer) then {
+    private _published = _system getVariable ["AEGISM_selfDestructFuzes", []];
+    private _index = _published findIf { (_x select 0) == _ammo };
+    private _wanted = [-1, _seconds] select (_seconds > 0 && {_seconds < 1e10});
+    private _current = -1;
+    if (_index != -1) then { _current = (_published select _index) select 1; };
+    if (abs (_current - _wanted) > 0.01) then {
+        _published = _published select { (_x select 0) != _ammo };
+        if (_wanted > 0) then { _published pushBack [_ammo, _wanted]; };
+        _system setVariable ["AEGISM_selfDestructFuzes", _published, true];
+    };
+};
+
 if (_seconds <= 0 || {_seconds >= 1e10}) exitWith {};
 
 private _queue = _ts get "selfDestruct";

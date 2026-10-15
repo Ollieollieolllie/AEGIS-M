@@ -12,7 +12,10 @@ AEGISM_frameTime = CBA_missionTime;
 
 // Debug overlays: only where there's a screen to draw on. aegism_fnc_debugDraw
 // (per frame) and aegism_fnc_debugHint (once a second) are no-ops while their
-// settings are off.
+// settings are off. What they show is the server's: a client asks for it
+// once a second while either is on (aegism_fnc_debugRequest), and the
+// server sends the 3D overlay to those who asked every half second
+// (aegism_fnc_debugPublish).
 if (hasInterface) then {
     [{
         [] call aegism_fnc_debugDraw;
@@ -20,7 +23,17 @@ if (hasInterface) then {
 
     [{
         [] call aegism_fnc_debugHint;
+        if (!isServer) then {
+            private _hint = "aegism_main_debugHint" call CBA_settings_fnc_get;
+            private _draw = "aegism_main_debugDraw" call CBA_settings_fnc_get;
+            if (_hint || {_draw}) then { [positionCameraToWorld [0, 0, 0], _hint, _draw] remoteExecCall ["aegism_fnc_debugRequest", 2]; };
+        };
     }, 1, []] call CBA_fnc_addPerFrameHandler;
+};
+if (isServer && {isMultiplayer}) then {
+    [{
+        [] call aegism_fnc_debugPublish;
+    }, 0.5, []] call CBA_fnc_addPerFrameHandler;
 };
 
 #include "perf.hpp"

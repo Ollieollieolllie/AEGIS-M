@@ -400,6 +400,22 @@ round) is detonated too, but whatever it releases is deleted as it's
 created -- detonating a carrier on its own just releases the warhead, which
 used to cost a second interceptor for every rocket.
 
+**Every machine sets off its own copy.** A shell, a mortar round or a
+rocket isn't one object the network carries: the server, every player's
+machine and a headless client each fly their own copy from the same
+shot, and triggerAmmo only sets off the one it's given. On a dedicated
+server the server's copy went off and the players saw the round fly on
+and land -- and the machine that fired it, whose copy the game takes the
+damage from, had it land for real (user report, 2026-10-14; singleplayer
+and a hosted game's host have only the one copy). So each projectile
+AEGIS-M sets off is sent to the other machines (`aegism_detect_fnc_
+detonate`), and each sets off its own copy, found among the munitions it
+lists as they're created, by ammo, shooter and where on its path the
+server's was (`aegism_detect_fnc_detonateCopy`). A missile the network
+does carry is set off by the machine it's local to. A gun's self-destruct
+fuze time is published per vehicle instead, and each machine bursts its
+own copies of the rounds at that age.
+
 **AEGISM_Module_Site** ("AEGIS-M: Site", in the AEGIS-M module folder in
 both Eden and Zeus) is the one placeable/syncable AEGIS-M module. Sync
 it to every vehicle that makes up a site (its radar, its launchers, its
@@ -671,8 +687,13 @@ restarting the mission.
 
 **Server load.** All of the detection and engagement work runs on the
 server; other machines only suppress the AI targeting of crews they
-simulate themselves, and nothing is broadcast but a Site alarm's change of
-state (its sound sources) and Zeus edits. On the server:
+simulate themselves, set off their own copies of what the server sets
+off, and list the munitions they fly (one cached lookup per projectile).
+Nothing is broadcast but a Site alarm's change of state (its sound
+sources), Zeus edits, what an open terminal asks for, each munition the
+server sets off, a gun's self-destruct fuze time when it changes, and the
+debug views to whoever asked (the 3D draw twice a second, the status
+board once). On the server:
 - An idle weapon (nothing assigned to it, or nothing in a standalone
   System's pool) costs a quick check ten times a second.
 - Every round fired in the mission passes through one cached lookup; only
@@ -745,9 +766,13 @@ quiet rather than fighting uncontrolled.
 
 **Debug 3D draw** (CBA setting "AEGIS-M > Debug > Enable Debug 3D Draw",
 off by default, client-side/no gameplay effect) draws what AEGIS-M is doing,
-straight from the variables its detection/intercept pipeline reads and
-writes, laid out to be read at a glance -- one colour scheme, one label per
-thing, labels stacked rather than drawn over each other:
+from the variables its detection/intercept pipeline reads and writes, laid
+out to be read at a glance -- one colour scheme, one label per thing,
+labels stacked rather than drawn over each other. What to draw is worked
+out on the server; a client that switches it on is sent it twice a second
+(as **Debug Views for Clients** allows) and draws it every frame, on the
+vehicles where they are, and a shell it flies for itself where the server
+had it, moved on by its velocity:
 - **Colour** is always an engagement's state: queued (blue), assigned
   (green), reacting / slewing (amber), reloading (orange), range hold (teal),
   firing (red), in flight (gold), no LOS / no solution (purple), crew failed
@@ -900,8 +925,19 @@ EMITTING cued: ...`, `RDR SILENT silent until cued`, `RDR SHUT DOWN
 anti-radiation missile inbound ...`). Last, the nearest Site's contacts,
 the sensors that saw each (`cue only` for one only passive radar hears),
 and which weapons are on each (coloured the same way) -- the longest
-section, so it's the one a full hint box cuts off. It shows data wherever AEGIS-M runs its engagement
-logic: singleplayer, Eden Preview, or a hosted game's host.
+section, so it's the one a full hint box cuts off. The board is the
+server's: on its own screen (singleplayer, Eden Preview, a hosted game's
+host) it's built there; a client sends its camera position once a second
+and the server sends back the board for it, as **Debug Views for
+Clients** allows (below).
+
+**Debug Views for Clients** (CBA setting, the server's decides): who the
+server sends the Site Status Hint and the 3D draw to -- Nobody, Admins and
+Zeus (default: a logged-in or voted-in admin, or a player assigned to a
+Zeus), or Everyone. They show every Site's whole picture, an enemy's too,
+so a public server doesn't hand them to everyone by default. Someone it
+refuses is told why, in the hint and once in system chat, and the
+server's RPT says who asked and what it answered (`DEBUG-VIEWS`).
 
 **Site terminal.** Sync an **AEGIS-M Laptop** (`AEGISM_Laptop`, the sand
 `Land_Laptop_03` under its own name; since 1.0 no other laptop is a

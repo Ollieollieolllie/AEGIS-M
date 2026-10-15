@@ -223,10 +223,10 @@ for it, so ground targets cost nothing.
 
 ```text
 Destroys an incoming munition where it is (triggerAmmo: it detonates in
-the air). The engine has no projectile-vs-projectile collision, so an
-incoming round has no hitpoints of its own for a hit to act on: an
-interceptor that reaches it (aegism_intercept_fnc_interceptHit) ends it
-here.
+the air), on every machine (aegism_detect_fnc_detonate). The engine has
+no projectile-vs-projectile collision, so an incoming round has no
+hitpoints of its own for a hit to act on: an interceptor that reaches it
+(aegism_intercept_fnc_interceptHit) ends it here.
 
 A CARRIER (CfgAmmo simulation "shotSubmunitions") is triggered the same
 way, but everything it releases is deleted the moment it's created (its
@@ -236,6 +236,74 @@ it makes it release its payload on the spot: every MLRS R_230mm_HE
 radius) to shoot at again. The carrier is flagged "AEGISM_intercepted"
 first so aegism_detect_fnc_watchProjectile doesn't start tracking the
 payload.
+```
+
+## aegism_detect_fnc_detonate
+
+`addons/detection/functions/fn_detonate.sqf`
+
+```text
+Sets off a projectile where it is (triggerAmmo), on the server and on
+every other machine. Everything AEGIS-M sets off goes through here: a
+munition it destroys (aegism_detect_fnc_destroyMunition), its own
+missile at the intercept (aegism_intercept_fnc_interceptHit), one that
+lost its target (aegism_intercept_fnc_interceptorLost) or a surface
+strike's at its point (aegism_intercept_fnc_strikeMissile).
+
+Why every machine: a shell, a mortar round or a rocket isn't one object
+the network carries. Each machine -- the server, every player's, a
+headless client's -- flies its own copy from the same shot, and
+triggerAmmo sets off only the copy it's given. On a dedicated server
+(user report, 2026-10-14: it worked in singleplayer and hosted, not on a
+dedicated server) the server's copy went off and every player still saw
+the round fly on and land. Worse, the machine that fired it keeps the
+copy the game takes its damage from: a round a player or a headless
+client fired came down and did its damage, intercepted or not. In
+singleplayer, and to a hosted game's host, the server's copy is the only
+one there is, which is why it looked right there.
+
+So the server sends each machine what it needs to find its own copy
+(aegism_detect_fnc_detonateCopy): the projectile itself (it arrives as
+an object only where the network carries it -- a missile -- and as
+objNull where it doesn't), its ammo class, the vehicle that fired it, and
+where it was, how fast and when, sent before it goes off here. Only for
+a munition the other machines keep a list of (aegism_detect_fnc_
+projectileCopy): a threat class or a carrier (aegism_detect_fnc_
+ammoThreatInfo) -- a CIWS round has neither, and needs no message.
+
+_dropPayload: a carrier round's payload is deleted as it's released
+(see aegism_detect_fnc_destroyMunition), here and there.
+```
+
+## aegism_detect_fnc_detonateCopy
+
+`addons/detection/functions/fn_detonateCopy.sqf`
+
+```text
+Every machine but the server: sets off its own copy of a projectile the
+server has just set off (aegism_detect_fnc_detonate).
+
+A projectile the network carries (it arrived as an object) is set off
+only where it's local -- the machine that fired it; on the others it's
+that machine's to end. One every machine flies for itself arrived as
+objNull: this machine's copy is looked for among the ones it lists of
+that ammo class (aegism_detect_fnc_projectileCopy), from the same
+vehicle.
+
+Where it is: the shot reached this machine as late as the server's
+message does, so its copy here is where the server's was when it was
+sent -- except on the machine that fired it, whose copy left first and
+is up to a round trip ahead along its path. So the copy taken is the one
+nearest the stretch of path from AEGISM_COPY_SLACK s behind where the
+server's was to twice the message's delay (CBA_missionTime then and
+now, at most AEGISM_COPY_MAX_LAG s) plus AEGISM_COPY_SLACK s ahead of
+it, and no farther off it than AEGISM_COPY_TOLERANCE m. The rounds of a
+salvo from one launcher are farther apart along their path than that.
+
+What it can't help: a round intercepted less than a round trip before it
+lands has already landed on the machine that fired it.
+
+Not yet run in a dedicated-server game (2026-10-15).
 ```
 
 ## aegism_detect_fnc_firedEventHandler
@@ -427,6 +495,36 @@ any sensor saw it, and how near and how low it came. An anti-radiation missile's
 (ARM-END): what it was homing on at its last check, how far it then was
 from the nearest AEGIS-M radar and whether that radar was emitting, and
 whether any AEGIS-M sensor saw it.
+```
+
+## aegism_detect_fnc_projectileCopy
+
+`addons/detection/functions/fn_projectileCopy.sqf`
+
+```text
+Every machine but the server (a player's, a headless client's): its
+"ProjectileCreated" mission event, registered in XEH_preInit. Each
+machine flies its own copy of every shell, rocket and bullet, and the
+server can only set off its own (see aegism_detect_fnc_detonate). This
+is how the others find theirs.
+
+A munition AEGIS-M tracks -- a threat class or a carrier, the same
+cached lookup the server's Fired event uses (aegism_detect_fnc_
+ammoThreatInfo) -- goes on this machine's list of its copies, by ammo
+class ("AEGISM_munitionCopies"), cleared of the gone once a class's
+list reaches AEGISM_COPIES_PRUNE_AT. What a carrier releases is listed
+too (its "SubmunitionCreated" event, in case the mission event doesn't
+report it), unless the server has set the carrier off.
+
+Anything else: a round of an AEGIS-M gun with Self-Destruct Rounds on
+is set off here at the server's fuze time after it was created, the same
+age at which the server sets off its own copy (the vehicle's
+"AEGISM_selfDestructFuzes", [ammo, seconds] pairs published by aegism_
+intercept_fnc_ciwsSelfDestruct). A burst's first rounds can be created
+here before that reaches this machine, and fly on.
+
+The cost on every machine: a cached lookup per projectile, and for a
+bullet that isn't a threat, its shooter's one variable.
 ```
 
 ## aegism_detect_fnc_projectileCreated

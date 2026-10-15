@@ -23,3 +23,15 @@ if (isServer) then {
         _this call aegism_detect_fnc_projectileCreated;
     }]];
 };
+
+// Every other machine -- a player's, a headless client's -- flies its own
+// copy of each shell, rocket and bullet. A munition the server sets off
+// (aegism_detect_fnc_detonate) is set off on each of them too, the copy
+// found among the ones they list here (aegism_detect_fnc_projectileCopy);
+// otherwise it flies on there, and comes down where it was going on the
+// machine that fired it.
+if (!isServer) then {
+    addMissionEventHandler ["ProjectileCreated", {
+        _this call aegism_detect_fnc_projectileCopy;
+    }];
+};

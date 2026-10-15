@@ -29,5 +29,5 @@ diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " INTERCEPT
     typeOf _projectile, _launcher, _why];
 private _at = getPosASL _projectile;
 private _ammo = typeOf _projectile;
-triggerAmmo _projectile;
+[_projectile] call aegism_detect_fnc_detonate;
 [_at, getNumber (configFile >> "CfgAmmo" >> _ammo >> "indirectHitRange"), format ["%1 (self-destructing)", _ammo]] call aegism_detect_fnc_blastMunitions;

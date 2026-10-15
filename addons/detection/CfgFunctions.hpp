@@ -26,6 +26,9 @@ class CfgFunctions
             class sensorView {};
             class munitionSeen {};
             class destroyMunition {};
+            class detonate {};
+            class detonateCopy {};
+            class projectileCopy {};
             class blastMunitions {};
         };
     };

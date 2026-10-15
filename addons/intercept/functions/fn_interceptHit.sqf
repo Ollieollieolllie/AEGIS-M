@@ -43,7 +43,7 @@ private _targetAt = getPosASL _target;
 private _targetBlast = getNumber (configOf _target >> "indirectHitRange");
 private _targetType = typeOf _target;
 if (_isMunitionTarget) then { [_target] call aegism_detect_fnc_destroyMunition; };
-if (!_gone) then { triggerAmmo _projectile; };
+if (!_gone) then { [_projectile] call aegism_detect_fnc_detonate; };
 diag_log text format ["[AEGIS-M] t=" + (CBA_missionTime toFixed 1) + " INTERCEPT: %1 hit %2 at %3 (%4%5).", _ammo, _target, _whereText,
     if (_isMunitionTarget) then {
         format ["passed %1m from its body, within the round's %2m", (_minDistance max 0) toFixed 2, _hitRadius toFixed 2]

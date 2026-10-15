@@ -38,6 +38,36 @@ tell such local objects apart -- two shells sharing one key would share
 one pool entry, and the Site would engage them one at a time.
 ```
 
+## aegism_fnc_debugAllowed
+
+`addons/main/functions/fn_debugAllowed.sqf`
+
+```text
+Whether the server sends its debug views -- Site Status Hint, the 3D
+draw, the Site check (aegism_fnc_debugCheckSite) -- to a machine that
+asks: the CBA setting "AEGIS-M > Debug > Debug Views for Clients"
+(global: the server's decides). Nobody; Admins and Zeus (default): a
+logged-in or voted-in admin (admin) or a player assigned to a Zeus; or
+Everyone. They show every Site's whole picture and engagements, an
+enemy's too, so on a public server they aren't for everyone by default.
+
+The server's own screen -- singleplayer, Eden Preview, a hosted game's
+host -- always has them: it reads the pipeline directly. Returns why not
+as a line for the client to show (aegism_fnc_debugReceive).
+```
+
+## aegism_fnc_debugBoard
+
+`addons/main/functions/fn_debugBoard.sqf`
+
+```text
+The Site Status Hint's board, server only: the Site nearest the camera
+in detail, everything else in summary (aegism_fnc_statusBoard), with the
+nearest AEGISM_HINT_MAX_CONTACTS contacts. For the server's own screen
+(aegism_fnc_debugHint) and for a client's camera (aegism_fnc_
+debugRequest).
+```
+
 ## aegism_fnc_debugCheckSite
 
 `addons/main/functions/fn_debugCheckSite.sqf`
@@ -69,6 +99,12 @@ Prints to hint (visible in-game immediately) AND diag_log (so it's also
 captured in the RPT for later reference) -- deliberately not gated
 behind the "aegism_main_debugDraw" CBA setting, since this is a one-shot
 manual check a mission tester runs on demand, not a continuous overlay.
+
+What it reads is the server's. Run on a client (its debug console's
+local exec), it asks the server, which checks and sends the hint back --
+as it does to a client that ran it with Server Exec -- if Debug Views
+for Clients allows that client (aegism_fnc_debugAllowed); otherwise the
+hint says why not.
 ```
 
 ## aegism_fnc_debugDraw
@@ -77,11 +113,29 @@ manual check a mission tester runs on demand, not a continuous overlay.
 
 ```text
 Per-frame 3D debug overlay of AEGIS-M's live detection/engagement
-state, drawn straight from the variables the pipeline itself reads and
-writes -- what's on screen is what the mod is doing, not a separate
-simulation of it. CBA setting "aegism_main_debugDraw" (client-side, no
-gameplay effect). Only has data where the engagement pipeline runs
-(singleplayer, Eden Preview, a hosted game's host).
+state, drawn from the variables the pipeline itself reads and writes --
+what's on screen is what the mod is doing, not a separate simulation of
+it. CBA setting "aegism_main_debugDraw" (client-side, no gameplay
+effect).
+
+Those variables only exist on the server, so the overlay is in two
+halves: what to draw is worked out there (aegism_fnc_debugModel), and
+drawn here every frame. On the server's own screen (singleplayer, Eden
+Preview, a hosted game's host) it's worked out again every
+AEGISM_MODEL_REFRESH s. A client asks for it once a second while the
+setting is on (aegism_fnc_debugRequest) and the server sends it every
+half second (aegism_fnc_debugPublish), if Debug Views for Clients allows
+(aegism_fnc_debugAllowed); it's drawn while the last is no older than
+AEGISM_MODEL_STALE s. User report (2026-10-14): on a dedicated server
+nobody saw anything -- it used to read those variables on the machine
+drawing it.
+
+Everything is placed on an anchor (aegism_fnc_debugModel): drawn where
+this machine has the object -- a vehicle, a Site module, a missile the
+network carries -- so it follows it every frame, and where it doesn't (a
+shell each machine flies for itself), where the server had it, moved on
+by its velocity for the model's age (at most AEGISM_MOVE_ON_MAX s).
+Seconds to impact count down here, from the impact time sent.
 
 Built to be read at a glance: one colour scheme, one label per thing,
 labels stacked (at a spacing that scales with distance, so they stay
@@ -150,12 +204,11 @@ apart at any range) rather than drawn on top of each other.
         "NOT ACTIVE:" and why -- e.g. a launcher with no sensor of its
         own placed without a Site.
 
-Reads only published state (AEGISM_allPoolOwners, AEGISM_allSystems,
-AEGISM_system, AEGISM_pooledContacts, AEGISM_seenMunitions, AEGISM_
-claims, AEGISM_withheldCiws, each System's AEGISM_turrets
-"standalone_<role>" states)
-and calls no function of the addons that publish it: this lives in
-aegism_main, which they all depend on.
+The model reads only published state (AEGISM_allPoolOwners, AEGISM_
+allSystems, AEGISM_system, AEGISM_pooledContacts, AEGISM_seenMunitions,
+AEGISM_claims, AEGISM_withheldCiws, each System's AEGISM_turrets
+"standalone_<role>" states) and calls no function of the addons that
+publish it: this lives in aegism_main, which they all depend on.
 ```
 
 ## aegism_fnc_debugHint
@@ -169,11 +222,79 @@ the camera in detail, and everything else in summary (aegism_fnc_
 statusBoard, which says what's on it). The hint box cuts a long board,
 so only the nearest AEGISM_HINT_MAX_CONTACTS contacts are listed.
 
-Reads the same server-side variables the engagement pipeline runs on,
-so it only has data where that pipeline runs: singleplayer, Eden
-Preview, or the host of a hosted game (not a client of a dedicated
-server -- a Site's status terminal, aegism_network_fnc_terminalOpen,
-works there).
+The board is built from the server-side variables the engagement
+pipeline runs on (aegism_fnc_debugBoard). On the server's own screen
+(singleplayer, Eden Preview, a hosted game's host) it's built here. A
+client sends its camera to the server once a second (aegism_fnc_
+debugRequest) and shows the board that comes back (aegism_fnc_
+debugReceive), if Debug Views for Clients allows it (aegism_fnc_
+debugAllowed) -- otherwise the hint says why. Until the first comes,
+and while none has for AEGISM_HINT_WAIT s, the hint says it's asking.
+User report (2026-10-14): on a dedicated server it showed nothing.
+```
+
+## aegism_fnc_debugModel
+
+`addons/main/functions/fn_debugModel.sqf`
+
+```text
+What the 3D debug overlay draws (aegism_fnc_debugDraw, which says what
+it shows and in which colours), worked out on the server: [built at,
+rings, lines, icons, labels]. The same gathering the overlay always did
+-- contacts across every pool, engagements, radars, sight lines, Sites
+and their links, Systems and their three lines of status, inactive
+vehicles -- turned into things to draw, so the machine drawing them needs
+none of the server's state.
+
+Each is placed on an anchor: [object, position ASL, velocity, metres
+above, at its eyes (eyePos)]. The object where the drawing machine has
+it; the position and velocity where it doesn't -- a shell or a rocket
+each machine flies for itself reaches a client as objNull. A label
+stacked above its anchor says by how many text lines (spaced by the
+camera's distance where it's drawn); a contact's label carries its
+impact time and %1 for the seconds left.
+
+Every array, no HashMap, so it can be sent (aegism_fnc_debugPublish).
+```
+
+## aegism_fnc_debugPublish
+
+`addons/main/functions/fn_debugPublish.sqf`
+
+```text
+Server, every half second in a multiplayer game: sends the 3D overlay's
+model (aegism_fnc_debugModel) to every client that has asked for it in
+the last AEGISM_SUBSCRIBER_TIMEOUT s (aegism_fnc_debugRequest, once a
+second while its setting is on) -- one that stops asking has switched it
+off or left. Nothing is worked out while none has.
+```
+
+## aegism_fnc_debugReceive
+
+`addons/main/functions/fn_debugReceive.sqf`
+
+```text
+A client's end of the debug views, taken only from the server: "hint",
+the status board, shown while Site Status Hint is on; "draw", the 3D
+overlay's model, kept for aegism_fnc_debugDraw; "denied", why the server
+sends neither (aegism_fnc_debugAllowed) -- in the hint while it's on,
+and once in system chat.
+```
+
+## aegism_fnc_debugRequest
+
+`addons/main/functions/fn_debugRequest.sqf`
+
+```text
+Server side of the debug views on a client, which asks once a second
+while Site Status Hint or Enable Debug 3D Draw is on there (aegism's
+XEH_postInit), with its camera position. Refused (aegism_fnc_
+debugAllowed): it's told why. Otherwise the board for its camera
+(aegism_fnc_debugBoard) goes straight back, and while it asks for the
+draw it's on the list the overlay is sent to (aegism_fnc_debugPublish).
+
+Logged once per client, and again if the answer changes (DEBUG-VIEWS):
+who asked, for what, and whether it's sent.
 ```
 
 ## aegism_fnc_emconText

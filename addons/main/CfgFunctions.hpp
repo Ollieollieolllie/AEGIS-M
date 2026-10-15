@@ -14,9 +14,15 @@ class CfgFunctions
             class sensorTags {};
             class hasTrack {};
             class emconText {};
+            class debugModel {};
             class debugDraw {};
             class statusBoard {};
+            class debugBoard {};
             class debugHint {};
+            class debugAllowed {};
+            class debugRequest {};
+            class debugPublish {};
+            class debugReceive {};
             class debugCheckSite {};
             class setWeaponAiSuppressed {};
             class zeusAttributeDialog {};
